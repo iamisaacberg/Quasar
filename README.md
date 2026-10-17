@@ -96,10 +96,28 @@ The **Data** sidebar view provides a separate selected-window summary, charts, i
 ## Map workspace UI
 
 The Map overview fills the space beside the stock Application Shell 2 navigation
-sidebar. Its toolbar keeps the data-source selector, rainfall/exposure display,
-**Isaias simulation** action and **Inspect sites** panel available on the map.
+sidebar. A floating county address/place search sits at the top, a tools dock at
+bottom-left, shared forecast/archive playback at bottom-center, and the active
+legend at bottom-right. Tools contains source, display, H3 and inspection controls.
 The Mapbox Light style is the default; `MAPBOX_STYLE` can override it.
-Mapbox resizes when either sidebar changes.
+
+Search uses temporary Mapbox geocodes and filters result coordinates against the
+authoritative Okaloosa polygon, including holes and islands. Selecting a location
+moves the map and adds a temporary marker; it does not assign a parcel or score.
+Search requires a public token and available county boundary. The site inspector
+remains available without a working map. Details float over the map; on mobile
+they open as a modal bottom sheet. Isaac reviews the rendered layout.
+
+Imported forecast playback reads retained hourly rows through
+`/api/weather/timeline`; it never launches an import. Each frame shows the
+following six-hour rainfall total, advancing one hour at a time. An 18-hour
+county run supports 13 positions; older six-hour-only files provide one frame.
+The same play control drives the October 9 archive when that source is selected.
+Static synthetic windows have no playback. Freshness uses real time; scrubbing
+cannot revive expired inputs. Missing values stay unavailable. Initialization,
+import time, native resolution, units and interpretation are in the expandable
+legend information. Simulated routing remains exclusive to the archive/what-if
+workflow.
 
 When an imported WeatherNext snapshot is selectable, the map opens with that
 source and **Rainfall · mm / 6h**. Native forecast polygons show county rainfall when a county snapshot is imported; blue points and numeric labels show rainfall at the six fictional sites. The summary shows the
@@ -113,7 +131,7 @@ A neutral county H3 grid stays available for parcel browsing in rainfall mode. L
 **Inspect sites** opens the site selector and factor explanation, including when
 Mapbox is unavailable. The **Isaias simulation** button opens archive/what-if
 controls, playback, selected-site trend and simulated routing in the same map's
-side panel. Exit returns to the preceding data source. The old `/#isaias-replay`
+floating details panel. Exit returns to the preceding data source. The old `/#isaias-replay`
 link still opens the simulation within Map overview. The other navigation links
 retain sites, source status, reports and the guide.
 
