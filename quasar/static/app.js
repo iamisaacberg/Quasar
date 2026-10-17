@@ -467,9 +467,10 @@ function setupMap(settings) {
     map.addControl(new mapboxgl.NavigationControl(), "bottom-left");
     map.addControl(new mapboxgl.AttributionControl({compact:false, customAttribution:
       "DEMO · Fictional sites / synthetic site inputs · Unvalidated estimates. Follow official NWS/local guidance."}), "bottom-right");
-    // The shell animates its sidebar width without a window resize event.
+    // The shell animates its sidebar width without a window resize event. Observe
+    // the visible viewport so Mapbox also gets a resize after its flex layout settles.
     if (window.ResizeObserver) {
-      new window.ResizeObserver(() => map.resize()).observe($("map"));
+      new window.ResizeObserver(() => map.resize()).observe($("map").parentElement);
     }
     map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. The site list remains available."; });
     map.on("load", () => {
