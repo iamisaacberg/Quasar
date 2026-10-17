@@ -97,5 +97,6 @@ the same authentication header. This code does not modify infrastructure.
 
 `aggregation_architecture` records the actual summary host. Local synthetic tests
 do not establish IBM Z execution, configured real assessments or visual acceptance.
-Changing scenario/hour removes old polygon assessments; late responses cannot
-repopulate closed or superseded selections.
+Changing scenario/hour retains cached parcel geometry and the selected cell/parcel
+while clearing previous exposure indices until matching assessments arrive. Late
+responses cannot repopulate closed or superseded selections.

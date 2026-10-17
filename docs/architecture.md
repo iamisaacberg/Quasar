@@ -58,9 +58,9 @@ For real data, maintain observed time, forecast issue/valid times, data age and 
 
 Mapbox GL JS 3.33.0 renders the site GeoJSON as a circle layer and H3 cells as fill/outline layers. A runtime configuration endpoint returns only the public Mapbox token and style. The table remains usable when credentials, WebGL, SDK resources or map tiles are unavailable.
 
-H3 4.3.0 is bundled as browser JavaScript with its Apache license/notice. `spatial.js` indexes sites at resolution 7 and builds occupied-cell summaries: site count, scored count, unknown count, maximum and mean score. Unknowns are excluded from score statistics and reported separately. A fully unknown cell remains unknown. The map uses the maximum score for color so averaging does not hide a high-scoring demo site.
+H3 4.3.0 is bundled as browser JavaScript with its Apache license/notice. `spatial.js` retains resolution-7 fictional-site indexing and summaries. The county exposure layer instead colors cells using server-side P90 summaries from complete indexed parcel memberships, with explicit coverage and unknown counts. Optional assessments must match the displayed parcel inventory and forecast window; absent assessments stay gray/hatched. See the [exposure display contract](exposure-display.md); no parcel scoring method is implemented here.
 
-Hexagon boundaries are not clipped to the county and may cross its border; only curated Okaloosa sample sites are included. Hexagons are neither inundation areas nor countywide coverage. Their sizes do not increase WeatherNext's original 0.1-degree resolution. Forecast values are associated using the source polygon directly, before any H3 display aggregation. Real property terrain, footprints and waterway relations must retain their own geometry.
+Hexagon boundaries are not clipped to the county and may cross its border; the browsing grid covers county-intersecting cells. Hexagons are not inundation areas or proof of complete assessment coverage. Their sizes do not increase WeatherNext's original 0.1-degree resolution. Forecast values are associated using the source polygon directly, before any H3 display aggregation. Real property terrain, footprints and waterway relations must retain their own geometry.
 
 See [integration setup](integrations.md) for authentication, query semantics, required project details and remaining live checks.
 

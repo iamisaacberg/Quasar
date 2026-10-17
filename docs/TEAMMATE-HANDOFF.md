@@ -38,7 +38,7 @@ The river-gauge prediction experiment in the earlier teammate prompt is a separa
 | Parcel rendering | Colors use the individual parcel assessment; inspection shows its index and factors |
 | H3 summaries | Server calculates P90, elevated-index counts and coverage from complete indexed parcel memberships |
 | Missing data | Gray/hatching for unknown indices; incomplete cells retain hatching |
-| Time changes | Old selected-parcel assessments are removed when the scenario/hour changes |
+| Time changes | Cached parcel geometry and selection persist across scenario/hour changes; previous exposure indices are cleared until matching assessments arrive |
 | API | `/api/exposure` provides summaries and bounded parcel assessment lookups |
 | LinuxONE proxy | Hosted instances can proxy exposure requests through the existing authenticated LinuxONE connection |
 | Data contract | Explicit assessment artifacts are validated against the matching parcel inventory |
@@ -190,7 +190,7 @@ The scoring method is the main unfinished dependency. Do not substitute fabricat
 
 ## Verification and demo
 
-The implementation run recorded **126 passing Python tests and 47 passing JavaScript tests**. Dependency installation, type/syntax checks, frontend build and `git diff --check` also passed. Test fixtures are synthetic; these results establish software behavior, not flood accuracy or LinuxONE execution.
+The latest local integration checks recorded **148 Python tests run, with 2 skipped, and 76 passing JavaScript tests**. `npm ci --ignore-scripts`, `npm run check`, `npm run build` and `git diff --check` also passed. Test fixtures are synthetic; these results establish software behavior, not flood accuracy, rendered visual acceptance or LinuxONE execution.
 
 Run the required checks after integration changes:
 

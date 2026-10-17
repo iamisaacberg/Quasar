@@ -113,11 +113,11 @@ Three spatial objects must remain distinct:
 
 1. **County polygon:** establishes whether an asset or whole road segment is in scope.
 2. **Native forecast cell:** establishes which source precipitation value was associated with a site.
-3. **H3 grid at resolutions 4–7:** covers the county for browsing; R7 selection loads real parcels. Only occupied fictional sites contribute illustrative score summaries.
+3. **H3 grid at resolutions 4–7:** covers the county for browsing; R7 selection loads real parcels. Optional matching assessments supply server-side parcel P90 exposure summaries, separate from fictional-site summaries.
 
 Neither a bounding box nor a matching FIPS tag proves county containment. Ordinary fixture loading checks tags and coordinate validity, not polygon containment. The road subsystem separately checks full line containment, including holes and concavities. Future external site adapters must add authoritative boundary checks before scoring.
 
-H3 cells may cross the county border. The browsing grid covers all county-intersecting cells. Unoccupied cells have no site score. Site summaries exclude unknown scores from numeric summaries and report unknown counts separately. Real parcels remain unscored. A small display cell does not create a finer forecast or a building-level terrain estimate.
+H3 cells may cross the county border. The browsing grid covers all county-intersecting cells. Fictional-site summaries exclude unknown scores and report unknown counts separately. Optional parcel exposure summaries use complete indexed memberships for coverage and exclude unknown indices from P90; absent assessments remain unknown. Geometry-only parcel risk fields remain null. See the [exposure display contract](exposure-display.md). A small display cell does not create a finer forecast or a building-level terrain estimate.
 
 DEM catalog searches in the acquisition script use the county's bounding box to find candidate tiles. Downloading those tiles alone does not establish exact county masking, terrain coverage at every asset, or correct vertical reference. The separate [parcel input preparer](parcel-inputs.md) now checks those properties and records missing coverage; it does not change the app fixtures. Verify raster metadata before transformation. The source raster CRS is retained; inspect its XML before reprojection. NAD83 geographic coordinates use EPSG:4269, not EPSG:4326.
 
