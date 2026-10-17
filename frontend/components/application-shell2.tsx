@@ -7,6 +7,7 @@ import {
   Map,
   MapPin,
   CloudRain,
+  Database,
   FileChartColumn,
   ShieldCheck,
   Waves,
@@ -113,6 +114,7 @@ const sidebarData: SidebarData = {
     { title: "Workspace", items: [
       { label: "Map overview", icon: Map, href: "#map-overview" },
       { label: "Exercise sites", icon: MapPin, href: "#exercise-sites" },
+      { label: "Data", icon: Database, href: "#data" },
       { label: "Forecast & sources", icon: CloudRain, href: "#data-sources" },
       { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
     ] },
@@ -261,6 +263,10 @@ const NavUser = ({ user }: { user: UserData }) => {
                 </div>
               </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href="#data"><Database className="mr-2 size-4" />Data</a>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <a href="#data-sources"><CloudRain className="mr-2 size-4" />Forecast & sources</a>

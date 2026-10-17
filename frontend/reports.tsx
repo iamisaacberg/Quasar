@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import "./reports.css";
 
 type Factor = { name: string; value: string | number; weight: number; contribution: number };
-type Scenario = { id: string; label: string; valid_from: string; valid_to: string };
+export type Scenario = { id: string; label: string; valid_from: string; valid_to: string };
 type Summary = { site_count: number; scored_count: number; unknown_count: number; mean_score: number | null; bands: Record<string, number> };
 type Row = {
   property_id: string; label: string; scenario: string; score: number | null; band: string;
   rainfall_6h_mm: number | null; missing: string[]; factors: Factor[]; forecast_status: string;
   data_status: string; model_version: string; available_hours: number | null;
 };
-type Report = {
+export type Report = {
   county_fips: string; mode: string; generated_at: string; notice: string; provenance: string;
   scenario?: Scenario; summary?: Summary; scenarios?: { scenario: Scenario; summary: Summary }[];
   rows: Row[]; forecast: null | { status: string; source_table: string; init_time: string;

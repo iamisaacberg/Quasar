@@ -89,6 +89,10 @@ npm run check
 npm test
 ```
 
+## Data workspace
+
+The **Data** sidebar view provides a separate selected-window summary, charts, input coverage, searchable site values and source readiness. It uses the shared report pipeline; rechecking reads local state and does not start a cloud import. Unknown and stale values remain visible as such.
+
 ## Map workspace UI
 
 The Map overview fills the space beside the stock Application Shell 2 navigation
