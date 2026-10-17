@@ -96,8 +96,8 @@ test('changing preset never labels the previous window data as the requested com
   assert.match(html, /disabled=""/);
 });
 
-test('returning from Reports signals Mapbox to resize after its container becomes visible', () => {
-  let hash = '#reports', state = [], deps = [], cursor = 0, effectCursor = 0, queued = [], events = [];
+for (const initialView of ['#reports', '#data']) test(`returning from ${initialView} restores the map and signals Mapbox to resize`, () => {
+  let hash = initialView, state = [], deps = [], cursor = 0, effectCursor = 0, queued = [], events = [];
   const listeners = new Map();
   const exported = {};
   const dashboard = ts.transpileModule(fs.readFileSync('frontend/dashboard.tsx', 'utf8'), {
@@ -111,14 +111,18 @@ test('returning from Reports signals Mapbox to resize after its container become
   }, require:name=> name === 'react' ? {...React, memo: fn=>fn,
     useState: initial => {const slot=cursor++; if (!(slot in state)) state[slot]=typeof initial==='function' ? initial() : initial; return [state[slot],value=>state[slot]=value];},
     useEffect: (fn, dependencies) => {const slot=effectCursor++; if (!deps[slot] || dependencies.some((d,i)=>d!==deps[slot][i])) queued.push(fn); deps[slot]=dependencies;},
-  } : name === './reports' ? {Reports:()=>null} : require(name)};
+  } : name === './reports' ? {Reports:()=>null} : name === './data-dashboard' ? {DataDashboard:()=>null} : require(name)};
   vm.runInNewContext(dashboard, context);
   const renderDashboard = () => { cursor=0; effectCursor=0; queued=[]; const tree=exported.QuasarDashboard(); queued.forEach(fn=>fn()); return tree; };
-  renderDashboard();
+  const initial = renderDashboard();
+  assert.ok(initial.props.className.includes(initialView === '#data' ? 'is-data-view' : 'is-reports-view'));
   assert.equal(events.includes('resize'), false);
   hash='#map-overview';
   listeners.get('hashchange').forEach(fn=>fn());
   // The real React effect runs after its render has restored the container.
-  renderDashboard();
+  const map = renderDashboard();
+  assert.ok(map.props.className.includes('is-map-view'));
+  assert.ok(!map.props.className.includes('is-data-view'));
+  assert.ok(!map.props.className.includes('is-reports-view'));
   assert.equal(events.includes('resize'), true);
 });

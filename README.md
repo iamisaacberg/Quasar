@@ -90,11 +90,31 @@ npm test
 
 ## Map workspace UI
 
+### Navigation
+
+| Tab / link | Purpose |
+| --- | --- |
+| Map overview | Explore fictional sites and occupied H3 summaries on the county map. |
+| Exercise sites | Jump to the ranked fictional site list; inspect a site's score and factor contributions. |
+| Data | Explore the selected window's summary, score distribution, rainfall, required-input coverage, searchable site values and source readiness. |
+| Reports & exports | Read scenario, comparison or site reports; print/save a PDF and download CSV, GeoJSON or a BI bundle. |
+
+Data is a separate sidebar view at `#data`, with its own time-window selector.
+It reads the existing shared report pipeline, scenario list and source-status
+endpoints. Charts and summary cards include every site in that window; search
+and band filters affect only the site table. Its CSV contains the full window.
+Recheck data rereads local inputs and statuses; it never triggers a cloud import.
+Generated-summary time is distinct from forecast initialization, import and
+validity times. Unknown scores/rainfall remain unknown, and stale imported
+rainfall is not replaced with synthetic values. Charts have corresponding
+table values. No Mapbox token is needed for this view.
+
 The Map overview fills the space beside the stock Application Shell 2 collapsible navigation
 sidebar (16rem desktop, 18rem mobile drawer), without dashboard headings, cards, tables or explainer panels. Satellite
 imagery with street labels is the default; `MAPBOX_STYLE` can override it.
-The other navigation links retain the exercise controls, sites, source status and
-guide. Mapbox resizes when the sidebar changes. Synthetic-demo attribution stays
+The sidebar links to the map, exercise sites, Data and reports. Existing replay,
+source-status and guide content remains available through its section anchors.
+Mapbox resizes when the sidebar changes. Synthetic-demo attribution stays
 visible on the map, and unknown scores remain unscored.
 
 React/Tailwind source lives in `frontend/`. Vite builds the shell into
@@ -139,7 +159,7 @@ runtime, scoring, and cloud-query behavior remain unchanged.
 
 ## Isaias 2026 replay
 
-The **Isaias 2026** sidebar view connects hourly forecast reconstruction, a selected-site trend, and a simulated resident evacuation route. Archive and what-if modes stay separate; missing historical rainfall stays unknown. Public NHC context and a county-contained real-road exercise network can be prepared locally with `python3 scripts/prepare_isaias.py`. Historical WeatherNext rainfall requires a separate explicit, capped import; the current October 17 snapshot is not reused. See [replay setup and walkthrough](docs/isaias-demo.md).
+The **Isaias 2026** exercise at `/#isaias-replay` connects hourly forecast reconstruction, a selected-site trend, and a simulated resident evacuation route. Its dedicated sidebar link has been removed; replay controls and APIs remain. Archive and what-if modes stay separate; missing historical rainfall stays unknown. Public NHC context and a county-contained real-road exercise network can be prepared locally with `python3 scripts/prepare_isaias.py`. Historical WeatherNext rainfall requires a separate explicit, capped import; the current October 17 snapshot is not reused. See [replay setup and walkthrough](docs/isaias-demo.md).
 
 ## Demo walkthrough
 

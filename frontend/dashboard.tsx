@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from "react";
 import { Reports } from "./reports";
+import { DataDashboard } from "./data-dashboard";
 import { ArrowUpRight, CircleHelp, CloudRain, Layers3, MapPin, Radar, TriangleAlert, Waves } from "lucide-react";
 
 declare global {
@@ -8,12 +9,16 @@ declare global {
 
 export const QuasarDashboard = memo(function QuasarDashboard() {
   const [isReportsView, setIsReportsView] = useState(window.location.hash === "#reports");
+  const [isDataView, setIsDataView] = useState(window.location.hash === "#data");
   useEffect(() => {
-    // Mapbox may have initialized while the Reports view hid its container.
-    if (!isReportsView) window.dispatchEvent(new Event("resize"));
-  }, [isReportsView]);
+    // Mapbox may have initialized while a separate view hid its container.
+    if (!isReportsView && !isDataView) window.dispatchEvent(new Event("resize"));
+  }, [isReportsView, isDataView]);
   useEffect(() => {
-    const update = () => setIsReportsView(window.location.hash === "#reports");
+    const update = () => {
+      setIsReportsView(window.location.hash === "#reports");
+      setIsDataView(window.location.hash === "#data");
+    };
     window.addEventListener("hashchange", update);
     return () => window.removeEventListener("hashchange", update);
   }, []);
@@ -30,8 +35,9 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
     return () => document.removeEventListener("quasar:ready", start);
   }, []);
   return (
-    <div className={`workspace-view${isMapView ? " is-map-view" : ""}${isReportsView ? " is-reports-view" : ""}`}>
+    <div className={`workspace-view${isMapView ? " is-map-view" : ""}${isReportsView ? " is-reports-view" : ""}${isDataView ? " is-data-view" : ""}`}>
       <Reports active={isReportsView} />
+      <DataDashboard active={isDataView} />
       <header className="workspace-header">
         <div className="breadcrumb"><span>Miami-Dade County</span><span aria-hidden="true">/</span><strong>Map overview</strong></div>
         <span className="demo-badge" id="mode-badge">SYNTHETIC DEMO</span>

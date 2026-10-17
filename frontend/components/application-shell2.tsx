@@ -3,14 +3,10 @@
 import {
   ChevronRight,
   ChevronsUpDown,
-  HelpCircle,
   Map,
   MapPin,
-  CloudRain,
-  Radar,
   FileChartColumn,
-  ShieldCheck,
-  Waves,
+  Database,
 } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -113,17 +109,9 @@ const sidebarData: SidebarData = {
   navGroups: [
     { title: "Workspace", items: [
       { label: "Map overview", icon: Map, href: "#map-overview" },
-    { label: "Isaias 2026", icon: Radar, href: "#isaias-replay" },
       { label: "Exercise sites", icon: MapPin, href: "#exercise-sites" },
-      { label: "Forecast & sources", icon: CloudRain, href: "#data-sources" },
+      { label: "Data", icon: Database, href: "#data" },
       { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
-    ] },
-    { title: "Resources", items: [
-      { label: "Exercise guide", icon: HelpCircle, href: "#exercise-guide", children: [
-        { label: "Reading the map", icon: Map, href: "#exercise-guide" },
-        { label: "Understanding a score", icon: Waves, href: "#site-details" },
-      ] },
-      { label: "Official NWS guidance", icon: ShieldCheck, href: "https://www.weather.gov/mfl/" },
     ] },
   ],
   footerGroup: { title: "Support", items: [] },
@@ -265,11 +253,7 @@ const NavUser = ({ user }: { user: UserData }) => {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <a href="#data-sources"><CloudRain className="mr-2 size-4" />Forecast & sources</a>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="https://www.weather.gov/mfl/" target="_blank" rel="noopener noreferrer"><ShieldCheck className="mr-2 size-4" />Official NWS guidance</a>
+              <a href="#data"><Database className="mr-2 size-4" />Data</a>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

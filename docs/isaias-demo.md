@@ -1,6 +1,7 @@
 # Isaias 2026 replay and evacuation exercise
 
-Open **Isaias 2026** in the sidebar (or `/#isaias-replay`). The replay spans
+Open `/#isaias-replay` directly; the dedicated **Isaias 2026** sidebar link has
+been removed, while the replay controls and APIs remain. The replay spans
 October 9 04:00 UTC through October 10 04:00 UTC (October 9 in Miami time), displayed in Miami time. The
 hourly score always describes the **following six forecast hours**. It uses the
 existing illustrative scoring function, not a trained or validated flood model.
