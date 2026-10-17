@@ -24,6 +24,7 @@ from .analysis import report
 from .exports import export
 from .parcels import county_boundary, parcel_page, SourceUnavailable
 from .bridge import serve_snapshot
+from .exposure import exposure, SCALE as EXPOSURE_SCALE
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
@@ -152,19 +153,21 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/config":
                 return self.send(200, {"county_fips": COUNTY_FIPS, "county_name": COUNTY_NAME,
                                        "timezone": TIMEZONE, "notice": NOTICE, "mode": "synthetic_demo",
-                                       "map": map_settings()})
+                                       "map": map_settings(), "exposure_scale": EXPOSURE_SCALE})
             if url.path == "/api/weather/status":
                 forecast = load_forecast()
                 return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
-            if url.path == "/api/parcels":
+            if url.path in ("/api/parcels", "/api/exposure"):
                 parcel_token = os.environ.get("QUASAR_PARCEL_API_TOKEN", "")
                 parcel_database = os.environ.get("QUASAR_PARCEL_DATABASE", "")
                 if parcel_database and len(parcel_token) < 32:
                     return self.send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Parcel API authentication is not configured"})
                 if parcel_token and not hmac.compare_digest(self.headers.get("X-Quasar-Parcel-Token", ""), parcel_token):
                     return self.send(HTTPStatus.UNAUTHORIZED, {"error": "Parcel API authentication required"})
+                if url.path == "/api/exposure":
+                    return self.send(200, exposure({key: values[0] for key, values in query.items()}))
                 return self.send(200, parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
                                                  query.get("inventory_id", [None])[0], query.get("cell", [None])[0]))
             if url.path == "/api/scenarios":

@@ -14,7 +14,7 @@ class Element {
   getAttribute(name) { return this[name]; }
 }
 
-async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false}={}) {
+async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, exposureScores=false}={}) {
   const ids = new Map();
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   const data = {type:"FeatureCollection", mode:mixed ? "mixed_forecast_demo" : "synthetic_demo", notice:"demo notice",
@@ -37,6 +37,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     getCanvas() { return {clientWidth:1200,style:{}}; }
     queryRenderedFeatures() { return []; }
     addControl(control) { this.controls.push(control); }
+    addImage(id,image) { (this.images ||= {})[id]=image; }
     on(name,...rest) { this.handlers[`${name}:${rest.length===1 ? "" : rest[0]}`]=rest.at(-1); }
     addSource(id,source) { this.sources[id]={data:source.data,setData(data){this.data=data;}}; }
     getSource(id) { return this.sources[id]; }
@@ -52,10 +53,17 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
       observe(element) { observed=element; }
     }},h3,QuasarSpatial,mapboxgl,
     fetch:async (url) => {
+      if (url.startsWith("/api/exposure?")) {
+        if (!exposureScores) return {ok:true,json:async()=>({status:"not_configured",cells:{},parcels:{},message:"Exposure not configured"})};
+        const params=new URLSearchParams(url.split("?")[1]), resolution=Number(params.get("resolution"));
+        const cell=h3.latLngToCell(30.55,-86.485,resolution);
+        const score=id=>id===1 ? 0 : 90;
+        return {ok:true,json:async()=>({status:"ready",county_fips:"12091",run_id:"synthetic-run",inventory_id:"synthetic-inventory",method_version:"synthetic-test-only",aggregation:"parcel_p90_linear",aggregation_architecture:"s390x",cells:{[cell]:{parcel_count:3,scored_count:2,unknown_count:1,coverage:2/3,incomplete:true,elevated_count:1,p90_score:81}},parcels:Object.fromEntries((params.get("parcel_ids")||"").split(",").filter(Boolean).map(id=>[id,{score:score(Number(id)),factors:[{name:"synthetic_factor",value:score(Number(id)),contribution:score(Number(id))}],missing:[]}]))})};
+      }
       if (url.startsWith("/api/parcels?")) {
         const offset=Number(new URLSearchParams(url.split("?")[1]).get("offset"));
         if (parcelFailure) return {ok:false,json:async()=>({error:"GIS unavailable"})};
-        return {ok:true,json:async()=>({type:"FeatureCollection",status:"ready",features:[{type:"Feature",id:offset+1,geometry:{type:"Polygon",coordinates:[[[-86.49,30.55],[-86.489,30.55],[-86.489,30.551],[-86.49,30.55]]]},properties:{parcel_id:offset+1,folio:`folio-${offset+1}`,risk_score:null}}],source_total:101,checked_count:offset ? 101 : 100,excluded_count:0,next_offset:offset ? null : 100,retrieved_at:"2026-10-17T12:00:00Z",county_boundary_retrieved_at:"2026-10-17T10:00:00Z"})};
+        return {ok:true,json:async()=>({type:"FeatureCollection",status:"ready",inventory_id:"synthetic-inventory",features:[{type:"Feature",id:offset+1,geometry:{type:"Polygon",coordinates:[[[-86.49,30.55],[-86.489,30.55],[-86.489,30.551],[-86.49,30.55]]]},properties:{parcel_id:offset+1,folio:`folio-${offset+1}`,risk_score:null}}],source_total:101,checked_count:offset ? 101 : 100,excluded_count:0,next_offset:offset ? null : 100,retrieved_at:"2026-10-17T12:00:00Z",county_boundary_retrieved_at:"2026-10-17T10:00:00Z"})};
       }
       if (scenarioFailure && url.includes("scenario=bad")) return {ok:false,json:async()=>({error:"bad scenario"})};
       const body = url==="/api/county" ? {county_fips:"12091",type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[[[-86.6,30.4],[-86.4,30.4],[-86.4,30.6],[-86.6,30.6],[-86.6,30.4]]]}}]} : url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/satellite-streets-v12"}} :
@@ -232,4 +240,43 @@ test("county rainfall retains native polygons and never paints stale values as z
     get("map-layer").value="exposure";get("map-layer").onchange();
     assert.equal(map.layers["native-rainfall-fill"].visibility,"none");
   }
+});
+
+test("unknown real parcels stay gray and hatched even when fictional sites have scores", async()=>{
+  const {map,get}=await boot({configured:true});map.handlers['load:']();
+  get('map-layer').value='exposure';get('map-layer').onchange();
+  assert.ok(map.images['exposure-hatch'].data.some(value=>value>0));
+  assert.equal(map.layers['hotspot-hatch'].visibility,'visible');
+  assert.ok(map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
+  const cell=h3.latLngToCell(30.55,-86.485,7);
+  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_incomplete && f.properties.exposure_score===null));
+  assert.equal(get('selection-stat-one').textContent,'Unknown');
+  assert.match(get('selection-content').children[0].children[1].textContent,/Insufficient data/);
+});
+
+test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{
+  const {map,get}=await boot({configured:true,mixed:true,exposureScores:true});map.handlers['load:']();
+  await new Promise(resolve=>setImmediate(resolve));
+  map.zoom=12;map.handlers['zoomend:']();
+  await new Promise(resolve=>setImmediate(resolve));
+  const cell=h3.latLngToCell(30.55,-86.485,7);
+  const summary=map.sources.hotspots.data.features.find(f=>f.id===cell).properties;
+  assert.equal(summary.exposure_score,81);
+  assert.equal(summary.exposure_incomplete,true);
+  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(get('selection-stat-one').textContent,'81.0');
+  assert.equal(get('selection-stat-two').textContent,'2/3');
+  assert.equal(get('selection-stat-three').textContent,'1');
+  assert.deepEqual(Array.from(map.sources.parcels.data.features,f=>f.properties.exposure_score),[0,90]);
+  get('selection-content').children[1].onclick();
+  assert.equal(get('selection-stat-one').textContent,'90.0');
+  assert.match(get('selection-stat-two').textContent,/Highest relative exposure/);
+  assert.ok(get('selection-content').children.some(node=>/synthetic_factor.*90.0/.test(node.textContent)));
+  // A different hour immediately removes the old selected polygon and its score.
+  get('scenario').value='baseline';await get('scenario').onchange();
+  assert.equal(map.sources.parcels.data.features.length,0);
+  assert.equal(map.sources['selected-parcel'].data.features.length,0);
 });

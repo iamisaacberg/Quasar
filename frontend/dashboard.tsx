@@ -68,7 +68,17 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
             <div className="map-viewport"><div id="map"><p className="map-fallback">Map loading. Exercise sites remain available below.</p></div><MapSelectionPanel /></div>
             <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />County H3 grid</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
             <div className="map-caption"><p id="map-status" role="status" />
-              <div id="exposure-legend" className="legend" aria-label="Relative exposure legend"><span><i className="dot elevated" />Elevated</span><span><i className="dot moderate" />Moderate</span><span><i className="dot lower_relative" />Lower relative</span><span><i className="dot unknown" />Unknown</span></div>
+              <div id="exposure-legend" className="legend exposure-legend" aria-label="Experimental relative exposure">
+                <strong>Experimental relative exposure</strong>
+                <div className="exposure-gradient" aria-hidden="true" />
+                <span><i className="dot lower_relative" />0–34 · Lower relative exposure</span>
+                <span><i className="dot moderate" />35–64 · Moderate relative exposure</span>
+                <span><i className="dot elevated" />65–84 · Elevated relative exposure</span>
+                <span><i className="dot highest" />85–100 · Highest relative exposure</span>
+                <span><i className="dot unknown" />Unknown · Insufficient data</span>
+                <span>Hatched · Incomplete scoring coverage</span>
+                <strong>Green does not establish safety.</strong>
+              </div>
               <div id="rainfall-legend" className="legend" hidden aria-label="Rainfall legend"><span><i className="dot rain-light" />0–25</span><span><i className="dot rain-medium" />25–75</span><span><i className="dot rain-heavy" />75+ mm / 6h</span><span><i className="dot unknown" />Unavailable</span></div>
               <p id="map-layer-note" className="detail-note">Hexagons summarize exercise sites. They are not flood extents, county boundaries, or higher-resolution forecasts.</p>
             </div>

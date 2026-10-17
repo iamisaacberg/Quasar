@@ -1,9 +1,11 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const colors = { elevated: "#ee9b82", moderate: "#e6c36e", lower_relative: "#82c6c1", unknown: "#a4a8bb" };
+const colors = { unknown: "#9ca3af" };
 const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)" };
 let map, mapLoaded = false, selectedId, current, mapData, requestId = 0, started = false, replayController, previousScenario = "baseline";
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
+let exposureData = null, exposureRequest = 0;
+const exposureResponses = new Map();
 const countyGrids = new Map();
 const emptyCollection = () => ({type:"FeatureCollection", features:[]});
 let countyFramed = false;
@@ -36,7 +38,7 @@ function choose(id, refresh = true) {
   $("detail-heading").textContent = property.label;
   const detail = $("detail");
   detail.replaceChildren(element("p", risk.score === null ? "Unknown" : `${risk.score} / 100`, "score"),
-    element("p", `${bandLabel(risk.band)} · unvalidated relative estimate`, "detail-note"));
+    element("p", `${QuasarSpatial.exposureBand(risk.score).label} · unvalidated relative estimate`, "detail-note"));
   for (const factor of risk.factors) {
     const row = element("div", undefined, "factor");
     const line = element("p");
@@ -77,6 +79,11 @@ function choose(id, refresh = true) {
 
 function render(data) {
   const changedScenario = current?.scenario.id !== data.scenario.id;
+  // A selected polygon must never retain an assessment from the preceding hour.
+  if (current) closeSelection();
+  ++exposureRequest;
+  exposureData = null;
+  exposureResponses.clear();
   current = data;
   replayController?.activate(data.scenario.id === "isaias-2026");
   $("replay-toggle").setAttribute("aria-pressed", String(data.scenario.id === "isaias-2026"));
@@ -99,7 +106,7 @@ function render(data) {
     button.setAttribute("aria-label", `Inspect ${p.label}`);
     button.onclick = () => choose(p.id);
     const action = element("td"); action.append(button);
-    row.append(element("td", p.label), element("td", p.risk.score ?? "Unknown"), element("td", bandLabel(p.risk.band)), element("td", rainfallValue(feature) === null ? "Unavailable" : rainfallValue(feature).toFixed(1)), action);
+    row.append(element("td", p.label), element("td", p.risk.score ?? "Unknown"), element("td", QuasarSpatial.exposureBand(p.risk.score).label), element("td", rainfallValue(feature) === null ? "Unavailable" : rainfallValue(feature).toFixed(1)), action);
     $("sites").append(row);
   }
   showMapSummary();
@@ -119,7 +126,7 @@ function showMapSummary() {
   if (!current) return;
   const rain = $("map-layer").value === "rainfall";
   const synthetic = current.mode === "synthetic_demo";
-  $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Illustrative relative exposure · score / 100";
+  $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Experimental relative exposure · index / 100";
   const values = current.features.map(rainfallValue).filter(v => v !== null);
   $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${values.length}/${current.features.length} sampled sites with rainfall · ${current.features.length-values.length} unavailable` : `Rainfall unavailable at all ${current.features.length} sampled sites. Missing or stale inputs remain unknown.`;
   const forecast = current.forecast || current.features.find(f => f.properties.forecast)?.properties.forecast;
@@ -135,12 +142,49 @@ function showMapSummary() {
   $("exposure-legend").hidden = rain;
   $("rainfall-legend").hidden = !rain;
   $("hex-toggle").disabled = false;
-  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : "Cell colors summarize fictional sites only. Neutral cells have no site score. Click cells to zoom, then inspect real parcels; parcel flood scores remain unknown.";
+  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." :
+    `Cells show the 90th percentile of available parcel indices; hatching marks incomplete coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel exposure results unavailable; real parcels remain unknown."} Exercise site points remain fictional. Green does not establish safety.`;
 }
 
-function mapColors() {
-  return ["match", ["get", "risk_band"], "elevated", colors.elevated, "moderate", colors.moderate,
-    "lower_relative", colors.lower_relative, colors.unknown];
+function mapColors(field = "risk_score") {
+  return QuasarSpatial.exposureExpression(field);
+}
+
+function exposureParameters(resolution = 7) {
+  if (!current || ["synthetic_demo", "what_if_exercise"].includes(current.mode)) return null;
+  return {from:current.scenario.valid_from, to:current.scenario.valid_to, resolution:String(resolution),
+    mode:current.mode === "historical_mixed_demo" ? "replay" : "current"};
+}
+
+async function refreshExposure(resolution) {
+  const params = exposureParameters(resolution);
+  if (!params) return;
+  const key = new URLSearchParams(params).toString();
+  if (exposureResponses.has(key)) {
+    exposureData = exposureResponses.get(key);
+    return;
+  }
+  const request = exposureRequest;
+  exposureResponses.set(key, {status:"loading", cells:{}});
+  try {
+    const data = await api(`/api/exposure?${key}`);
+    if (request !== exposureRequest) return;
+    if (data.status === "ready" && (!data.cells || data.aggregation !== "parcel_p90_linear")) throw new Error("Invalid exposure summary");
+    exposureResponses.set(key, data);
+    exposureData = data;
+  } catch (error) {
+    if (request !== exposureRequest) return;
+    exposureData = {status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`};
+    exposureResponses.set(key, exposureData);
+  }
+  updateCountyGrid();
+  showMapSummary();
+  if (selectedCell) {
+    const selected = selectedParcel;
+    await loadParcels();
+    const feature = parcelData?.features.find(f=>f.id === selected);
+    if (feature) inspectParcel(feature);
+  }
 }
 
 function updateMap() {
@@ -176,12 +220,20 @@ function updateCountyGrid() {
   let grid = emptyCollection();
   if (county) {
     if (!countyGrids.has(resolution)) countyGrids.set(resolution, QuasarSpatial.countyCells(county.features[0].geometry, h3, resolution));
-    grid = QuasarSpatial.coverage(countyGrids.get(resolution), current, h3, resolution);
+    const params = exposureParameters(resolution);
+    const cached = params && exposureResponses.get(new URLSearchParams(params).toString());
+    grid = QuasarSpatial.exposureCoverage(countyGrids.get(resolution), cached?.status === "ready" ? cached.cells : {});
+    void refreshExposure(resolution);
   }
   map.getSource("hotspots").setData(grid);
   const rain = $("map-layer").value === "rainfall";
-  map.setPaintProperty("hotspot-fill", "fill-color", rain ? "#b9c9cd" : mapColors());
-  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0.07 : ["case", [">", ["get", "site_count"], 0], 0.25, 0.08]);
+  map.setPaintProperty("hotspot-fill", "fill-color", rain ? "#b9c9cd" : mapColors("exposure_score"));
+  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0.07 : 0.28);
+  map.setLayoutProperty("hotspot-hatch", "visibility", !rain && $("hex-toggle").checked ? "visible" : "none");
+  for (const layer of ["parcel-fill", "selected-parcel-fill"]) {
+    map.setPaintProperty(layer, "fill-color", rain ? colors.unknown : mapColors("exposure_score"));
+  }
+  map.setLayoutProperty("parcel-hatch", "visibility", rain ? "none" : "visible");
   map.setPaintProperty("hotspot-outline", "line-color", "#c4d5d7");
   $("grid-resolution").textContent = `H3 · RES ${resolution}`;
   if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to ${resolution < 7 ? "zoom" : "inspect parcels"}`;
@@ -224,14 +276,19 @@ function renderCellPanel() {
   $("selection-code").textContent = selectedCell;
   $("selection-subtitle").textContent = "Real parcels intersecting this cell";
   $("selection-section-title").textContent = "Parcels in this cell";
-  const sites = current.features.filter(f => h3.latLngToCell(f.geometry.coordinates[1], f.geometry.coordinates[0], 7) === selectedCell).length;
-  panelStats([[parcelData ? parcelData.features.length.toLocaleString() : "—", "Parcels shown"], [String(sites), "Fictional sites"], ["0", "Scored parcels"]]);
+  const summary = exposureData?.status === "ready" && exposureData.cells[selectedCell];
+  panelStats([[summary?.p90_score == null ? "Unknown" : summary.p90_score.toFixed(1), "Parcel index · P90"],
+    [summary ? `${summary.scored_count}/${summary.parcel_count}` : "Unknown", "Scoring coverage"],
+    [summary ? String(summary.elevated_count) : "Unknown", "Indices ≥65"]]);
+  $("selection-subtitle").textContent = summary ? `${QuasarSpatial.exposureBand(summary.p90_score).label} · ${(summary.coverage*100).toFixed(1)}% scored${summary.incomplete ? " · Incomplete coverage" : ""}` : "Insufficient data · scoring coverage unknown";
   $("selection-content").replaceChildren();
   if (parcelData) {
     for (const feature of parcelData.features) {
       const button = element("button", undefined, "selection-parcel-row");
       button.type = "button";
-      button.append(element("strong", feature.properties.folio || `Parcel ${feature.id}`), element("span", "Unknown exposure →"));
+      const score = feature.properties.exposure_score;
+      button.style.borderLeft = `4px solid ${QuasarSpatial.exposureColor(score)}`;
+      button.append(element("strong", feature.properties.folio || `Parcel ${feature.id}`), element("span", `${score == null ? "Unknown" : `${score.toFixed(1)} / 100`} · ${QuasarSpatial.exposureBand(score).label} →`));
       button.onclick = () => inspectParcel(feature);
       $("selection-content").append(button);
     }
@@ -242,17 +299,26 @@ function inspectParcel(feature) {
   selectedParcel = feature.id;
   $("map-selection-panel").hidden = false;
   $("selection-back").hidden = false;
-  $("selection-badge").textContent = "County parcel · unscored";
+  const assessment = feature.properties.exposure, score = feature.properties.exposure_score;
+  $("selection-badge").textContent = score == null ? "County parcel · unscored" : "County parcel · experimental index";
   $("selection-title").textContent = "Parcel details";
   $("selection-code").textContent = feature.properties.folio || `Parcel ${feature.id}`;
   $("selection-subtitle").textContent = `Okaloosa County · FIPS 12091`;
-  panelStats([["Unknown", "Exposure"], ["Not joined", "Forecast"], ["Unknown", "Terrain"]]);
+  panelStats([[score == null ? "Unknown" : score.toFixed(1), "Exposure index / 100"],
+    [QuasarSpatial.exposureBand(score).label, "Relative exposure"],
+    [exposureData?.status === "ready" ? exposureData.method_version : "Unavailable", "Method"]]);
   $("selection-section-title").textContent = "Property record";
   const records = element("dl", undefined, "selection-factors");
   for (const [label, value] of [["Folio",feature.properties.folio || "Unavailable"],["County GIS ID",String(feature.id)],["Geometry","County-validated polygon"],["H3 selection",selectedCell]]) {
     const row = element("div"); row.append(element("dt",label),element("dd",value)); records.append(row);
   }
   $("selection-content").replaceChildren(records);
+  for (const factor of assessment?.factors || []) {
+    const row = element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`, "detail-note");
+    $("selection-content").append(row);
+  }
+  if (score == null) $("selection-content").append(element("p", `Insufficient data: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}.`, "detail-note"));
+  $("selection-content").append(element("p", "Experimental relative exposure, not flood probability or depth. Green does not establish safety.", "detail-note"));
   map.getSource("selected-parcel").setData({type:"FeatureCollection",features:[feature]});
   const polygons = feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates : [feature.geometry.coordinates];
   const points = polygons.flat(2);
@@ -274,7 +340,7 @@ async function inspectCell(cell) {
 async function loadParcels() {
   const cell = selectedCell, request = ++parcelRequest;
   parcelData = emptyCollection();
-  let offset = 0, excluded = 0, inventory;
+  let offset = 0, excluded = 0, inventory, exposureError = "";
   $("parcel-retry").hidden = true;
   $("parcel-status").textContent = "Loading county parcels…";
   $("parcel-provenance").textContent = "Loading Okaloosa parcel outlines for this H3 cell; flood scores remain unknown.";
@@ -286,6 +352,24 @@ async function loadParcels() {
       const page = await api(`/api/parcels?${query}`);
       if (request !== parcelRequest) return;
       if (page.status !== "ready" || !Array.isArray(page.features)) throw new Error("Parcel source returned an incomplete page");
+      let assessments = {};
+      const params = exposureParameters();
+      if (params && exposureData?.status === "ready" && page.features.length) {
+        try {
+          const exposurePage = await api(`/api/exposure?${new URLSearchParams({...params,
+            parcel_ids:page.features.map(f=>f.properties.parcel_id).join(","),run_id:exposureData.run_id})}`);
+          if (request !== parcelRequest) return;
+          if (exposurePage.status !== "ready" || exposurePage.run_id !== exposureData.run_id || exposurePage.inventory_id !== page.inventory_id) throw new Error("Parcel exposure run or inventory changed");
+          assessments = exposurePage.parcels;
+        } catch (error) {
+          if (request !== parcelRequest) return;
+          exposureError = ` Parcel exposure unavailable: ${error.message}; all parcel indices in this selection are unknown.`;
+          parcelData.features = parcelData.features.map(f=>QuasarSpatial.exposureFeature(f,null));
+          map.getSource("selected-parcel").setData(emptyCollection());
+          selectedParcel = null;
+        }
+      }
+      page.features = page.features.map(f=>QuasarSpatial.exposureFeature(f, exposureError ? null : assessments[String(f.properties.parcel_id)]));
       inventory = page.inventory_id;
       const seen = new Set(parcelData.features.map(f=>f.id));
       parcelData.features.push(...page.features.filter(f=>!seen.has(f.id)));
@@ -294,6 +378,7 @@ async function loadParcels() {
       if (selectedParcel === null) renderCellPanel();
       $("parcel-status").textContent = page.next_offset === null ? (parcelData.features.length ? `${parcelData.features.length.toLocaleString()} county-validated parcels shown. All ${page.source_total.toLocaleString()} source matches checked.` : "No county-validated parcels returned for this cell.") + (excluded ? ` ${excluded} source polygons excluded by county validation.` : "") : `Loading: ${parcelData.features.length.toLocaleString()} parcels shown · ${page.checked_count.toLocaleString()} / ${page.source_total.toLocaleString()} source matches checked…`;
       $("parcel-provenance").textContent = `${page.source_url} · source snapshot ${page.retrieved_at} · ${page.crs}. ${page.processing}. No owner or mailing fields stored; flood scores remain unknown.`;
+      $("parcel-status").textContent += exposureError;
       if (page.next_offset !== null && page.next_offset <= offset) throw new Error("Parcel pagination did not advance");
       offset = page.next_offset;
     } while (offset !== null);
@@ -328,22 +413,30 @@ function setupMap(settings) {
     map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. The site list remains available."; });
     map.on("load", () => {
       const empty = {type:"FeatureCollection", features:[]};
+      const hatch = new Uint8Array(8*8*4);
+      for (let y=0;y<8;y++) for (let x=0;x<8;x++) {
+        const offset = (y*8+x)*4;
+        hatch.set([55,65,81,(x+y)%8<2 ? 150 : 0],offset);
+      }
+      map.addImage("exposure-hatch", {width:8,height:8,data:hatch});
       map.addSource("native-rainfall", {type:"geojson", data:empty});
       map.addLayer({id:"native-rainfall-fill",type:"fill",source:"native-rainfall",paint:{
         "fill-color":["case",["==",["get","rainfall_mm"],null],"#a1a9ad",["step",["get","rainfall_mm"],"#b9e2f8",25,"#509dce",75,"#3156a6"]],"fill-opacity":0.35}});
       map.addLayer({id:"native-rainfall-outline",type:"line",source:"native-rainfall",paint:{"line-color":"#6d99bc","line-width":0.6}});
       map.addSource("hotspots", {type:"geojson", data:empty});
-      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors(), "fill-opacity":0.25}});
-      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":mapColors(), "line-width":1}});
+      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":0.28}});
+      map.addLayer({id:"hotspot-hatch", type:"fill", source:"hotspots", filter:["==",["get","exposure_incomplete"],true], paint:{"fill-pattern":"exposure-hatch","fill-opacity":0.45}});
+      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":"#9ca3af", "line-width":1}});
       map.addSource("county-boundary", {type:"geojson", data:county || empty});
       map.addLayer({id:"county-boundary", type:"line", source:"county-boundary", paint:{"line-color":"#ecf4ef","line-width":2,"line-dasharray":[3,2]}});
       map.addSource("selected-cell", {type:"geojson", data:empty});
       map.addLayer({id:"selected-cell-outline", type:"line", source:"selected-cell", paint:{"line-color":"#ffffff","line-width":3}});
       map.addSource("parcels", {type:"geojson", data:empty});
-      map.addLayer({id:"parcel-fill", type:"fill", source:"parcels", paint:{"fill-color":"#9bd2c9","fill-opacity":0.18}});
-      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#bcebe2","line-width":1.1}});
+      map.addLayer({id:"parcel-fill", type:"fill", source:"parcels", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":0.45}});
+      map.addLayer({id:"parcel-hatch", type:"fill", source:"parcels", filter:["==",["get","exposure_incomplete"],true], paint:{"fill-pattern":"exposure-hatch","fill-opacity":0.65}});
+      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#6b7280","line-width":1.1}});
       map.addSource("selected-parcel", {type:"geojson", data:empty});
-      map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":"#56dec5","fill-opacity":0.3}});
+      map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":0.3}});
       map.addLayer({id:"selected-parcel-outline", type:"line", source:"selected-parcel", paint:{"line-color":"#ffffff","line-width":3}});
       map.addSource("sites", {type:"geojson", data:empty});
       map.addLayer({id:"site-points", type:"circle", source:"sites", paint:{"circle-radius":8,
@@ -397,6 +490,7 @@ function setupMap(settings) {
 function toggleHex() {
   if (!mapLoaded) return;
   for (const id of ["hotspot-fill", "hotspot-outline"]) map.setLayoutProperty(id, "visibility", $("hex-toggle").checked ? "visible" : "none");
+  map.setLayoutProperty("hotspot-hatch", "visibility", $("hex-toggle").checked && $("map-layer").value !== "rainfall" ? "visible" : "none");
 }
 
 function showWeatherStatus(data) {
@@ -471,7 +565,11 @@ async function start() {
     });
     try { replayController.setContext(await api("/api/replay/context")); } catch { /* Explicit unavailable context in the replay. */ }
   }
-  try { setupMap((await api("/api/config")).map); }
+  try {
+    const config = await api("/api/config");
+    if (config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
+    setupMap(config.map);
+  }
   catch { $("map-status").textContent = "Map configuration unavailable; the site list remains available."; }
   if (map) {
     try {

@@ -95,6 +95,13 @@ The **Data** sidebar view provides a separate selected-window summary, charts, i
 
 ## Map workspace UI
 
+The exposure map uses a fixed green/yellow/orange/red gradient, gray hatching for
+unknown or incomplete inputs, and numeric inspection. Optional explicit parcel
+assessments and server-side P90 cell summaries follow the
+[exposure display contract](docs/exposure-display.md). A matching assessment
+artifact is required; real parcel indices otherwise remain unknown. Green does
+not establish safety.
+
 The Map overview fills the space beside the stock Application Shell 2 navigation
 sidebar. Its toolbar keeps the data-source selector, rainfall/exposure display,
 **Isaias simulation** action and **Inspect sites** panel available on the map.

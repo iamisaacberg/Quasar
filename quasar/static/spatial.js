@@ -1,9 +1,44 @@
 /* H3 is an index/summary, not hydrologic downscaling or county containment. */
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory();
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./exposure-scale.json"));
   else root.QuasarSpatial = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (initialScale) {
   "use strict";
+  let exposureScale = initialScale;
+  function configureExposure(scale) { exposureScale = scale; }
+  function validScore(value) { return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100; }
+  function exposureBand(score) {
+    if (!validScore(score)) return {key:"unknown", label:"Insufficient data", color:exposureScale.unknown_color};
+    return exposureScale.bands.findLast(band => score >= band.minimum);
+  }
+  function exposureColor(score) {
+    if (!validScore(score)) return exposureScale.unknown_color;
+    const bands = exposureScale.bands;
+    const lower = exposureBand(score), upper = bands[bands.indexOf(lower) + 1] || lower;
+    const ratio = upper === lower ? 0 : (score-lower.minimum)/(upper.minimum-lower.minimum);
+    const rgb = color => [1,3,5].map(i => parseInt(color.slice(i,i+2),16));
+    const lo = rgb(lower.color), hi = rgb(upper.color);
+    return "#" + lo.map((v,i) => Math.round(v+(hi[i]-v)*ratio).toString(16).padStart(2,"0")).join("");
+  }
+  function exposureExpression(field) {
+    return ["case", ["all", ["==", ["typeof", ["get", field]], "number"],
+      [">=", ["number", ["get", field], -1], 0], ["<=", ["number", ["get", field], 101], 100]],
+      ["interpolate", ["linear"], ["number", ["get", field], 0],
+        ...exposureScale.bands.flatMap(band => [band.minimum,band.color]), 100,exposureScale.bands.at(-1).color], exposureScale.unknown_color];
+  }
+  function exposureFeature(feature, assessment) {
+    const score = assessment && !assessment.missing?.length && validScore(assessment.score) ? assessment.score : null;
+    return {...feature, properties:{...feature.properties, exposure:assessment || null,
+      exposure_score:score, exposure_incomplete:score === null}};
+  }
+  function exposureCoverage(grid, summaries) {
+    return {...grid,features:grid.features.map(feature => {
+      const summary = summaries[feature.id];
+      return {...feature,properties:{...feature.properties,...summary,
+        exposure_score:validScore(summary?.p90_score) ? summary.p90_score : null,
+        exposure_incomplete:!summary || summary.incomplete || !validScore(summary.p90_score)}};
+    })};
+  }
   function aggregate(collection, h3, resolution = 7) {
     const groups = new Map();
     const points = collection.features.map((feature) => {
@@ -52,5 +87,6 @@
     const occupied = new Map(aggregate(collection, h3, resolution).cells.features.map(f => [f.id, f.properties]));
     return {...grid, features:grid.features.map(f => ({...f, properties:occupied.get(f.id) || f.properties}))};
   }
-  return {aggregate, resolutionForZoom, childZoom, countyCells, coverage};
+  return {aggregate, resolutionForZoom, childZoom, countyCells, coverage, configureExposure,
+    exposureBand, exposureColor, exposureExpression, exposureFeature, exposureCoverage, validScore};
 });
