@@ -212,3 +212,34 @@ coverage/unknown states.
 County snapshots have `schema_version: 3`, county FIPS `12091`, kind `current_county_forecasts` or `historical_county_forecasts`, source table/model, native resolution/statistic/units, actual retrieval time, county geometry, `native_cells` and initialization-grouped `runs`. Each native cell retains ID, original WKT and GeoJSON geometry. IDs are SHA-256 of source WKT. Hourly rows reference the cell ID in `property_id`; `rainfall_1h_mm` is null or a nonnegative finite number. Duplicate cell/hour/run rows invalidate the snapshot. Current snapshots additionally carry `init_time`, `valid_from` and `valid_to`; historical ones carry the Central-time replay bounds.
 
 The importer selects native cells by county intersection; cells can extend beyond the county. The runtime associates the six fictional points locally using source polygon coverage and rejects ambiguous overlapping assignments. It exposes native rainfall as additive `weather_cells` GeoJSON on property collections, with per-cell availability and six-hour mm. Score records remain six fictional sites; county parcels stay unscored. H3 grids do not substitute for native forecast polygons. Existing schemas 1/2 remain supported for the configured county. Miami-Dade FIPS 12086 files are rejected.
+
+## Retained current-forecast playback (additive)
+
+`GET /api/weather/timeline` reads one configured WeatherNext snapshot. It never
+queries BigQuery or starts an import. The response has `county_fips`, `timezone`,
+`units` (`mm / 6h`), `status`, `default_index`, and `frames`. Each frame has `at`
+(UTC whole-hour window start) and `collection` with the existing scored map
+FeatureCollection structure, including native `weather_cells`. The default
+properties/report endpoints retain their original six-hour window and behavior.
+
+Schema-3 current county imports provide one frame per hourly start from the
+initialization through the last retained hour minus six hours. Thus 18 retained
+hours yield 13 starts. Interior missing/null hours produce unavailable values;
+duplicates or invalid rows invalidate the timeline. Legacy six-hour imports
+provide a single frame. A missing snapshot returns `not_configured`; bridge
+failure returns `unavailable`; invalid input returns `invalid`. Those responses
+have no frames and a message. `ready`, `incomplete`, and `stale` snapshots retain
+per-frame/per-cell states rather than treating missing rainfall as zero.
+
+County responses also preserve `init_time`, `retrieved_at`, `source_table`,
+`native_resolution`, `statistic`, `expires_at`, and a notice. `default_index`
+selects the imported window start. `expires_at` is the earliest original window
+expiry, initialization plus 12 hours, or retrieval plus two hours. Every request
+uses real time for freshness, independent of the selected frame. Once the original
+snapshot is stale, all frames remain stale/unscored even if their validity extends
+into the future. Playback requests refresh this local endpoint; source metadata
+and all frames in each response come from the same loaded snapshot.
+
+Search geocodes are temporary map locations, validated against the authoritative
+county polygon. They do not enter property datasets, scores, exports or storage.
+The browser sends queries directly to Mapbox using only the public `pk.` token.

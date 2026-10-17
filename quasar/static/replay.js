@@ -13,10 +13,10 @@
     if (current.length) paths.push(current);
     return paths;
   }
-  function create({get, element, load}) {
+  function create({get, element, load, controls=true, onPause=()=>{}}) {
     const state = {index:0, mode:"archive", preset:"archived", roads:{}, destinations:{}};
     let timer = null, active = false, layers = {}, context = null, busy = false;
-    const pause = () => { if (timer !== null) clearInterval(timer); timer=null; get("replay-play").textContent="Play"; };
+    const pause = () => { if (timer !== null) clearInterval(timer); timer=null; if(controls)get("replay-play").textContent="Play"; onPause(); };
     function refresh() { busy=true; get("replay-loading").textContent="Loading selected hour…"; return Promise.resolve(load()); }
     function step(delta) {
       state.index = Math.max(0, Math.min(LAST, state.index+delta));
@@ -26,20 +26,24 @@
     }
     function activate(value) { active=value; get("isaias-replay").hidden=!value; get("replay-results").hidden=!value; if (!value) pause(); }
     function presetChanged() {
+      pause();
       state.preset=get("replay-preset").value;
       if (state.preset!=="archived") { state.mode="what_if"; get("replay-mode").value="what_if"; }
       return refresh();
     }
-    get("replay-prev").onclick=()=>{pause();return step(-1);};
-    get("replay-next").onclick=()=>{pause();return step(1);};
-    get("replay-play").onclick=()=>{
-      if (timer!==null) { pause(); return; }
-      if (state.index===LAST) state.index=0;
-      get("replay-play").textContent="Pause";
-      timer=setInterval(()=>{if (!busy) void step(1);},1000);
-    };
-    get("replay-hour").oninput=()=>{pause(); state.index=Number(get("replay-hour").value); return refresh();};
+    if(controls) {
+      get("replay-prev").onclick=()=>{pause();return step(-1);};
+      get("replay-next").onclick=()=>{pause();return step(1);};
+      get("replay-play").onclick=()=>{
+        if (timer!==null) { pause(); return; }
+        if (state.index===LAST) state.index=0;
+        get("replay-play").textContent="Pause";
+        timer=setInterval(()=>{if (!busy) void step(1);},1000);
+      };
+      get("replay-hour").oninput=()=>{pause(); state.index=Number(get("replay-hour").value); return refresh();};
+    }
     get("replay-mode").onchange=()=>{
+      pause();
       state.mode=get("replay-mode").value;
       if (state.mode==="archive") {
         state.preset="archived";state.roads={};state.destinations={};get("replay-preset").value="archived";
@@ -53,6 +57,7 @@
       return refresh();
     };
     get("road-apply").onclick=()=>{
+      pause();
       const id=get("road-select").value;if (!id) return;
       if (!(id in state.roads) && Object.keys(state.roads).length>=100) {get("route-summary").textContent="Reset before adding more than 100 overrides.";return;}
       state.roads[id]=get("road-state").value;state.mode="what_if";get("replay-mode").value="what_if";return refresh();
@@ -92,7 +97,7 @@
       get("destination-controls").replaceChildren();
       for(const d of data.destinations){
         const label=element("label"),input=element("input");input.type="checkbox";input.checked=d.available;
-        input.onchange=()=>{state.destinations[d.id]=input.checked;state.mode="what_if";get("replay-mode").value="what_if";return refresh();};
+        input.onchange=()=>{pause();state.destinations[d.id]=input.checked;state.mode="what_if";get("replay-mode").value="what_if";return refresh();};
         label.append(input,document.createTextNode(` ${d.label} · exercise availability`));get("destination-controls").append(label);
       }
       get("routing-overrides").textContent=`${Object.keys(state.roads).length} road overrides; ${Object.keys(state.destinations).length} destination overrides. ${data.excluded_roads.length} segments excluded as closed or unknown.`;
@@ -107,6 +112,7 @@
       get("advisory-link").href=latest?.source_url||"https://www.nhc.noaa.gov/archive/2026/ISAIAS.shtml";
     }
     return {state,activate,step,pause,
+      seek:(index)=>{state.index=Math.max(0,Math.min(LAST,index));return refresh();},
       parameters:()=>({at:hour(state.index),preset:state.preset,mode:state.mode}),
       routing:(site)=>({site,at:hour(state.index),preset:state.preset,mode:state.mode,roads:{...state.roads},destinations:{...state.destinations}}),
       setContext:(data)=>{context=data;},

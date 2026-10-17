@@ -31,7 +31,7 @@ class ApiTests(unittest.TestCase):
             connection.close()
 
     def test_api_routes(self):
-        for path in ["/health", "/api/config", "/api/scenarios", "/api/weather/status", "/api/properties?scenario=peak"]:
+        for path in ["/health", "/api/config", "/api/scenarios", "/api/weather/status", "/api/weather/timeline", "/api/properties?scenario=peak"]:
             with self.subTest(path=path):
                 status, body, content_type = self.request(path)
                 self.assertEqual(status, 200)
@@ -44,7 +44,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["status"], "not_connected")
 
     def test_static_assets(self):
-        for path in ["/", "/app.js", "/style.css", "/ui/app-shell.js", "/ui/app-shell.css", "/spatial.js", "/vendor/h3-js.umd.js"]:
+        for path in ["/", "/app.js", "/map-ui.js", "/style.css", "/ui/app-shell.js", "/ui/app-shell.css", "/spatial.js", "/vendor/h3-js.umd.js"]:
             with self.subTest(path=path):
                 status, body, _ = self.request(path)
                 self.assertEqual(status, 200)

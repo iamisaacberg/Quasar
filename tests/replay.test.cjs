@@ -10,8 +10,13 @@ class Element {
   replaceChildren(...items){this.children=items;}
   setAttribute(name,value){this[name]=value;}
   getAttribute(name){return this[name];}
+  removeAttribute(name){delete this[name];}
+  querySelectorAll(){return [];}
+  querySelector(){return new Element();}
+  addEventListener(){}
+  focus(){}
 }
-async function boot(hash="#isaias-replay",{weather=false}={}){
+async function boot(hash="#isaias-replay",{weather=false,unified=false}={}){
   const ids=new Map(),timers=new Map(),requests=[],held=[];
   let hold=null,fail=null;
   const get=id=>{if(!ids.has(id))ids.set(id,new Element(id==='scenario'?'select':'div'));return ids.get(id);};
@@ -27,6 +32,7 @@ async function boot(hash="#isaias-replay",{weather=false}={}){
     if(path==='/api/config')body={map:{configured:false}};
     else if(path==='/api/scenarios')body={scenarios:[{id:'baseline',label:'Baseline'},{id:'isaias-2026',label:'Isaias 2026'},...(weather?[{id:'weathernext',label:'WeatherNext 3'}]:[])]};
     else if(path==='/api/weather/status')body={status:'not_configured',message:'No current forecast'};
+    else if(path==='/api/weather/timeline')body={status:'ready',default_index:0,frames:Array.from({length:3},(_,i)=>({at:Replay.hour(i),collection:{type:'FeatureCollection',mode:'mixed_forecast_demo',scenario:{id:'weathernext',valid_from:Replay.hour(i),valid_to:Replay.hour(i+6)},features:[feature('demo-001',33),feature('demo-002',44)]}}))};
     else if(path==='/api/official-alerts')body={message:'Not connected'};
     else if(path==='/api/replay/context')body={status:'loaded',advisories:[{number:1,issued_at:'2026-10-06T21:00:00Z',text:'Synthetic test advisory context',source_url:'https://www.nhc.noaa.gov/'}]};
     else if(path==='/api/properties'&&params.scenario!=='isaias-2026')body={type:'FeatureCollection',mode:params.scenario==='weathernext'?'mixed_forecast_demo':'synthetic_demo',scenario:{id:params.scenario,valid_from:Replay.hour(0),valid_to:Replay.hour(6),rainfall_6h_mm:15},features:[feature('demo-001',33),feature('demo-002',44)]};
@@ -37,11 +43,12 @@ async function boot(hash="#isaias-replay",{weather=false}={}){
     return {ok:true,json:async()=>body};
   };
   const context={console,URLSearchParams,fetch,document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
-    Event:class{},setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
-    window:{location:{hash},addEventListener:(name,fn)=>{events[name]=fn;}}};
+    Event:class{},MutationObserver:class{observe(){}},setTimeout,clearTimeout,setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
+    window:{location:{hash},matchMedia:()=>({matches:false}),addEventListener:(name,fn)=>{(events[name]??=[]).push(fn);}}};
   vm.runInNewContext(fs.readFileSync('quasar/static/replay.js','utf8'),context);
+  if(unified){vm.runInNewContext(fs.readFileSync('quasar/static/map-ui.js','utf8'),context);context.window.QuasarMapUI=context.QuasarMapUI;}
   await vm.runInNewContext(fs.readFileSync('quasar/static/app.js','utf8'),context);
-  return{get,requests,timers,location:context.window.location,hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};
+  return{get,requests,timers,location:context.window.location,navigate:hash=>{context.window.location.hash=hash;for(const fn of events.hashchange||[])fn();},hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};
 }
 
 test('replay hour bounds and chart gaps preserve isolated valid points',()=>{
@@ -140,4 +147,25 @@ test('failed entry to simulation retains the displayed source and closed replay 
   assert.equal(app.get('replay-toggle')['aria-pressed'],'false');
   assert.equal(app.get('isaias-replay').hidden,true);
   assert.match(app.get('error').textContent,/timeline unavailable/);
+});
+
+test('one visible playback control drives future frames and archive hours without enabling future routes',async()=>{
+  const app=await boot('#map-overview',{weather:true,unified:true});
+  assert.equal(app.get('replay-hour').max,'2');assert.match(app.get('playback-clock').textContent,/Forecast/);
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+  assert.equal(app.requests.some(r=>r.url==='/api/routes'),false);
+  await app.get('replay-toggle').onclick();assert.match(app.get('playback-clock').textContent,/Archive/);assert.equal(app.get('replay-hour').max,'24');
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+  await app.get('replay-play').onclick();assert.equal(app.timers.size,1);
+  app.navigate('#data');assert.equal(app.timers.size,0);
+  await app.get('replay-reset').onclick();assert.equal(app.get('replay-hour').value,'0');
+  await app.get('replay-toggle').onclick();assert.match(app.get('playback-clock').textContent,/Forecast/);
+  app.get('scenario').value='baseline';await app.get('scenario').onchange();assert.equal(app.get('replay-play').disabled,true);
+});
+
+test('unified archive playback retains its previous clock on failure and retries the correct next hour',async()=>{
+  const app=await boot('#isaias-replay',{unified:true}),clock=app.get('playback-clock').textContent;
+  app.fail(Replay.hour(1));await app.get('replay-next').onclick();assert.equal(app.get('playback-clock').textContent,clock);
+  assert.equal(app.get('replay-hour').value,'0');
+  app.fail(null);await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
 });

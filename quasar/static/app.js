@@ -7,6 +7,8 @@ let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 const countyGrids = new Map();
 const emptyCollection = () => ({type:"FeatureCollection", features:[]});
 let countyFramed = false;
+let playback, forecastTimeline, forecastIndex = 0, mapToken, searchController, searchMarker;
+let forecastExpiryTimer;
 const replaySelected = () => $("scenario").value === "isaias-2026";
 const bandLabel = (band) => band.replaceAll("_", " ");
 
@@ -26,7 +28,10 @@ function element(tag, text, className) {
 
 function choose(id, refresh = true) {
   if (refresh) closeSelection();
+  if (refresh) $("map-sidebar").removeAttribute?.("data-dismissed");
   if (refresh) $("map-inspect-toggle").setAttribute("aria-expanded", "true");
+  if (refresh && playback) $("map-tools").open = false;
+  if (refresh && playback) $("map-source-info").open = false;
   $("map-site").value = id;
   if (refresh && replayController && replaySelected()) { selectedId = id; void loadScenario(); return; }
   const feature = current.features.find((item) => item.id === id);
@@ -85,6 +90,7 @@ function render(data) {
   if (changedScenario) $("map-layer").value = data.mode === "synthetic_demo" ? "exposure" : "rainfall";
   $("mode-badge").textContent = data.mode === "what_if_exercise" ? "WHAT-IF EXERCISE" : data.mode === "historical_mixed_demo" ? "ARCHIVE · MIXED DEMO" : data.mode === "mixed_forecast_demo" ? "MIXED DEMO" : "SYNTHETIC DEMO";
   $("data-notice").textContent = data.notice;
+  if ($("map-demo-notice")) $("map-demo-notice").textContent = data.notice;
   if (window.h3 && window.QuasarSpatial) mapData = QuasarSpatial.aggregate(data, h3, 7);
   $("site-count").textContent = data.features.length;
   $("elevated-count").textContent = data.features.filter((f) => f.properties.risk.band === "elevated").length;
@@ -106,6 +112,18 @@ function render(data) {
   updateMap();
   if (data.forecast) showWeatherStatus(data.forecast);
   choose(selectedId || data.features[0]?.id, false);
+  if (playback) {
+    clearTimeout(forecastExpiryTimer);
+    if (data.scenario.id === "isaias-2026") playback.configure("archive", Array.from({length:25}, (_,i)=>window.QuasarReplay.hour(i)), replayController.state.index, true, "Archive reconstruction · fictional site inputs");
+    else if (data.scenario.id === "weathernext" && forecastTimeline) playback.configure("forecast", forecastTimeline.frames.map(f=>f.at), forecastIndex,
+      !["stale","invalid","unavailable","not_configured"].includes(forecastTimeline.status),
+      forecastTimeline.status === "stale" ? "Imported forecast is stale. Refresh requires an explicit import." : "Following six-hour rainfall · mm / 6h");
+    else playback.configure("none", [], 0, false, "Playback unavailable for static exercise windows.");
+    const expiry=Date.parse(forecastTimeline?.expires_at);
+    if(data.scenario.id==="weathernext" && forecastTimeline.status!=="stale" && expiry>Date.now()) {
+      forecastExpiryTimer=setTimeout(()=>{if(current?.scenario.id==="weathernext")void loadScenario();},expiry-Date.now()+1000);
+    }
+  }
 }
 
 function rainfallValue(feature) {
@@ -120,6 +138,7 @@ function showMapSummary() {
   const rain = $("map-layer").value === "rainfall";
   const synthetic = current.mode === "synthetic_demo";
   $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Illustrative relative exposure · score / 100";
+  if ($("map-display-label")) $("map-display-label").textContent = $("map-data-title").textContent;
   const values = current.features.map(rainfallValue).filter(v => v !== null);
   $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${values.length}/${current.features.length} sampled sites with rainfall · ${current.features.length-values.length} unavailable` : `Rainfall unavailable at all ${current.features.length} sampled sites. Missing or stale inputs remain unknown.`;
   const forecast = current.forecast || current.features.find(f => f.properties.forecast)?.properties.forecast;
@@ -130,7 +149,7 @@ function showMapSummary() {
     const available = cells.features.filter(f => f.properties.status === "ready" && typeof f.properties.rainfall_6h_mm === "number");
     const totals = available.map(f => f.properties.rainfall_6h_mm);
     $("map-data-values").textContent = `${totals.length ? `${Math.min(...totals).toFixed(1)}–${Math.max(...totals).toFixed(1)} mm / 6h` : "Rainfall unavailable"} · ${available.length}/${cells.features.length} native county cells available`;
-    $("map-data-source").textContent = `WeatherNext 3 · native 0.1 degree ensemble mean · imported ${cells.retrieved_at}. Native cells intersect Okaloosa and may extend past it. Forecast rainfall only; parcel scores remain unknown.${current.mode === "what_if_exercise" ? " Includes selected synthetic rainfall addition." : ""}`;
+    $("map-data-source").textContent = `WeatherNext 3 · native 0.1 degree ensemble mean · initialized ${forecast?.init_time || "unavailable"} · imported ${cells.retrieved_at}. Native cells intersect Okaloosa and may extend past it. Forecast rainfall only; parcel scores remain unknown.${current.mode === "what_if_exercise" ? " Includes selected synthetic rainfall addition." : ""}`;
   }
   $("exposure-legend").hidden = rain;
   $("rainfall-legend").hidden = !rain;
@@ -197,9 +216,11 @@ function frameCounty() {
 }
 
 function closeSelection() {
+  const restoreFocus=$("map-selection-panel").getAttribute("aria-modal")==="true";
   ++parcelRequest;
   selectedCell = selectedParcel = parcelData = null;
   $("map-selection-panel").hidden = true;
+  if(restoreFocus)$("map-overview").focus();
   if (mapLoaded) {
     map.getSource("parcels").setData(emptyCollection());
     map.getSource("selected-cell").setData(emptyCollection());
@@ -264,6 +285,8 @@ async function inspectCell(cell) {
   closeSelection();
   selectedCell = cell;
   $("map-inspect-toggle").setAttribute("aria-expanded", "false");
+  $("map-sidebar").setAttribute("data-dismissed", "true");
+  if (playback) $("map-source-info").open = false;
   map.getSource("selected-cell").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]}}]});
   renderCellPanel();
   const [lat, lon] = h3.cellToLatLng(cell);
@@ -305,6 +328,7 @@ async function loadParcels() {
 }
 
 function setupMap(settings) {
+  mapToken = settings.configured ? settings.public_token : null;
   if (!settings.configured) {
     $("map-status").textContent = "Add MAPBOX_PUBLIC_TOKEN to your local .env and restart the app to enable the map. The site list remains available.";
     $("map").replaceChildren(element("p", "Mapbox token not configured", "map-fallback"));
@@ -318,7 +342,7 @@ function setupMap(settings) {
     $("map").replaceChildren();
     map = new mapboxgl.Map({container:"map", accessToken:settings.public_token, style:settings.style,
       center:[-86.57,30.65], zoom:9, cooperativeGestures:false, attributionControl:false});
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.addControl(new mapboxgl.NavigationControl(), "bottom-left");
     map.addControl(new mapboxgl.AttributionControl({compact:false, customAttribution:
       "DEMO · Fictional sites / synthetic site inputs · Unvalidated estimates. Follow official NWS/local guidance."}), "bottom-right");
     // The shell animates its sidebar width without a window resize event.
@@ -404,7 +428,7 @@ function showWeatherStatus(data) {
   $("weather-status").textContent = `${data.status.toUpperCase()} · initialized ${data.init_time} · imported ${data.retrieved_at} · ${data.native_resolution} ensemble mean. Stale or incomplete rainfall is not scored.`;
 }
 
-async function loadScenario() {
+async function loadScenario(options = {}) {
   const thisRequest = ++requestId;
   const isReplay = replaySelected() && replayController;
   if (!isReplay) replayController?.pause();
@@ -418,29 +442,102 @@ async function loadScenario() {
         api(`/api/timeline?${new URLSearchParams({site,...params})}`),
         api("/api/routes", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(replayController.routing(site))}),
       ]);
-      if (thisRequest !== requestId) return;
+      if (thisRequest !== requestId) return false;
       if ([data.replay.at,timeline.at,routes.at].some(at=>at!==params.at)) throw new Error("Replay timestamps do not match");
       selectedId = site;
       replayController.render(timeline,routes);
       render(data);
     } else {
-      const data = await api(`/api/properties?${query}`);
-      if (thisRequest !== requestId) return;
+      let data;
+      if (playback && $("scenario").value === "weathernext") {
+        const timeline = await api("/api/weather/timeline");
+        if (thisRequest !== requestId) return false;
+        if (!timeline.frames?.length) throw new Error(timeline.message || "Forecast playback unavailable");
+        const index = Math.min(options.forecastIndex ?? (current?.scenario.id === "weathernext" ? forecastIndex : timeline.default_index), timeline.frames.length-1);
+        forecastTimeline = timeline; forecastIndex = index;
+        data = timeline.frames[index].collection;
+      } else data = await api(`/api/properties?${query}`);
+      if (thisRequest !== requestId) return false;
       render(data);
     }
     $("error").hidden = true;
+    return true;
   } catch (error) {
-    if (thisRequest !== requestId) return;
-    if (isReplay) replayController.fail();
+    if (thisRequest !== requestId) return false;
+    if (isReplay) {
+      replayController.fail();
+      if (current?.replay?.at) replayController.state.index = Math.round((Date.parse(current.replay.at)-Date.parse(window.QuasarReplay.hour(0)))/3600000);
+    }
     if (current) $("scenario").value = current.scenario.id;
     $("error").textContent = `Could not load exercise data: ${error.message}`;
     $("error").hidden = false;
+    playback?.pause();
+    return false;
   }
 }
 
 async function start() {
   if (started) return;
   started = true;
+  if (window.QuasarMapUI) {
+    playback = window.QuasarMapUI.createPlayback({get:$, select:(kind,index)=>kind === "archive" ? replayController.seek(index) : loadScenario({forecastIndex:index})});
+    window.addEventListener("hashchange",()=>{
+      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
+    });
+    $("map-sidebar-close").onclick = () => {
+      $("map-inspect-toggle").setAttribute("aria-expanded", "false");
+      $("map-sidebar").setAttribute("data-dismissed", "true");
+      Promise.resolve().then(()=>$("map-tools").querySelector("summary").focus());
+    };
+    $("map-zoom-in").onclick=()=>map?.zoomIn();
+    $("map-zoom-out").onclick=()=>map?.zoomOut();
+    // Mobile details are modal; trap focus and make the covered controls inert.
+    const viewport=$("map-overview");
+    $("map-source-info").ontoggle=()=>{
+      if(!$("map-source-info").open)return;
+      closeSelection();$("map-sidebar").setAttribute("data-dismissed","true");
+    };
+    viewport.addEventListener("pointerdown",event=>{if(!event.target.closest(".map-search"))searchController?.close();});
+    function syncSheet() {
+      const selection=!$("map-selection-panel").hidden;
+      const inspection=$("map-sidebar").getAttribute("data-dismissed")!=="true" &&
+        ($("map-inspect-toggle").getAttribute("aria-expanded")==="true" || $("replay-toggle").getAttribute("aria-pressed")==="true");
+      const mobile=window.matchMedia("(max-width: 767px)").matches;
+      const panel=selection ? $("map-selection-panel") : inspection ? $("map-sidebar") : null;
+      for (const node of [$("map-selection-panel"),$("map-sidebar")]) {
+        node.inert=Boolean(mobile && panel && node!==panel);
+        if(mobile && node===panel){node.setAttribute("role","dialog");node.setAttribute("aria-modal","true");}
+        else {node.removeAttribute("role");node.removeAttribute("aria-modal");}
+      }
+      for(const node of viewport.querySelectorAll(".map-float, #map")) node.inert=Boolean(mobile && panel);
+      const hideBackdrop=!(mobile && panel);
+      if($("map-sheet-backdrop").hidden!==hideBackdrop)$("map-sheet-backdrop").hidden=hideBackdrop;
+      if(mobile && panel && !panel.contains(document.activeElement))panel.querySelector("button, select, input, a")?.focus();
+    }
+    new MutationObserver(syncSheet).observe(viewport,{subtree:true,attributes:true,attributeFilter:["hidden","aria-expanded","aria-pressed","data-dismissed"]});
+    $("map-legend").open=viewport.clientWidth>850;
+    window.addEventListener("resize",syncSheet);
+    const inspectLink=()=>{
+      if(window.location.hash==="#site-details"){
+        $("map-sidebar").removeAttribute("data-dismissed");
+        $("map-inspect-toggle").setAttribute("aria-expanded","true");
+      }
+    };
+    window.addEventListener("hashchange",inspectLink);
+    inspectLink();
+    $("map-sheet-backdrop").onclick=()=>{if(!$("map-selection-panel").hidden)closeSelection();else $("map-sidebar-close").click();};
+    viewport.addEventListener("keydown",event=>{
+      const panel=viewport.querySelector('[aria-modal="true"]');
+      if(!panel)return;
+      if(event.key==="Escape"){$("map-sheet-backdrop").click();event.preventDefault();}
+      if(event.key==="Tab"){
+        const nodes=Array.from(panel.querySelectorAll('button, select, input, a[href], [tabindex="0"]')).filter(n=>!n.disabled && n.getClientRects().length);
+        const first=nodes[0],last=nodes.at(-1);
+        if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}
+        else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
+      }
+    });
+  }
   $("selection-close").onclick = closeSelection;
   $("selection-back").onclick = () => {
     selectedParcel = null;
@@ -452,19 +549,26 @@ async function start() {
   $("map-layer").onchange = () => { showMapSummary(); updateMap(); };
   $("map-site").onchange = () => choose($("map-site").value);
   $("map-inspect-toggle").onclick = () => {
+    $("map-sidebar").removeAttribute?.("data-dismissed");
     const inspecting = $("map-inspect-toggle").getAttribute("aria-expanded") !== "true";
     if (inspecting) closeSelection();
     $("map-inspect-toggle").setAttribute("aria-expanded", String(inspecting));
+    if(playback)$("map-tools").open=false;
+    if(playback)$("map-source-info").open=false;
   };
   $("replay-toggle").onclick = () => {
+    playback?.pause();
+    $("map-sidebar").removeAttribute?.("data-dismissed");
+    if(playback)$("map-tools").open=false;
+    if(playback)$("map-source-info").open=false;
     $("scenario").value = replaySelected() ? previousScenario : "isaias-2026";
     if (window.location) window.location.hash = "#map-overview";
     return loadScenario();
   };
   if (window.QuasarReplay) {
-    replayController = window.QuasarReplay.create({get:$,element,load:loadScenario});
+    replayController = window.QuasarReplay.create({get:$,element,load:loadScenario,controls:!playback,onPause:()=>{if(replaySelected())playback?.pause();}});
     window.addEventListener("hashchange",()=>{
-      if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) replayController.pause();
+      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) replayController.pause();
       if (window.location.hash === "#isaias-replay" && $("scenario").children.length) {
         $("scenario").value="isaias-2026";void loadScenario();
       }
@@ -485,6 +589,16 @@ async function start() {
       $("grid-status").textContent = "County boundary unavailable · reload to retry";
     }
   }
+  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,select:feature=>{
+    searchMarker?.remove();searchMarker=null;
+    if(!feature || !map)return;
+    closeSelection();
+    $("map-inspect-toggle").setAttribute("aria-expanded","false");
+    $("map-sidebar").setAttribute("data-dismissed","true");
+    const coordinates=feature.geometry.coordinates;
+    searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);
+    map.flyTo({center:coordinates,zoom:15,padding:{top:90,bottom:150,left:40,right:40},essential:false});
+  }});
   try { showWeatherStatus(await api("/api/weather/status")); }
   catch { $("weather-status").textContent = "Forecast status unavailable. No live connection is implied."; }
   try {
@@ -493,7 +607,7 @@ async function start() {
       const option = element("option", scenario.label); option.value = scenario.id; $("scenario").append(option);
     }
     $("replay-toggle").disabled = !replayController || !data.scenarios.some(s => s.id === "isaias-2026");
-    $("scenario").disabled = false; $("scenario").onchange = () => loadScenario();
+    $("scenario").disabled = false; $("scenario").onchange = () => {playback?.pause();return loadScenario();};
     if (data.scenarios.some(s => s.id === "weathernext")) $("scenario").value = "weathernext";
     if (window.location?.hash === "#isaias-replay") $("scenario").value="isaias-2026";
     await loadScenario();

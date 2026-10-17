@@ -27,6 +27,7 @@ from .bridge import serve_snapshot
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
+          "/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.css": ("ui/app-shell.css", "text/css; charset=utf-8"),
           "/": ("index.html", "text/html; charset=utf-8"),
@@ -156,6 +157,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/weather/status":
                 forecast = load_forecast()
                 return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
+            if url.path == "/api/weather/timeline":
+                from .forecast_timeline import timeline as forecast_timeline
+                return self.send(200, forecast_timeline())
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
             if url.path == "/api/parcels":
