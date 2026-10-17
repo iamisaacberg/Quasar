@@ -56,6 +56,28 @@ def timestamp(value):
     return result.astimezone(timezone.utc)
 
 
+def validate_assessment(record):
+    """Enforce the same factor contract for local and proxied assessments."""
+    if not isinstance(record, dict):
+        raise ValueError("Invalid exposure assessment")
+    score = record.get("score")
+    missing, factors = record.get("missing", []), record.get("factors", [])
+    if (not isinstance(missing, list) or not all(isinstance(x, str) for x in missing)
+            or not isinstance(factors, list)):
+        raise ValueError("Invalid exposure explanation")
+    for factor in factors:
+        if (not isinstance(factor, dict) or not isinstance(factor.get("name"), str)
+                or not isinstance(factor.get("value"), (str, int, float, type(None)))
+                or isinstance(factor.get("value"), bool)
+                or (isinstance(factor.get("value"), float) and not math.isfinite(factor["value"]))
+                or not valid_score(factor.get("contribution"))):
+            raise ValueError("Invalid exposure factor")
+    if score is not None and (not valid_score(score) or missing or not factors
+            or not math.isclose(sum(f["contribution"] for f in factors), score, abs_tol=.11)):
+        raise ValueError("Exposure score requires complete, matching factor contributions")
+    return {"parcel_id": record.get("parcel_id"), "score": score, "factors": factors, "missing": missing}
+
+
 @lru_cache(maxsize=2)
 def _artifact(path, size, modified):
     if size > MAX_BYTES:
@@ -80,22 +102,7 @@ def _artifact(path, size, modified):
             parcel_id, score = record.get("parcel_id"), record.get("score")
             if type(parcel_id) is not int or parcel_id < 0 or parcel_id in records:
                 raise ValueError("Duplicate or invalid exposure parcel ID")
-            missing, factors = record.get("missing", []), record.get("factors", [])
-            if (not isinstance(missing, list) or not all(isinstance(x, str) for x in missing)
-                    or not isinstance(factors, list)):
-                raise ValueError("Invalid exposure explanation")
-            for factor in factors:
-                if (not isinstance(factor, dict) or not isinstance(factor.get("name"), str)
-                        or not isinstance(factor.get("value"), (str, int, float, type(None)))
-                        or isinstance(factor.get("value"), bool)
-                        or (isinstance(factor.get("value"), float) and not math.isfinite(factor["value"]))
-                        or not valid_score(factor.get("contribution"))):
-                    raise ValueError("Invalid exposure factor")
-            if score is not None and (not valid_score(score) or missing or not factors
-                    or not math.isclose(sum(f["contribution"] for f in factors), score, abs_tol=.11)):
-                raise ValueError("Exposure score requires complete, matching factor contributions")
-            records[parcel_id] = {"parcel_id": parcel_id, "score": score,
-                                  "factors": factors, "missing": missing}
+            records[parcel_id] = validate_assessment(record)
         windows[start, end] = {**window, "records": records}
     return {**data, "windows": windows}
 
@@ -201,6 +208,21 @@ def _remote(query):
                     or timestamp(data["valid_to"]) != timestamp(query["to"])
                     or query.get("run_id", data["run_id"]) != data["run_id"]):
                 raise ValueError()
+            computed, now = timestamp(data["computed_at"]), datetime.now(timezone.utc)
+            if (not all(isinstance(data.get(key), str) and data[key] for key in
+                        ("run_id", "method_version", "inventory_id"))
+                    or data.get("resolution") != int(query.get("resolution", "7"))
+                    or data.get("aggregation") != "parcel_p90_linear"
+                    or computed > now
+                    or (query.get("mode", "current") == "current" and
+                        (timestamp(data["valid_to"]) <= now or now-computed > timedelta(hours=2)))):
+                raise ValueError()
+            requested = {str(int(value)) for value in query.get("parcel_ids", "").split(",") if value}
+            if not data["parcels"].keys() <= requested:
+                raise ValueError()
+            for key, record in data["parcels"].items():
+                if type(record.get("parcel_id")) is not int or str(record["parcel_id"]) != key:
+                    raise ValueError()
             for cell in data["cells"].values():
                 total, scored = cell.get("parcel_count"), cell.get("scored_count")
                 if (type(total) is not int or type(scored) is not int or not 0 <= scored <= total
@@ -211,13 +233,7 @@ def _remote(query):
                         or (scored == 0 and cell.get("p90_score") is not None)
                         or (scored > 0 and not valid_score(cell.get("p90_score")))):
                     raise ValueError()
-            for record in data["parcels"].values():
-                if record.get("score") is not None:
-                    if (not valid_score(record["score"]) or record.get("missing")
-                            or not isinstance(record.get("factors"), list) or not record["factors"]
-                            or not all(valid_score(f.get("contribution")) and isinstance(f.get("name"), str) for f in record["factors"])
-                            or not math.isclose(sum(f["contribution"] for f in record["factors"]), record["score"], abs_tol=.11)):
-                        raise ValueError()
+            data["parcels"] = {key: validate_assessment(record) for key, record in data["parcels"].items()}
         return data
     except Exception as exc:
         raise SourceUnavailable("LinuxONE exposure service unavailable; scores remain unknown.") from exc

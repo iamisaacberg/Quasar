@@ -4,11 +4,18 @@ const colors = { unknown: "#9ca3af" };
 const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)" };
 let map, mapLoaded = false, selectedId, current, mapData, requestId = 0, started = false, replayController, previousScenario = "baseline";
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
-let exposureData = null, exposureRequest = 0;
-const exposureResponses = new Map();
 const countyGrids = new Map();
+let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, exposureExpiryTimer;
+const exposureResponses = new Map(), parcelAssessments = new Map();
+const parcelCache = window.QuasarParcelCache.create({indexedDB:window.indexedDB});
+let selectedResolution = 7, parcelEntry, cellContext, parcelContext, contextRequest = 0;
+let contextMessage = "", parcelListPage = 0, parcelSearch = "", lastParcelPaint = 0;
+let parcelPaintTimer;
+const contextCache = new Map();
 const emptyCollection = () => ({type:"FeatureCollection", features:[]});
 let countyFramed = false;
+let playback, forecastTimeline, forecastIndex = 0, mapToken, searchController, searchMarker;
+let forecastExpiryTimer;
 const replaySelected = () => $("scenario").value === "isaias-2026";
 const bandLabel = (band) => band.replaceAll("_", " ");
 
@@ -28,7 +35,10 @@ function element(tag, text, className) {
 
 function choose(id, refresh = true) {
   if (refresh) closeSelection();
+  if (refresh) $("map-sidebar").removeAttribute?.("data-dismissed");
   if (refresh) $("map-inspect-toggle").setAttribute("aria-expanded", "true");
+  if (refresh && playback) $("map-tools").open = false;
+  if (refresh && playback) $("map-source-info").open = false;
   $("map-site").value = id;
   if (refresh && replayController && replaySelected()) { selectedId = id; void loadScenario(); return; }
   const feature = current.features.find((item) => item.id === id);
@@ -79,12 +89,13 @@ function choose(id, refresh = true) {
 
 function render(data) {
   const changedScenario = current?.scenario.id !== data.scenario.id;
-  // A selected polygon must never retain an assessment from the preceding hour.
-  if (current) closeSelection();
   ++exposureRequest;
-  exposureData = null;
-  exposureResponses.clear();
+  window.clearTimeout?.(exposureExpiryTimer);
+  exposureData = null; exposureHydrationRunning = false;
+  exposureResponses.clear(); parcelAssessments.clear();
   current = data;
+  // Keep cached geometry and the inspection panel; invalidate only hourly indices.
+  if (parcelEntry && mapLoaded) publishParcels(parcelEntry,true);
   replayController?.activate(data.scenario.id === "isaias-2026");
   $("replay-toggle").setAttribute("aria-pressed", String(data.scenario.id === "isaias-2026"));
   $("replay-toggle").textContent = data.scenario.id === "isaias-2026" ? "Exit Isaias simulation" : "Isaias simulation";
@@ -92,6 +103,7 @@ function render(data) {
   if (changedScenario) $("map-layer").value = data.mode === "synthetic_demo" ? "exposure" : "rainfall";
   $("mode-badge").textContent = data.mode === "what_if_exercise" ? "WHAT-IF EXERCISE" : data.mode === "historical_mixed_demo" ? "ARCHIVE · MIXED DEMO" : data.mode === "mixed_forecast_demo" ? "MIXED DEMO" : "SYNTHETIC DEMO";
   $("data-notice").textContent = data.notice;
+  if ($("map-demo-notice")) $("map-demo-notice").textContent = data.notice;
   if (window.h3 && window.QuasarSpatial) mapData = QuasarSpatial.aggregate(data, h3, 7);
   $("site-count").textContent = data.features.length;
   $("elevated-count").textContent = data.features.filter((f) => f.properties.risk.band === "elevated").length;
@@ -113,6 +125,19 @@ function render(data) {
   updateMap();
   if (data.forecast) showWeatherStatus(data.forecast);
   choose(selectedId || data.features[0]?.id, false);
+  if (selectedCell) { if (selectedParcel === null) renderCellPanel(); else renderInspectionInputs(); }
+  if (playback) {
+    clearTimeout(forecastExpiryTimer);
+    if (data.scenario.id === "isaias-2026") playback.configure("archive", Array.from({length:25}, (_,i)=>window.QuasarReplay.hour(i)), replayController.state.index, true, "Archive reconstruction · fictional site inputs");
+    else if (data.scenario.id === "weathernext" && forecastTimeline) playback.configure("forecast", forecastTimeline.frames.map(f=>f.at), forecastIndex,
+      !["stale","invalid","unavailable","not_configured"].includes(forecastTimeline.status),
+      forecastTimeline.status === "stale" ? "Imported forecast is stale. Refresh requires an explicit import." : "Following six-hour rainfall · mm / 6h");
+    else playback.configure("none", [], 0, false, "Playback unavailable for static exercise windows.");
+    const expiry=Date.parse(forecastTimeline?.expires_at);
+    if(data.scenario.id==="weathernext" && forecastTimeline.status!=="stale" && expiry>Date.now()) {
+      forecastExpiryTimer=setTimeout(()=>{if(current?.scenario.id==="weathernext")void loadScenario();},expiry-Date.now()+1000);
+    }
+  }
 }
 
 function rainfallValue(feature) {
@@ -127,6 +152,7 @@ function showMapSummary() {
   const rain = $("map-layer").value === "rainfall";
   const synthetic = current.mode === "synthetic_demo";
   $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Experimental relative exposure · index / 100";
+  if ($("map-display-label")) $("map-display-label").textContent = $("map-data-title").textContent;
   const values = current.features.map(rainfallValue).filter(v => v !== null);
   $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${values.length}/${current.features.length} sampled sites with rainfall · ${current.features.length-values.length} unavailable` : `Rainfall unavailable at all ${current.features.length} sampled sites. Missing or stale inputs remain unknown.`;
   const forecast = current.forecast || current.features.find(f => f.properties.forecast)?.properties.forecast;
@@ -137,13 +163,12 @@ function showMapSummary() {
     const available = cells.features.filter(f => f.properties.status === "ready" && typeof f.properties.rainfall_6h_mm === "number");
     const totals = available.map(f => f.properties.rainfall_6h_mm);
     $("map-data-values").textContent = `${totals.length ? `${Math.min(...totals).toFixed(1)}–${Math.max(...totals).toFixed(1)} mm / 6h` : "Rainfall unavailable"} · ${available.length}/${cells.features.length} native county cells available`;
-    $("map-data-source").textContent = `WeatherNext 3 · native 0.1 degree ensemble mean · imported ${cells.retrieved_at}. Native cells intersect Okaloosa and may extend past it. Forecast rainfall only; parcel scores remain unknown.${current.mode === "what_if_exercise" ? " Includes selected synthetic rainfall addition." : ""}`;
+    $("map-data-source").textContent = `WeatherNext 3 · native 0.1 degree ensemble mean · initialized ${forecast?.init_time || "unavailable"} · imported ${cells.retrieved_at}. Native cells intersect Okaloosa and may extend past it. Forecast rainfall only; parcel scores remain unknown.${current.mode === "what_if_exercise" ? " Includes selected synthetic rainfall addition." : ""}`;
   }
   $("exposure-legend").hidden = rain;
   $("rainfall-legend").hidden = !rain;
   $("hex-toggle").disabled = false;
-  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." :
-    `Cells show the 90th percentile of available parcel indices; hatching marks incomplete coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel exposure results unavailable; real parcels remain unknown."} Exercise site points remain fictional. Green does not establish safety.`;
+  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : `Cells show parcel P90; hatching marks incomplete scoring coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel assessments unavailable."} Exercise sites remain fictional. Green does not establish safety.`;
 }
 
 function mapColors(field = "risk_score") {
@@ -156,34 +181,121 @@ function exposureParameters(resolution = 7) {
     mode:current.mode === "historical_mixed_demo" ? "replay" : "current"};
 }
 
-async function refreshExposure(resolution) {
-  const params = exposureParameters(resolution);
-  if (!params) return;
-  const key = new URLSearchParams(params).toString();
-  if (exposureResponses.has(key)) {
-    exposureData = exposureResponses.get(key);
-    return;
+function selectedExposureSummary() {
+  const params=exposureParameters(selectedResolution);
+  const response=params && exposureResponses.get(new URLSearchParams(params).toString());
+  return response?.status === "ready" ? response.cells[selectedCell] : null;
+}
+
+function renderExposureInspection() {
+  if(!selectedCell) return;
+  const content=$("selection-exposure");
+  if(selectedParcel===null) {
+    const summary=selectedExposureSummary();
+    panelStats([[summary?.p90_score == null ? "Unknown" : summary.p90_score.toFixed(1),"Parcel index · P90"],
+      [summary ? `${summary.scored_count}/${summary.parcel_count}` : "Unknown","Scoring coverage"],
+      [summary ? String(summary.elevated_count) : "Unknown","Indices ≥65"]]);
+    content.replaceChildren(element("p",summary ? `${QuasarSpatial.exposureBand(summary.p90_score).label} · ${(summary.coverage*100).toFixed(1)}% scored${summary.incomplete ? " · Incomplete coverage" : ""}` : "Insufficient data · scoring coverage unknown","detail-note"));
+    void refreshExposure(selectedResolution);
+  } else {
+    const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
+    const score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
+    panelStats([[score===null ? "Unknown" : score.toFixed(1),"Exposure index / 100"],
+      [QuasarSpatial.exposureBand(score).label,"Relative exposure"],
+      [exposureData?.status === "ready" ? exposureData.method_version : "Unavailable","Method"]]);
+    $("selection-badge").textContent=score===null ? "County parcel · unscored" : "County parcel · experimental index";
+    content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p",
+      `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
+    if(score===null) content.append(element("p",`Insufficient data: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}.`,"detail-note"));
   }
-  const request = exposureRequest;
-  exposureResponses.set(key, {status:"loading", cells:{}});
+  $("selection-score").textContent=$("selection-stat-one").textContent === "Unknown" ? "Unscored" : $("selection-stat-one").textContent+" / 100";
+  content.append(element("p","Experimental relative exposure, not flood probability or depth. Green does not establish safety.","detail-note"));
+}
+
+function invalidateExposure(data) {
+  ++exposureRequest;
+  parcelAssessments.clear(); exposureHydrationRunning=false;
+  exposureData=data;
+  for(const key of exposureResponses.keys()) exposureResponses.set(key,data);
+}
+
+function scheduleExposureExpiry() {
+  window.clearTimeout?.(exposureExpiryTimer);
+  if(exposureData?.status!=="ready" || exposureParameters()?.mode!=="current") return;
+  const expires=Math.min(Date.parse(exposureData.valid_to),Date.parse(exposureData.computed_at)+2*3600000);
+  if(!Number.isFinite(expires)) return;
+  const request=exposureRequest;
+  exposureExpiryTimer=window.setTimeout?.(()=>{
+    if(request!==exposureRequest)return;
+    invalidateExposure({status:"stale",cells:{},message:"Parcel exposure results are stale; scores remain unknown."});
+    if(parcelEntry)publishParcels(parcelEntry,true);
+    updateCountyGrid();showMapSummary();
+    if(selectedCell)renderExposureInspection();
+    void refreshExposure(QuasarSpatial.resolutionForZoom(map.getZoom()),true);
+  },Math.max(0,expires-Date.now()+1));
+}
+
+async function refreshExposure(resolution, force=false) {
+  const params=exposureParameters(resolution);
+  if(!params) return;
+  const key=new URLSearchParams(params).toString();
+  if(force) exposureResponses.delete(key);
+  if(exposureResponses.has(key)) return;
+  const request=exposureRequest;
+  exposureResponses.set(key,{status:"loading",cells:{}});
   try {
-    const data = await api(`/api/exposure?${key}`);
-    if (request !== exposureRequest) return;
-    if (data.status === "ready" && (!data.cells || data.aggregation !== "parcel_p90_linear")) throw new Error("Invalid exposure summary");
-    exposureResponses.set(key, data);
-    exposureData = data;
-  } catch (error) {
-    if (request !== exposureRequest) return;
-    exposureData = {status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`};
-    exposureResponses.set(key, exposureData);
+    const data=await api(`/api/exposure?${key}`);
+    if(request!==exposureRequest) return;
+    if(data.status==="ready" && (!data.cells || data.aggregation!=="parcel_p90_linear")) throw new Error("Invalid exposure summary");
+    if(data.status==="ready" && exposureData?.status==="ready"
+        && (data.run_id!==exposureData.run_id || data.inventory_id!==exposureData.inventory_id)) {
+      ++exposureRequest;
+      parcelAssessments.clear(); exposureHydrationRunning=false; exposureResponses.clear();
+    }
+    if(data.status!=="ready") invalidateExposure(data);
+    exposureResponses.set(key,data);
+    exposureData=data;
+  } catch(error) {
+    if(request!==exposureRequest) return;
+    invalidateExposure({status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`});
+    exposureResponses.set(key,exposureData);
   }
-  updateCountyGrid();
-  showMapSummary();
-  if (selectedCell) {
-    const selected = selectedParcel;
-    await loadParcels();
-    const feature = parcelData?.features.find(f=>f.id === selected);
-    if (feature) inspectParcel(feature);
+  scheduleExposureExpiry();
+  updateCountyGrid(); showMapSummary();
+  if(selectedCell) renderExposureInspection();
+  if(parcelEntry) publishParcels(parcelEntry,true);
+}
+
+async function hydrateParcelExposure() {
+  const params=exposureParameters(), run=exposureData;
+  if(exposureHydrationRunning || !params || run?.status!=="ready" || !parcelEntry
+      || run.inventory_id!==parcelEntry.inventory_id || selectedResolution!==7) return;
+  const ids=parcelEntry.features.map(feature=>feature.id).filter(id=>!parcelAssessments.has(id));
+  if(!ids.length) return;
+  const request=exposureRequest, cell=selectedCell;
+  exposureHydrationRunning=true;
+  try {
+    for(let offset=0;offset<ids.length;offset+=100) {
+      if(request!==exposureRequest || selectedCell!==cell) return;
+      const batch=ids.slice(offset,offset+100);
+      const page=await api(`/api/exposure?${new URLSearchParams({...params,parcel_ids:batch.join(","),run_id:run.run_id})}`);
+      if(request!==exposureRequest || selectedCell!==cell) return;
+      if(page.status!=="ready" || page.run_id!==run.run_id || page.inventory_id!==parcelEntry?.inventory_id) throw new Error("Parcel exposure run or inventory changed");
+      for(const id of batch) parcelAssessments.set(id,page.parcels?.[id] || {score:null,factors:[],missing:["assessment_unavailable"]});
+    }
+    if(parcelEntry) publishParcels(parcelEntry,true);
+  } catch(error) {
+    if(request!==exposureRequest) return;
+    parcelAssessments.clear();
+    exposureData={status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`};
+    for(const key of exposureResponses.keys()) exposureResponses.set(key,exposureData);
+    if(parcelEntry) publishParcels(parcelEntry,true);
+    updateCountyGrid(); showMapSummary();
+  } finally {
+    if(request===exposureRequest) {
+      exposureHydrationRunning=false;
+      void hydrateParcelExposure();
+    }
   }
 }
 
@@ -229,14 +341,12 @@ function updateCountyGrid() {
   const rain = $("map-layer").value === "rainfall";
   map.setPaintProperty("hotspot-fill", "fill-color", rain ? "#b9c9cd" : mapColors("exposure_score"));
   map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0.07 : 0.28);
-  map.setLayoutProperty("hotspot-hatch", "visibility", !rain && $("hex-toggle").checked ? "visible" : "none");
-  for (const layer of ["parcel-fill", "selected-parcel-fill"]) {
-    map.setPaintProperty(layer, "fill-color", rain ? colors.unknown : mapColors("exposure_score"));
-  }
-  map.setLayoutProperty("parcel-hatch", "visibility", rain ? "none" : "visible");
   map.setPaintProperty("hotspot-outline", "line-color", "#c4d5d7");
+  for (const layer of ["parcel-fill", "selected-parcel-fill"]) map.setPaintProperty(layer,"fill-color",rain ? colors.unknown : mapColors("exposure_score"));
+  map.setLayoutProperty("parcel-hatch","visibility",rain ? "none" : "visible");
+  map.setLayoutProperty("hotspot-hatch","visibility",!rain && $("hex-toggle").checked ? "visible" : "none");
   $("grid-resolution").textContent = `H3 · RES ${resolution}`;
-  if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to ${resolution < 7 ? "zoom" : "inspect parcels"}`;
+  if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to inspect`;
 }
 
 function frameCounty() {
@@ -249,13 +359,15 @@ function frameCounty() {
 }
 
 function closeSelection() {
-  ++parcelRequest;
-  selectedCell = selectedParcel = parcelData = null;
+  const restoreFocus=$("map-selection-panel").getAttribute("aria-modal")==="true";
+  ++parcelRequest; ++contextRequest;
+  window.clearTimeout?.(parcelPaintTimer); parcelPaintTimer=undefined;
+  selectedCell = selectedParcel = parcelData = parcelEntry = cellContext = parcelContext = null;
+  contextMessage = "";
   $("map-selection-panel").hidden = true;
+  if(restoreFocus)$("map-overview").focus();
   if (mapLoaded) {
-    map.getSource("parcels").setData(emptyCollection());
-    map.getSource("selected-cell").setData(emptyCollection());
-    map.getSource("selected-parcel").setData(emptyCollection());
+    for (const id of ["parcels","selected-cell","selected-parcel"]) map.getSource(id).setData(emptyCollection());
   }
 }
 
@@ -267,129 +379,228 @@ function panelStats(values) {
   }
 }
 
+function inputRows(rows) {
+  $("selection-inputs").replaceChildren(...rows.map(([label,value])=>{
+    const row=element("div"); row.append(element("dt",label),element("dd",value)); return row;
+  }));
+}
+
+function renderInspectionInputs() {
+  const context=selectedParcel === null ? cellContext : parcelContext;
+  const rows=selectedParcel === null ? window.QuasarInspection.forecastRows(context,current) : window.QuasarInspection.parcelRows(context,current);
+  if(selectedParcel === null) rows.unshift(
+    ["Distinct indexed parcels",cellContext?.parcel_count?.toLocaleString() ?? "Unknown"],
+    ["Complete terrain summaries",cellContext?.terrain_complete_count?.toLocaleString() ?? "Unknown"],
+    ["Complete / partial FEMA coverage",`${cellContext?.fema_complete_count?.toLocaleString() ?? "Unknown"} / ${cellContext?.fema_partial_count?.toLocaleString() ?? "Unknown"}`]);
+  inputRows(rows);
+  $("context-status").textContent=contextMessage;
+  $("context-provenance").textContent=window.QuasarInspection.provenance(context);
+  renderExposureInspection();
+}
+
+async function loadInspection(kind,identifier) {
+  const request=++contextRequest, inventory=parcelEntry?.inventory_id;
+  const key=JSON.stringify([kind,identifier,inventory]);
+  contextMessage="Loading prepared reference inputs…"; renderInspectionInputs();
+  try {
+    const context=contextCache.get(key) || await api(`/api/${kind === "parcel" ? "parcels" : "cells"}/${identifier}/${kind === "parcel" ? "context" : "summary"}${inventory ? `?${new URLSearchParams({inventory_id:inventory})}` : ""}`);
+    if(context.status!=="ready" || context.county_fips!=="12091" || context.risk_score!==null
+        || (kind==="parcel" ? context.parcel_id!==identifier : context.cell_id!==identifier)
+        || (parcelEntry?.inventory_id && context.inventory_id!==parcelEntry.inventory_id)) throw new Error("Prepared context is invalid or describes a different inventory");
+    if(request!==contextRequest) return;
+    contextCache.set(key,context);
+    if(contextCache.size>100) contextCache.delete(contextCache.keys().next().value);
+    if(kind==="parcel") parcelContext=context; else cellContext=context;
+    contextMessage="Reference inputs only · no parcel score calculated";
+    if(selectedParcel===null) renderCellPanel(); else {
+      panelStats([["Unknown","Exposure"],[context.forecast_overlaps?.length ? "Prepared" : "Unknown","Forecast overlap"],[context.inputs?.terrain?.status || "Unknown","Terrain"]]);
+      renderInspectionInputs();
+    }
+  } catch(error) {
+    if(request!==contextRequest) return;
+    if(selectedParcel!==null) panelStats([["Unknown","Exposure"],["Unknown","Forecast overlap"],["Unknown","Terrain"]]);
+    contextMessage=`Reference inputs unavailable: ${error.message}`; renderInspectionInputs();
+  }
+}
+
+function renderParcelList() {
+  const features=(parcelData?.features || []).filter(f=>String(f.id).includes(parcelSearch));
+  const pages=Math.max(1,Math.ceil(features.length/50)); parcelListPage=Math.min(parcelListPage,pages-1);
+  $("selection-content").replaceChildren(...features.slice(parcelListPage*50,(parcelListPage+1)*50).map(feature=>{
+    const button=element("button",undefined,"selection-parcel-row"); button.type="button";
+    const score=feature.properties.exposure_score;
+    button.style.borderLeft=`4px solid ${QuasarSpatial.exposureColor(score)}`;
+    button.append(element("strong",`Parcel ${feature.id}`),element("span",`${score == null ? "Unknown" : score.toFixed(1)+" / 100"} · ${QuasarSpatial.exposureBand(score).label} →`));
+    button.onclick=()=>inspectParcel(feature); return button;
+  }));
+  $("parcel-page").textContent=`${features.length ? parcelListPage*50+1 : 0}–${Math.min((parcelListPage+1)*50,features.length)} of ${features.length.toLocaleString()} loaded matches`;
+  $("parcel-previous").disabled=parcelListPage===0;
+  $("parcel-next").disabled=parcelListPage>=pages-1;
+}
+
 function renderCellPanel() {
   if (!selectedCell) return;
   $("map-selection-panel").hidden = false;
   $("selection-back").hidden = true;
-  $("selection-badge").textContent = "R7 cell · Okaloosa";
+  $("selection-badge").textContent = `R${selectedResolution} cell · Okaloosa`;
   $("selection-title").textContent = "Cell overview";
   $("selection-code").textContent = selectedCell;
-  $("selection-subtitle").textContent = "Real parcels intersecting this cell";
-  $("selection-section-title").textContent = "Parcels in this cell";
-  const summary = exposureData?.status === "ready" && exposureData.cells[selectedCell];
-  panelStats([[summary?.p90_score == null ? "Unknown" : summary.p90_score.toFixed(1), "Parcel index · P90"],
-    [summary ? `${summary.scored_count}/${summary.parcel_count}` : "Unknown", "Scoring coverage"],
-    [summary ? String(summary.elevated_count) : "Unknown", "Indices ≥65"]]);
-  $("selection-subtitle").textContent = summary ? `${QuasarSpatial.exposureBand(summary.p90_score).label} · ${(summary.coverage*100).toFixed(1)}% scored${summary.incomplete ? " · Incomplete coverage" : ""}` : "Insufficient data · scoring coverage unknown";
-  $("selection-content").replaceChildren();
-  if (parcelData) {
-    for (const feature of parcelData.features) {
-      const button = element("button", undefined, "selection-parcel-row");
-      button.type = "button";
-      const score = feature.properties.exposure_score;
-      button.style.borderLeft = `4px solid ${QuasarSpatial.exposureColor(score)}`;
-      button.append(element("strong", feature.properties.folio || `Parcel ${feature.id}`), element("span", `${score == null ? "Unknown" : `${score.toFixed(1)} / 100`} · ${QuasarSpatial.exposureBand(score).label} →`));
-      button.onclick = () => inspectParcel(feature);
-      $("selection-content").append(button);
-    }
-  }
+  $("selection-subtitle").textContent = "Indexed parcel coverage and native forecast context";
+  $("selection-section-title").textContent = selectedResolution===7 ? "Parcels in this cell" : "Cell coverage";
+  $("cell-zoom").hidden=selectedResolution===7;
+  $("parcel-refresh").hidden=selectedResolution!==7;
+  $("parcel-search-label").hidden=$("parcel-pagination").hidden=selectedResolution!==7;
+  const sites=current.features.filter(f=>h3.latLngToCell(f.geometry.coordinates[1],f.geometry.coordinates[0],selectedResolution)===selectedCell);
+  const scored=sites.filter(f=>f.properties.risk.score!==null);
+  panelStats([[cellContext?.parcel_count?.toLocaleString() ?? (parcelData ? `${parcelData.features.length.toLocaleString()} loaded` : "Unknown"),"Parcels"],
+    [String(sites.length),"Fictional sites"],[scored.length ? String(Math.max(...scored.map(f=>f.properties.risk.score))) : "Unknown","Max demo score"]]);
+  if(selectedResolution===7) renderParcelList();
+  else $("selection-content").replaceChildren(element("p","Zoom in to browse parcel outlines. Counts describe indexed parcels, not homes; adjacent cells can share parcels.","selection-note"));
+  renderInspectionInputs();
 }
 
 function inspectParcel(feature) {
-  selectedParcel = feature.id;
-  $("map-selection-panel").hidden = false;
-  $("selection-back").hidden = false;
-  const assessment = feature.properties.exposure, score = feature.properties.exposure_score;
-  $("selection-badge").textContent = score == null ? "County parcel · unscored" : "County parcel · experimental index";
-  $("selection-title").textContent = "Parcel details";
-  $("selection-code").textContent = feature.properties.folio || `Parcel ${feature.id}`;
-  $("selection-subtitle").textContent = `Okaloosa County · FIPS 12091`;
-  panelStats([[score == null ? "Unknown" : score.toFixed(1), "Exposure index / 100"],
-    [QuasarSpatial.exposureBand(score).label, "Relative exposure"],
-    [exposureData?.status === "ready" ? exposureData.method_version : "Unavailable", "Method"]]);
-  $("selection-section-title").textContent = "Property record";
-  const records = element("dl", undefined, "selection-factors");
-  for (const [label, value] of [["Folio",feature.properties.folio || "Unavailable"],["County GIS ID",String(feature.id)],["Geometry","County-validated polygon"],["H3 selection",selectedCell]]) {
-    const row = element("div"); row.append(element("dt",label),element("dd",value)); records.append(row);
+  selectedParcel=feature.id; parcelContext=null;
+  $("selection-back").hidden=false; $("cell-zoom").hidden=true;
+  $("parcel-search-label").hidden=$("parcel-pagination").hidden=true;
+  $("selection-badge").textContent="County parcel · unscored";
+  $("selection-title").textContent="Parcel details";
+  $("selection-code").textContent=`Parcel ${feature.id}`;
+  $("selection-subtitle").textContent="Okaloosa County · FIPS 12091";
+  panelStats([["Unknown","Exposure"],["Loading","Forecast overlap"],["Loading","Terrain"]]);
+  $("selection-section-title").textContent="Property record";
+  const records=element("dl",undefined,"selection-factors");
+  for(const [label,value] of [["County GIS ID",String(feature.id)],["Geometry","County-validated polygon"],["H3 selection",selectedCell]]) {
+    const row=element("div"); row.append(element("dt",label),element("dd",value)); records.append(row);
   }
   $("selection-content").replaceChildren(records);
-  for (const factor of assessment?.factors || []) {
-    const row = element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`, "detail-note");
-    $("selection-content").append(row);
-  }
-  if (score == null) $("selection-content").append(element("p", `Insufficient data: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}.`, "detail-note"));
-  $("selection-content").append(element("p", "Experimental relative exposure, not flood probability or depth. Green does not establish safety.", "detail-note"));
   map.getSource("selected-parcel").setData({type:"FeatureCollection",features:[feature]});
-  const polygons = feature.geometry.type === "MultiPolygon" ? feature.geometry.coordinates : [feature.geometry.coordinates];
-  const points = polygons.flat(2);
-  const bounds = [0,1].map(axis => [Math.min(...points.map(p=>p[axis])), Math.max(...points.map(p=>p[axis]))]);
-  map.fitBounds([[bounds[0][0],bounds[1][0]],[bounds[0][1],bounds[1][1]]], {padding:{top:60,bottom:60,left:40,right:Math.min(370,map.getCanvas().clientWidth / 2)},maxZoom:18,duration:650});
+  const polygons=feature.geometry.type==="MultiPolygon"?feature.geometry.coordinates:[feature.geometry.coordinates];
+  const points=polygons.flat(2), bounds=[0,1].map(axis=>[Math.min(...points.map(p=>p[axis])),Math.max(...points.map(p=>p[axis]))]);
+  map.fitBounds([[bounds[0][0],bounds[1][0]],[bounds[0][1],bounds[1][1]]],{padding:{top:60,bottom:60,left:40,right:Math.min(370,map.getCanvas().clientWidth/2)},maxZoom:18,duration:650});
+  void loadInspection("parcel",feature.id);
 }
 
-async function inspectCell(cell) {
-  closeSelection();
-  selectedCell = cell;
-  $("map-inspect-toggle").setAttribute("aria-expanded", "false");
+async function inspectCell(cell,resolution=7) {
+  closeSelection(); selectedCell=cell; selectedResolution=resolution;
+  parcelListPage=0; parcelSearch=""; $("parcel-search").value="";
+  $("map-inspect-toggle").setAttribute("aria-expanded","false");
+  $("map-sidebar").setAttribute("data-dismissed", "true");
+  if (playback) $("map-source-info").open = false;
   map.getSource("selected-cell").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]}}]});
+  $("parcel-status").textContent=resolution===7?"Restoring parcel inventory…":"Parcel outlines load at resolution 7.";
+  $("parcel-provenance").textContent=""; $("parcel-retry").hidden=true;
   renderCellPanel();
-  const [lat, lon] = h3.cellToLatLng(cell);
-  map.flyTo({center:[lon,lat],zoom:13.5,duration:900});
-  await loadParcels();
+  void loadInspection("cell",cell);
+  if(resolution===7) {
+    const [lat,lon]=h3.cellToLatLng(cell); map.flyTo({center:[lon,lat],zoom:Math.max(13.5,map.getZoom()),duration:650});
+    await loadParcels();
+  }
 }
 
-async function loadParcels() {
-  const cell = selectedCell, request = ++parcelRequest;
-  parcelData = emptyCollection();
-  let offset = 0, excluded = 0, inventory, exposureError = "";
-  $("parcel-retry").hidden = true;
-  $("parcel-status").textContent = "Loading county parcels…";
-  $("parcel-provenance").textContent = "Loading Okaloosa parcel outlines for this H3 cell; flood scores remain unknown.";
-  map.getSource("parcels").setData(emptyCollection());
+function publishParcels(entry,force=false) {
+  if(cellContext && cellContext.inventory_id!==entry.inventory_id) {
+    cellContext=null; contextMessage="Reference inputs do not match the cached parcel inventory; current coverage is unknown.";
+  }
+  parcelEntry=entry;
+  parcelData={type:"FeatureCollection",features:entry.features.map(feature=>QuasarSpatial.exposureFeature(feature,
+    exposureData?.status === "ready" && exposureData.inventory_id === entry.inventory_id ? parcelAssessments.get(feature.id) : null))};
+  const selected=parcelData.features.find(feature=>feature.id===selectedParcel);
+  if(selected) map.getSource("selected-parcel").setData({type:"FeatureCollection",features:[selected]});
+  if(selectedParcel!==null) renderExposureInspection();
+  void hydrateParcelExposure();
+  if(force || Date.now()-lastParcelPaint>=100) {
+    window.clearTimeout?.(parcelPaintTimer); parcelPaintTimer=undefined;
+    map.getSource("parcels").setData(parcelData); lastParcelPaint=Date.now();
+    if(selectedParcel===null) renderCellPanel();
+  } else if(!parcelPaintTimer && window.setTimeout) {
+    const cell=selectedCell;
+    parcelPaintTimer=window.setTimeout(()=>{
+      parcelPaintTimer=undefined;
+      if(selectedCell===cell && parcelEntry) publishParcels(parcelEntry,true);
+    },Math.max(0,100-(Date.now()-lastParcelPaint)));
+  }
+  $("parcel-status").textContent=entry.complete
+    ? `${entry.features.length.toLocaleString()} county-validated parcels shown. All ${entry.source_total.toLocaleString()} source matches checked.${entry.excluded_count ? ` ${entry.excluded_count} excluded by county validation.` : ""}`
+    : `Partial inventory: ${entry.features.length.toLocaleString()} parcels shown · ${entry.checked_count || 0} / ${entry.source_total ?? "unknown"} source matches checked…`;
+  $("parcel-provenance").textContent=`${entry.source_url} · source snapshot ${entry.retrieved_at} · ${entry.crs}. ${entry.processing || "County-validated geometry"}. Cached ${new Date(entry.savedAt || Date.now()).toISOString()}.`;
+}
+
+async function loadParcels(force=false) {
+  const cell=selectedCell, request=++parcelRequest, token=parcelCache.token;
+  if(!cell || selectedResolution!==7) return;
+  if(force) {
+    await refreshExposure(selectedResolution,true);
+    if(request!==parcelRequest) return;
+  }
+  $("parcel-retry").hidden=true;
+  const cached=await parcelCache.get(cell);
+  if(request!==parcelRequest) return;
+  if(cached) {
+    publishParcels(cached,true);
+    $("parcel-status").textContent+=" Checking source version…";
+  }
+  const checked=await parcelCache.check(()=>api("/api/parcels/manifest"),force);
+  let entry=await parcelCache.get(cell,checked.error ? undefined : checked.manifest);
+  if(request!==parcelRequest) return;
+  if(entry) publishParcels(entry,true);
+  if(checked.error) {
+    $("parcel-status").textContent=entry ? `Source unavailable; cached inventory from ${new Date(entry.savedAt).toISOString()}. ${entry.complete ? "Previously complete" : "Partial"}; current coverage unverified.` : `Parcel coverage unavailable: ${checked.error.message}`;
+    $("parcel-retry").hidden=false; return;
+  }
+  const manifest=checked.manifest;
+  if(entry?.complete) {
+    if(parcelCache.diskFailed) $("parcel-status").textContent+=" Browser storage unavailable; cache is limited to this session.";
+    return;
+  }
   try {
-    do {
-      const query = new URLSearchParams({cell,ring:JSON.stringify(h3.cellToBoundary(cell,true)),offset:String(offset)});
-      if (inventory) query.set("inventory_id", inventory);
-      const page = await api(`/api/parcels?${query}`);
-      if (request !== parcelRequest) return;
-      if (page.status !== "ready" || !Array.isArray(page.features)) throw new Error("Parcel source returned an incomplete page");
-      let assessments = {};
-      const params = exposureParameters();
-      if (params && exposureData?.status === "ready" && page.features.length) {
-        try {
-          const exposurePage = await api(`/api/exposure?${new URLSearchParams({...params,
-            parcel_ids:page.features.map(f=>f.properties.parcel_id).join(","),run_id:exposureData.run_id})}`);
-          if (request !== parcelRequest) return;
-          if (exposurePage.status !== "ready" || exposurePage.run_id !== exposureData.run_id || exposurePage.inventory_id !== page.inventory_id) throw new Error("Parcel exposure run or inventory changed");
-          assessments = exposurePage.parcels;
-        } catch (error) {
-          if (request !== parcelRequest) return;
-          exposureError = ` Parcel exposure unavailable: ${error.message}; all parcel indices in this selection are unknown.`;
-          parcelData.features = parcelData.features.map(f=>QuasarSpatial.exposureFeature(f,null));
-          map.getSource("selected-parcel").setData(emptyCollection());
-          selectedParcel = null;
+    entry=await parcelCache.single(cell,manifest,async()=>{
+      let loaded=entry || {features:[],next_offset:0,excluded_count:0,complete:false};
+      const features=new Map(loaded.features.map(f=>[f.id,f]));
+      do {
+        const offset=loaded.next_offset || 0;
+        const query=new URLSearchParams({cell,ring:JSON.stringify(h3.cellToBoundary(cell,true)),offset:String(offset)});
+        if(loaded.inventory_id || manifest.inventory_id) query.set("inventory_id",loaded.inventory_id || manifest.inventory_id);
+        const page=await api(`/api/parcels?${query}`);
+        if(page.status!=="ready" || page.county_fips!=="12091" || !Array.isArray(page.features)
+          || typeof page.inventory_id!=="string" || (loaded.inventory_id && page.inventory_id!==loaded.inventory_id)
+          || (manifest.inventory_id && page.inventory_id!==manifest.inventory_id)
+          || page.dataset_version!==manifest.dataset_version || !Number.isInteger(page.source_total)
+          || !Number.isInteger(page.checked_count) || !Number.isInteger(page.excluded_count)
+          || page.source_total<offset || page.excluded_count<0 || page.checked_count<offset || page.checked_count>page.source_total
+          || page.checked_count!==(page.next_offset ?? page.source_total)
+          || (Number.isInteger(loaded.source_total) && page.source_total!==loaded.source_total)
+          || (page.next_offset!==null && (!Number.isInteger(page.next_offset) || page.next_offset<=offset))) throw new Error("Parcel page has an invalid or changed inventory; refresh this cell");
+        for(const feature of page.features) {
+          if(!Number.isSafeInteger(feature.id) || feature.properties?.county_fips!=="12091" || feature.properties.risk_score!==null
+             || feature.properties.risk_band!=="unknown" || feature.properties.parcel_id!==feature.id
+             || !["Polygon","MultiPolygon"].includes(feature.geometry?.type)) throw new Error("Invalid parcel geometry page");
+          features.set(feature.id,feature);
         }
-      }
-      page.features = page.features.map(f=>QuasarSpatial.exposureFeature(f, exposureError ? null : assessments[String(f.properties.parcel_id)]));
-      inventory = page.inventory_id;
-      const seen = new Set(parcelData.features.map(f=>f.id));
-      parcelData.features.push(...page.features.filter(f=>!seen.has(f.id)));
-      excluded += page.excluded_count;
-      map.getSource("parcels").setData(parcelData);
-      if (selectedParcel === null) renderCellPanel();
-      $("parcel-status").textContent = page.next_offset === null ? (parcelData.features.length ? `${parcelData.features.length.toLocaleString()} county-validated parcels shown. All ${page.source_total.toLocaleString()} source matches checked.` : "No county-validated parcels returned for this cell.") + (excluded ? ` ${excluded} source polygons excluded by county validation.` : "") : `Loading: ${parcelData.features.length.toLocaleString()} parcels shown · ${page.checked_count.toLocaleString()} / ${page.source_total.toLocaleString()} source matches checked…`;
-      $("parcel-provenance").textContent = `${page.source_url} · source snapshot ${page.retrieved_at} · ${page.crs}. ${page.processing}. No owner or mailing fields stored; flood scores remain unknown.`;
-      $("parcel-status").textContent += exposureError;
-      if (page.next_offset !== null && page.next_offset <= offset) throw new Error("Parcel pagination did not advance");
-      offset = page.next_offset;
-    } while (offset !== null);
-  } catch (error) {
-    if (request !== parcelRequest) return;
-    $("parcel-status").textContent = `Parcel coverage unavailable or incomplete: ${error.message}${parcelData.features.length ? ` ${parcelData.features.length} parcels shown so far; this is a partial inventory.` : " No complete inventory is available."}`;
-    $("parcel-retry").hidden = false;
+        loaded={...page,features:[...features.values()],excluded_count:loaded.excluded_count+page.excluded_count,complete:page.next_offset===null};
+        const saved=await parcelCache.put(cell,manifest,loaded,token);
+        loaded=saved || loaded;
+        if(selectedCell===cell && token===parcelCache.token) publishParcels(loaded,loaded.complete);
+        // Finish the current page for the cache; do not download the rest of an abandoned cell.
+        if(selectedCell!==cell || token!==parcelCache.token) break;
+      } while(!loaded.complete);
+      return loaded;
+    });
+    if(request!==parcelRequest) return;
+    publishParcels(entry,true);
+    if(parcelCache.diskFailed) $("parcel-status").textContent+=" Browser storage unavailable; cache is limited to this session.";
+  } catch(error) {
+    if(request!==parcelRequest) return;
+    if(parcelEntry) publishParcels(parcelEntry,true);
+    $("parcel-status").textContent=parcelEntry?.manifest && parcelEntry.manifest.dataset_version!==manifest.dataset_version
+      ? `Source unavailable; cached inventory from ${new Date(parcelEntry.savedAt).toISOString()}. Replacement inventory could not load: ${error.message}`
+      : `Parcel coverage unavailable or incomplete: ${error.message}. ${parcelData?.features.length || 0} parcels shown; this is a partial inventory.`;
+    $("parcel-retry").hidden=false;
   }
 }
 
 function setupMap(settings) {
+  mapToken = settings.configured ? settings.public_token : null;
   if (!settings.configured) {
     $("map-status").textContent = "Add MAPBOX_PUBLIC_TOKEN to your local .env and restart the app to enable the map. The site list remains available.";
     $("map").replaceChildren(element("p", "Mapbox token not configured", "map-fallback"));
@@ -403,7 +614,7 @@ function setupMap(settings) {
     $("map").replaceChildren();
     map = new mapboxgl.Map({container:"map", accessToken:settings.public_token, style:settings.style,
       center:[-86.57,30.65], zoom:9, cooperativeGestures:false, attributionControl:false});
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.addControl(new mapboxgl.NavigationControl(), "bottom-left");
     map.addControl(new mapboxgl.AttributionControl({compact:false, customAttribution:
       "DEMO · Fictional sites / synthetic site inputs · Unvalidated estimates. Follow official NWS/local guidance."}), "bottom-right");
     // The shell animates its sidebar width without a window resize event.
@@ -452,12 +663,7 @@ function setupMap(settings) {
       map.on("click", "hotspot-fill", (event) => {
         if (map.queryRenderedFeatures(event.point, {layers:["site-points", "parcel-fill"]}).length) return;
         const p = event.features[0].properties;
-        if (p.resolution < 7) {
-          closeSelection();
-          const [lat,lon] = h3.cellToLatLng(p.h3_index);
-          map.flyTo({center:[lon,lat],zoom:QuasarSpatial.childZoom(p.resolution),duration:650});
-        } else if (selectedCell === p.h3_index) closeSelection();
-        else void inspectCell(p.h3_index);
+        if (selectedCell !== p.h3_index) void inspectCell(p.h3_index,Number(p.resolution));
       });
       map.on("click", "parcel-fill", (event) => {
         if (map.queryRenderedFeatures(event.point, {layers:["site-points"]}).length) return;
@@ -478,7 +684,6 @@ function setupMap(settings) {
       mapLoaded = true; frameCounty(); updateMap(); toggleHex();
     });
     map.on("zoomend", () => {
-      if (selectedCell && QuasarSpatial.resolutionForZoom(map.getZoom()) < 7) closeSelection();
       updateCountyGrid();
     });
     $("hex-toggle").onchange = toggleHex;
@@ -498,7 +703,7 @@ function showWeatherStatus(data) {
   $("weather-status").textContent = `${data.status.toUpperCase()} · initialized ${data.init_time} · imported ${data.retrieved_at} · ${data.native_resolution} ensemble mean. Stale or incomplete rainfall is not scored.`;
 }
 
-async function loadScenario() {
+async function loadScenario(options = {}) {
   const thisRequest = ++requestId;
   const isReplay = replaySelected() && replayController;
   if (!isReplay) replayController?.pause();
@@ -512,53 +717,152 @@ async function loadScenario() {
         api(`/api/timeline?${new URLSearchParams({site,...params})}`),
         api("/api/routes", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(replayController.routing(site))}),
       ]);
-      if (thisRequest !== requestId) return;
+      if (thisRequest !== requestId) return false;
       if ([data.replay.at,timeline.at,routes.at].some(at=>at!==params.at)) throw new Error("Replay timestamps do not match");
       selectedId = site;
       replayController.render(timeline,routes);
       render(data);
     } else {
-      const data = await api(`/api/properties?${query}`);
-      if (thisRequest !== requestId) return;
+      let data;
+      if (playback && $("scenario").value === "weathernext") {
+        const timeline = await api("/api/weather/timeline");
+        if (thisRequest !== requestId) return false;
+        if (!timeline.frames?.length) throw new Error(timeline.message || "Forecast playback unavailable");
+        const index = Math.min(options.forecastIndex ?? (current?.scenario.id === "weathernext" ? forecastIndex : timeline.default_index), timeline.frames.length-1);
+        forecastTimeline = timeline; forecastIndex = index;
+        data = timeline.frames[index].collection;
+      } else data = await api(`/api/properties?${query}`);
+      if (thisRequest !== requestId) return false;
       render(data);
     }
     $("error").hidden = true;
+    return true;
   } catch (error) {
-    if (thisRequest !== requestId) return;
-    if (isReplay) replayController.fail();
+    if (thisRequest !== requestId) return false;
+    if (isReplay) {
+      replayController.fail();
+      if (current?.replay?.at) replayController.state.index = Math.round((Date.parse(current.replay.at)-Date.parse(window.QuasarReplay.hour(0)))/3600000);
+    }
     if (current) $("scenario").value = current.scenario.id;
     $("error").textContent = `Could not load exercise data: ${error.message}`;
     $("error").hidden = false;
+    playback?.pause();
+    return false;
   }
 }
 
 async function start() {
   if (started) return;
   started = true;
+  if (window.QuasarMapUI) {
+    playback = window.QuasarMapUI.createPlayback({get:$, select:(kind,index)=>kind === "archive" ? replayController.seek(index) : loadScenario({forecastIndex:index})});
+    window.addEventListener("hashchange",()=>{
+      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
+    });
+    $("map-sidebar-close").onclick = () => {
+      $("map-inspect-toggle").setAttribute("aria-expanded", "false");
+      $("map-sidebar").setAttribute("data-dismissed", "true");
+      Promise.resolve().then(()=>$("map-tools").querySelector("summary").focus());
+    };
+    $("map-zoom-in").onclick=()=>map?.zoomIn();
+    $("map-zoom-out").onclick=()=>map?.zoomOut();
+    // Mobile details are modal; trap focus and make the covered controls inert.
+    const viewport=$("map-overview");
+    $("map-source-info").ontoggle=()=>{
+      if(!$("map-source-info").open)return;
+      closeSelection();$("map-sidebar").setAttribute("data-dismissed","true");
+    };
+    viewport.addEventListener("pointerdown",event=>{if(!event.target.closest(".map-search"))searchController?.close();});
+    function syncSheet() {
+      const selection=!$("map-selection-panel").hidden;
+      const inspection=$("map-sidebar").getAttribute("data-dismissed")!=="true" &&
+        ($("map-inspect-toggle").getAttribute("aria-expanded")==="true" || $("replay-toggle").getAttribute("aria-pressed")==="true");
+      const mobile=window.matchMedia("(max-width: 767px)").matches;
+      const panel=selection ? $("map-selection-panel") : inspection ? $("map-sidebar") : null;
+      for (const node of [$("map-selection-panel"),$("map-sidebar")]) {
+        node.inert=Boolean(mobile && panel && node!==panel);
+        if(mobile && node===panel){node.setAttribute("role","dialog");node.setAttribute("aria-modal","true");}
+        else {node.removeAttribute("role");node.removeAttribute("aria-modal");}
+      }
+      for(const node of viewport.querySelectorAll(".map-float, #map")) node.inert=Boolean(mobile && panel);
+      const hideBackdrop=!(mobile && panel);
+      if($("map-sheet-backdrop").hidden!==hideBackdrop)$("map-sheet-backdrop").hidden=hideBackdrop;
+      if(mobile && panel && !panel.contains(document.activeElement))panel.querySelector("button, select, input, a")?.focus();
+    }
+    new MutationObserver(syncSheet).observe(viewport,{subtree:true,attributes:true,attributeFilter:["hidden","aria-expanded","aria-pressed","data-dismissed"]});
+    $("map-legend").open=viewport.clientWidth>850;
+    window.addEventListener("resize",syncSheet);
+    const inspectLink=()=>{
+      if(window.location.hash==="#site-details"){
+        $("map-sidebar").removeAttribute("data-dismissed");
+        $("map-inspect-toggle").setAttribute("aria-expanded","true");
+      }
+    };
+    window.addEventListener("hashchange",inspectLink);
+    inspectLink();
+    $("map-sheet-backdrop").onclick=()=>{if(!$("map-selection-panel").hidden)closeSelection();else $("map-sidebar-close").click();};
+    viewport.addEventListener("keydown",event=>{
+      const panel=viewport.querySelector('[aria-modal="true"]');
+      if(!panel)return;
+      if(event.key==="Escape"){$("map-sheet-backdrop").click();event.preventDefault();}
+      if(event.key==="Tab"){
+        const nodes=Array.from(panel.querySelectorAll('button, select, input, a[href], [tabindex="0"]')).filter(n=>!n.disabled && n.getClientRects().length);
+        const first=nodes[0],last=nodes.at(-1);
+        if(event.shiftKey && document.activeElement===first){event.preventDefault();last?.focus();}
+        else if(!event.shiftKey && document.activeElement===last){event.preventDefault();first?.focus();}
+      }
+    });
+  }
   $("selection-close").onclick = closeSelection;
   $("selection-back").onclick = () => {
     selectedParcel = null;
     if (mapLoaded) map.getSource("selected-parcel").setData(emptyCollection());
     renderCellPanel();
+    void loadInspection("cell",selectedCell);
   };
-  $("parcel-retry").onclick = () => { selectedParcel = null; renderCellPanel(); return loadParcels(); };
+  $("parcel-retry").onclick = () => {
+    selectedParcel=null; map.getSource("selected-parcel").setData(emptyCollection());
+    renderCellPanel(); void loadInspection("cell",selectedCell); return loadParcels();
+  };
+  $("cell-zoom").onclick=()=>{const [lat,lon]=h3.cellToLatLng(selectedCell); map.flyTo({center:[lon,lat],zoom:QuasarSpatial.childZoom(selectedResolution),duration:650});};
+  $("parcel-search").oninput=()=>{parcelSearch=$("parcel-search").value.trim();parcelListPage=0;renderParcelList();};
+  $("parcel-previous").onclick=()=>{parcelListPage=Math.max(0,parcelListPage-1);renderParcelList();};
+  $("parcel-next").onclick=()=>{parcelListPage++;renderParcelList();};
+  $("parcel-refresh").onclick=async()=>{
+    const cell=selectedCell; ++parcelRequest; ++contextRequest; contextCache.clear();
+    await parcelCache.remove(cell);
+    if(selectedCell!==cell) return;
+    selectedParcel=null; parcelEntry=parcelData=cellContext=parcelContext=null;
+    map.getSource("selected-parcel").setData(emptyCollection()); map.getSource("parcels").setData(emptyCollection());
+    renderCellPanel(); await loadParcels(true);
+    if(selectedCell===cell) void loadInspection("cell",cell);
+  };
+  $("parcel-clear").onclick=async()=>{closeSelection();contextCache.clear();await parcelCache.clear();};
+  void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
   $("map-layer").onchange = () => { showMapSummary(); updateMap(); };
   $("map-site").onchange = () => choose($("map-site").value);
   $("map-inspect-toggle").onclick = () => {
+    $("map-sidebar").removeAttribute?.("data-dismissed");
     const inspecting = $("map-inspect-toggle").getAttribute("aria-expanded") !== "true";
     if (inspecting) closeSelection();
     $("map-inspect-toggle").setAttribute("aria-expanded", String(inspecting));
+    if(playback)$("map-tools").open=false;
+    if(playback)$("map-source-info").open=false;
   };
   $("replay-toggle").onclick = () => {
+    playback?.pause();
+    $("map-sidebar").removeAttribute?.("data-dismissed");
+    if(playback)$("map-tools").open=false;
+    if(playback)$("map-source-info").open=false;
     $("scenario").value = replaySelected() ? previousScenario : "isaias-2026";
     if (window.location) window.location.hash = "#map-overview";
     return loadScenario();
   };
   if (window.QuasarReplay) {
-    replayController = window.QuasarReplay.create({get:$,element,load:loadScenario});
+    replayController = window.QuasarReplay.create({get:$,element,load:loadScenario,controls:!playback,onPause:()=>{if(replaySelected())playback?.pause();}});
     window.addEventListener("hashchange",()=>{
-      if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) replayController.pause();
+      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) replayController.pause();
       if (window.location.hash === "#isaias-replay" && $("scenario").children.length) {
         $("scenario").value="isaias-2026";void loadScenario();
       }
@@ -566,8 +870,8 @@ async function start() {
     try { replayController.setContext(await api("/api/replay/context")); } catch { /* Explicit unavailable context in the replay. */ }
   }
   try {
-    const config = await api("/api/config");
-    if (config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
+    const config=await api("/api/config");
+    if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
     setupMap(config.map);
   }
   catch { $("map-status").textContent = "Map configuration unavailable; the site list remains available."; }
@@ -583,6 +887,16 @@ async function start() {
       $("grid-status").textContent = "County boundary unavailable · reload to retry";
     }
   }
+  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,select:feature=>{
+    searchMarker?.remove();searchMarker=null;
+    if(!feature || !map)return;
+    closeSelection();
+    $("map-inspect-toggle").setAttribute("aria-expanded","false");
+    $("map-sidebar").setAttribute("data-dismissed","true");
+    const coordinates=feature.geometry.coordinates;
+    searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);
+    map.flyTo({center:coordinates,zoom:15,padding:{top:90,bottom:150,left:40,right:40},essential:false});
+  }});
   try { showWeatherStatus(await api("/api/weather/status")); }
   catch { $("weather-status").textContent = "Forecast status unavailable. No live connection is implied."; }
   try {
@@ -591,7 +905,7 @@ async function start() {
       const option = element("option", scenario.label); option.value = scenario.id; $("scenario").append(option);
     }
     $("replay-toggle").disabled = !replayController || !data.scenarios.some(s => s.id === "isaias-2026");
-    $("scenario").disabled = false; $("scenario").onchange = () => loadScenario();
+    $("scenario").disabled = false; $("scenario").onchange = () => {playback?.pause();return loadScenario();};
     if (data.scenarios.some(s => s.id === "weathernext")) $("scenario").value = "weathernext";
     if (window.location?.hash === "#isaias-replay") $("scenario").value="isaias-2026";
     await loadScenario();

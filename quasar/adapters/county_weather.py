@@ -93,7 +93,7 @@ def normalize(rows, table, geometry, *, historical=False, valid_from=None, now=N
     return result
 
 
-def validate(data):
+def validate(data, *, now=None):
     from ..replay import validate_archive, run_rows
     expected = {'schema_version': 3, 'county_fips': COUNTY_FIPS, 'model': 'WeatherNext 3',
                 'native_resolution': '0.1 degree', 'statistic': 'ensemble_mean', 'units': 'mm_per_hour'}
@@ -126,7 +126,7 @@ def validate(data):
         raise ValueError('County archive has no runs')
     if data['kind'] == 'current_county_forecasts':
         current = current_snapshot(data)
-        summarize(current, allowed=ids)
+        summarize(current, allowed=ids, now=now)
     return data
 
 
@@ -138,9 +138,9 @@ def current_snapshot(data):
     return {**data, 'schema_version':1, 'rows': rows}
 
 
-def for_sites(data):
+def for_sites(data, *, now=None):
     """Associate fictional sites locally with native polygons; never query per parcel."""
-    validate(data)
+    validate(data, now=now)
     associations = {}
     for site in points():
         hits = [c for c in data['native_cells'] if covers([site['longitude'],site['latitude']], c['geometry'])]
@@ -159,7 +159,7 @@ def for_sites(data):
 
 def collection(data, *, at=None, preset='archived', mode='archive', now=None):
     from ..replay import rainfall, selection
-    validate(data)
+    validate(data, now=now)
     ids = {c['id'] for c in data['native_cells']}
     if data['kind'] == 'historical_county_forecasts':
         sel = selection(at, preset, mode)

@@ -103,10 +103,28 @@ artifact is required; real parcel indices otherwise remain unknown. Green does
 not establish safety.
 
 The Map overview fills the space beside the stock Application Shell 2 navigation
-sidebar. Its toolbar keeps the data-source selector, rainfall/exposure display,
-**Isaias simulation** action and **Inspect sites** panel available on the map.
+sidebar. A floating county address/place search sits at the top, a tools dock at
+bottom-left, shared forecast/archive playback at bottom-center, and the active
+legend at bottom-right. Tools contains source, display, H3 and inspection controls.
 The Mapbox Light style is the default; `MAPBOX_STYLE` can override it.
-Mapbox resizes when either sidebar changes.
+
+Search uses temporary Mapbox geocodes and filters result coordinates against the
+authoritative Okaloosa polygon, including holes and islands. Selecting a location
+moves the map and adds a temporary marker; it does not assign a parcel or score.
+Search requires a public token and available county boundary. The site inspector
+remains available without a working map. Details float over the map; on mobile
+they open as a modal bottom sheet. Isaac reviews the rendered layout.
+
+Imported forecast playback reads retained hourly rows through
+`/api/weather/timeline`; it never launches an import. Each frame shows the
+following six-hour rainfall total, advancing one hour at a time. An 18-hour
+county run supports 13 positions; older six-hour-only files provide one frame.
+The same play control drives the October 9 archive when that source is selected.
+Static synthetic windows have no playback. Freshness uses real time; scrubbing
+cannot revive expired inputs. Missing values stay unavailable. Initialization,
+import time, native resolution, units and interpretation are in the expandable
+legend information. Simulated routing remains exclusive to the archive/what-if
+workflow.
 
 When an imported WeatherNext snapshot is selectable, the map opens with that
 source and **Rainfall · mm / 6h**. Native forecast polygons show county rainfall when a county snapshot is imported; blue points and numeric labels show rainfall at the six fictional sites. The summary shows the
@@ -120,7 +138,7 @@ A neutral county H3 grid stays available for parcel browsing in rainfall mode. L
 **Inspect sites** opens the site selector and factor explanation, including when
 Mapbox is unavailable. The **Isaias simulation** button opens archive/what-if
 controls, playback, selected-site trend and simulated routing in the same map's
-side panel. Exit returns to the preceding data source. The old `/#isaias-replay`
+floating details panel. Exit returns to the preceding data source. The old `/#isaias-replay`
 link still opens the simulation within Map overview. The other navigation links
 retain sites, source status, reports and the guide.
 
@@ -156,13 +174,13 @@ runtime, scoring, and cloud-query behavior remain unchanged.
 - Six **fictional** Okaloosa exercise sites, including one with missing terrain data.
 - Three deterministic exercise windows with changing synthetic rainfall and gauge conditions.
 - A Mapbox GL JS map, prioritized site list, factor contributions, and explicit unknown scores.
-- Countywide H3 browsing at resolutions 4–7, adapting to zoom like TrialSmiles. Coarse-cell clicks zoom in; resolution-7 clicks open a cell panel and progressively load every matching county GIS parcel polygon. A parcel opens its own details panel with a back-to-cell action. Parcel flood inputs remain unknown. Hexagons intersect the authoritative Census boundary and can extend past it; they are not county boundaries, flood extents or sharper weather predictions.
+- Countywide H3 browsing at resolutions 4–7, adapting to zoom like TrialSmiles. Every cell click opens a summary with an explicit zoom action; resolution-7 cells progressively load matching county GIS polygons and keep them in a bounded browser cache across visits. A parcel opens its own details panel with a back-to-cell action. Parcel scores remain unknown; configured verified inputs appear as descriptive context. Hexagons intersect the authoritative Census boundary and can extend past it; they are not county boundaries, flood extents or sharper weather predictions.
 - A WeatherNext 3 BigQuery importer for the native 0.1-degree ensemble-mean hourly precipitation product, with six-hour aggregation, provenance, missing-data and staleness checks.
 - Opt-in SMS/email **previews** for elevated scores. Nothing is sent or stored, and no contact details are collected.
 - A JSON/GeoJSON API and a separately callable NWS point-alert client.
 - Automated tests, GitHub Actions, and a portable container starter.
 
-**This is a baseplate, not a validated flood model.** Offline [parcel input preparation](docs/parcel-inputs.md) produces descriptive terrain summaries and FEMA/mapped-waterway joins in separate research artifacts. Those inputs are not connected to app scoring. Building footprints, trained AI, a fully sourced historical replay, real subscriptions and real delivery remain unavailable. Real parcel geometry is loaded on selection from Okaloosa GIS, with full county containment checks; exercise scores never apply to those parcels. WeatherNext rainfall can be imported once for county native cells and associated locally with the six fictional sites; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
+**This is a baseplate, not a validated flood model.** Offline [parcel input preparation](docs/parcel-inputs.md) produces descriptive terrain summaries and FEMA/mapped-waterway joins in separate research artifacts. An optional verified inspection artifact connects those descriptive inputs to parcel details and cell summaries; they do not enter app scoring. See [parcel inspection setup](docs/parcel-inputs.md#application-inspection-artifact). Building footprints, trained AI, a fully sourced historical replay, real subscriptions and real delivery remain unavailable. Real parcel geometry is loaded on selection from Okaloosa GIS, with full county containment checks; exercise scores never apply to those parcels. WeatherNext rainfall can be imported once for county native cells and associated locally with the six fictional sites; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
 
 ## Isaias 2026 replay
 
@@ -212,6 +230,9 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/properties?scenario=weathernext` | Imported forecast + fictional property inputs, when a valid snapshot is configured |
 | GET | `/api/county` | Authoritative Census Okaloosa boundary and provenance; unavailable sources return 502 |
 | GET | `/api/parcels?ring=...&offset=0` | County-validated parcel polygons intersecting an R7 ring; automatically paginated by the map |
+| GET | `/api/parcels/manifest` | Lightweight geometry/source version for persistent browser caching |
+| GET | `/api/parcels/{id}/context` | Verified descriptive parcel inputs and native forecast overlaps; no score |
+| GET | `/api/cells/{h3}/summary` | Distinct indexed parcel counts, input coverage and native overlaps at R4–R7 |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |

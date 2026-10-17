@@ -55,6 +55,21 @@ def collection(scenario_id: str = "baseline", *, at=None, preset="archived", mod
         forecast = load_forecast()
         if "records" not in forecast:
             raise ValueError("WeatherNext snapshot is unavailable or invalid")
+    return _map_collection(source, scenario, forecast, features)
+
+
+def weather_collection(forecast: dict) -> dict:
+    """Build a map frame through the same scoring path as the default forecast."""
+    source = json.loads((FIXTURES / "properties.json").read_text())
+    require_county(source["county_fips"])
+    scenario = {"id": "weathernext", "label": "WeatherNext 3 + fictional site inputs",
+                "valid_from": forecast["valid_from"], "valid_to": forecast["valid_to"],
+                "rainfall_6h_mm": None, "gauge_margin_m": 1.2}
+    return _map_collection(source, scenario, forecast, [])
+
+
+def _map_collection(source, scenario, forecast, features):
+    if forecast:
         features = []
         for record in source["properties"]:
             weather = forecast["records"][record["id"]]
