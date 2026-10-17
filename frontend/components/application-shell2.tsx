@@ -5,7 +5,6 @@ import {
   ChevronsUpDown,
   HelpCircle,
   Map,
-  MapPin,
   CloudRain,
   Database,
   FileChartColumn,
@@ -113,7 +112,6 @@ const sidebarData: SidebarData = {
   navGroups: [
     { title: "Workspace", items: [
       { label: "Map overview", icon: Map, href: "#map-overview" },
-      { label: "Exercise sites", icon: MapPin, href: "#exercise-sites" },
       { label: "Data", icon: Database, href: "#data" },
       { label: "Forecast & sources", icon: CloudRain, href: "#data-sources" },
       { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
