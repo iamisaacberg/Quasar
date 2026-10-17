@@ -25,17 +25,17 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   let map, resizeCallback, resizeCount=0, observed;
   const events=[];
   class FakeMap {
-    constructor() { map=this; this.sources={}; this.layers={}; this.handlers={}; }
+    constructor(options) { map=this; this.options=options; this.controls=[]; this.sources={}; this.layers={}; this.handlers={}; }
     resize() { resizeCount++; }
-    addControl() {}
+    addControl(control) { this.controls.push(control); }
     on(name,...rest) { this.handlers[`${name}:${rest.length===1 ? "" : rest[0]}`]=rest.at(-1); }
     addSource(id,source) { this.sources[id]={data:source.data,setData(data){this.data=data;}}; }
     getSource(id) { return this.sources[id]; }
     addLayer(layer) { this.layers[layer.id]=layer; }
     setLayoutProperty(id,key,value) { this.layers[id][key]=value; }
   }
-  const mapboxgl = {Map:FakeMap,NavigationControl:class {}};
-  const context = {console,document:{getElementById:(id)=>mounted ? get(id) : null,dispatchEvent:(event)=>events.push(event.type),createElement:(tag)=>new Element(tag),createTextNode:(text)=>({textContent:text})},
+  const mapboxgl = {Map:FakeMap,NavigationControl:class {},AttributionControl:class { constructor(options) { this.options=options; } }};
+  const context = {console,URLSearchParams,document:{getElementById:(id)=>mounted ? get(id) : null,dispatchEvent:(event)=>events.push(event.type),createElement:(tag)=>new Element(tag),createTextNode:(text)=>({textContent:text})},
     Event:class { constructor(type) { this.type=type; } },
     window:{h3,QuasarSpatial,mapboxgl, ResizeObserver:class {
       constructor(callback) { resizeCallback=callback; }
@@ -43,7 +43,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     }},h3,QuasarSpatial,mapboxgl,
     fetch:async (url) => {
       if (scenarioFailure && url.includes("scenario=bad")) return {ok:false,json:async()=>({error:"bad scenario"})};
-      const body = url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/dark-v11"}} :
+      const body = url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/satellite-streets-v12"}} :
         url==="/api/scenarios" ? {scenarios:[{id:"baseline",label:"Exercise hour 0"}]} :
         url==="/api/weather/status" ? {status:"not_configured",message:"import not connected"} :
         url==="/api/official-alerts" ? {message:"Not connected; not an all-clear"} : data;
@@ -114,4 +114,14 @@ test("changing the shell content width resizes Mapbox without replacing its sour
   app.resize();
   assert.equal(app.resizeCount,1);
   assert.equal(app.map.sources.sites.data.features.length,1);
+});
+
+
+test("the map uses the configured satellite style, direct gestures and visible demo attribution", async () => {
+  const {map} = await boot({configured:true});
+  assert.equal(map.options.style,"mapbox://styles/mapbox/satellite-streets-v12");
+  assert.equal(map.options.cooperativeGestures,false);
+  const attribution=map.controls.find(control=>control.options?.customAttribution);
+  assert.equal(attribution.options.compact,false);
+  assert.match(attribution.options.customAttribution,/DEMO.*Fictional sites.*synthetic site inputs/);
 });

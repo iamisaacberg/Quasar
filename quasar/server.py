@@ -1,10 +1,11 @@
 """Small local demo server using the Python standard library.
 
 Bind to localhost by default. Put behind a production application server and
-add authentication, request limits, monitoring, and persistence before public use.
+add individual authentication, request limits, monitoring, and persistence before public use.
 """
 
 import json
+import ssl
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,11 +15,14 @@ from .config import COUNTY_FIPS, COUNTY_NAME, NOTICE, TIMEZONE, map_settings, re
 from .adapters.weathernext import load_forecast
 from .notifications import preview
 from .pipeline import collection, scenarios
+from .replay import timeline, advisory_context
+from .routing import route
 from .analysis import report
 from .exports import export
 
 STATIC = Path(__file__).parent / "static"
-ASSETS = {"/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-8"),
+ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
+          "/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.css": ("ui/app-shell.css", "text/css; charset=utf-8"),
           "/": ("index.html", "text/html; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8"),
@@ -28,6 +32,32 @@ ASSETS = {"/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-
 
 
 class Handler(BaseHTTPRequestHandler):
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except ssl.SSLError:
+            # Browsers may reject the local certificate before sending HTTP.
+            self.close_connection = True
+
+    def parse_request(self):
+        if not super().parse_request():
+            return False
+        gate = getattr(self.server, "access_gate", None)
+        if gate is not None and not gate.allows(self.headers.get("Authorization", "")):
+            body = b"Team sign-in required.\n"
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            self.send_header("WWW-Authenticate", 'Basic realm="Quasar team", charset="UTF-8"')
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            self.close_connection = True
+            return False
+        return True
+
     def setup(self):
         super().setup()
         self.connection.settimeout(10)
@@ -42,13 +72,17 @@ class Handler(BaseHTTPRequestHandler):
         if filename:
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def do_GET(self):
         url = urlsplit(self.path)
         query = parse_qs(url.query, keep_blank_values=True)
         try:
+            if any(len(values) != 1 for values in query.values()):
+                raise ValueError("Duplicate query parameters are not supported")
             require_county(query.get("county_fips", [COUNTY_FIPS])[0])
+            replay_args = {key: query[key][0] for key in ("at", "preset", "mode") if key in query}
             if url.path in ASSETS:
                 filename, content_type = ASSETS[url.path]
                 return self.send(200, (STATIC / filename).read_bytes(), content_type)
@@ -62,9 +96,15 @@ class Handler(BaseHTTPRequestHandler):
                 forecast = load_forecast()
                 return self.send(200, {k: v for k, v in forecast.items() if k != "records"})
             if url.path == "/api/scenarios":
-                return self.send(200, {"scenarios": scenarios(), "historical_replay": False})
+                return self.send(200, {"scenarios": scenarios(), "historical_replay": True})
             if url.path == "/api/properties":
-                return self.send(200, collection(query.get("scenario", ["baseline"])[0]))
+                return self.send(200, collection(query.get("scenario", ["baseline"])[0], **replay_args))
+            if url.path == "/api/timeline":
+                return self.send(200, timeline(query.get("site", [""])[0], **replay_args))
+            if url.path == "/api/routes":
+                return self.send(200, route(query.get("site", [""])[0], **replay_args))
+            if url.path == "/api/replay/context":
+                return self.send(200, advisory_context())
             if url.path == "/api/reports":
                 return self.send(200, report(query.get("scenario", ["baseline"])[0]))
             if url.path == "/api/exports":
@@ -80,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
     def do_POST(self):
-        if self.path != "/api/notifications/preview":
+        if self.path not in ("/api/notifications/preview", "/api/routes"):
             return self.send(404, {"error": "Route not found"})
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -89,10 +129,19 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get_content_type() != "application/json":
                 return self.send(415, {"error": "Use application/json"})
             payload = json.loads(self.rfile.read(length))
-            self.send(200, preview(payload))
+            if not isinstance(payload, dict):
+                raise ValueError("Expected a JSON object")
+            if self.path == "/api/routes":
+                if "site" not in payload:
+                    raise ValueError("site is required")
+                self.send(200, route(**payload))
+            else:
+                self.send(200, preview(payload))
         except (ValueError, UnicodeDecodeError) as exc:
             self.send(400, {"error": str(exc)})
 
 
-def make_server(host="127.0.0.1", port=8000):
-    return ThreadingHTTPServer((host, port), Handler)
+def make_server(host="127.0.0.1", port=8000, *, access_gate=None):
+    server = ThreadingHTTPServer((host, port), Handler)
+    server.access_gate = access_gate
+    return server

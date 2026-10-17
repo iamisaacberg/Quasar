@@ -103,3 +103,50 @@ body { line-height: 1.5; }
 @media (max-width: 1150px) { .county-tag { display: none; }.map-workspace { grid-template-columns: minmax(0, 1fr); }.details { padding: 20px; }.exercise-toolbar { align-items: flex-start; flex-direction: column; gap: 8px; }.exercise-toolbar > p { text-align: left; } }
 @media (max-width: 767px) { .workspace-header { min-height: 52px; padding: 12px 16px; }.breadcrumb { gap: 8px; font-size: 10px; }.demo-badge { font-size: 8px; padding: 4px 6px; }.dashboard { padding: 22px 16px 16px; }.page-heading { margin-bottom: 18px; }.page-heading > div > p:last-child { font-size: 12px; }.stats { gap: 8px; }.stats > div { padding: 12px 10px; }.stat-label { font-size: 10px; align-items: flex-start; }.stat-label > svg { display: none; }.stats strong { font-size: 26px; }.stats p { font-size: 9px; }.exercise-toolbar > label { flex-wrap: wrap; width: 100%; }.exercise-toolbar select { width: 100%; }.source-grid { grid-template-columns: minmax(0, 1fr); }.panel-header { padding: 14px; }.panel-header > .subtle-tag { display: none; }#map { height: 400px; }.dashboard-footer { flex-direction: column; align-items: flex-start; gap: 6px; }.sites th, .sites td { padding: 10px 12px; }.sites table { min-width: 520px; } }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; }*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; } }
+
+/* Only map content escapes the stock block content padding. */
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+.quasar-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.quasar-shell > [data-slot="sidebar-inset"] { min-width: 0; overflow-y: auto; }
+.workspace-view { min-height: 0; }
+.is-map-view { display: flex; flex: 1; flex-direction: column; margin: -1rem; }
+.is-map-view > .workspace-header { display: none; }
+.is-map-view > .dashboard { flex: 1; min-height: 0; max-width: none; margin: 0; padding: 0; position: relative; }
+.is-map-view > .dashboard > :not(.map-workspace):not(#error) { display: none; }
+.is-map-view .map-workspace { display: block; position: absolute; inset: 0; }
+.is-map-view .map-workspace > .details { display: none; }
+.is-map-view .map-card { position: relative; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.is-map-view .map-card > :is(.panel-header, .map-controls) { display: none; }
+.is-map-view #map { height: 100%; border: 0; background: #edf3f1; }
+.is-map-view .map-caption { position: absolute; left: 12px; bottom: 44px; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; background: #fff; border-radius: 6px; }
+.is-map-view .map-caption > :not(#map-status) { display: none; }
+.is-map-view .map-caption:has(#map-status:empty) { display: none; }
+.is-map-view #map-status { margin: 0; }
+.is-map-view #error:not([hidden]) { position: absolute; top: 12px; left: 12px; right: 56px; z-index: 1; margin: 0; }
+
+/* Isaias uses the existing shell; its controls stay outside the plain map view. */
+[hidden] { display: none !important; }
+.replay-panel { border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin: 16px 0; background: var(--card); min-width: 0; }
+.replay-panel > .panel-header { padding: 0 0 14px; }
+.replay-panel p { margin: 10px 0; font-size: 12px; }
+.replay-panel label { display: flex; gap: 7px; flex-direction: column; font-size: 12px; }
+.replay-panel :is(button,select) { padding: 8px 10px; border: 1px solid var(--input); border-radius: 6px; background: var(--background); font: inherit; font-size: 12px; max-width: 100%; }
+.replay-panel button:disabled { opacity: .5; cursor: default; }
+.replay-options, .road-overrides { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; }
+.replay-options > label, .road-overrides > label { flex: 1; min-width: min(200px,100%); }
+.playback-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.replay-panel .hour-scrubber { display: flex; gap: 8px; }
+.hour-scrubber input { width: 100%; accent-color: var(--primary); }
+.replay-panel details { margin-top: 12px; font-size: 12px; }
+.replay-panel summary { cursor: pointer; }
+.replay-panel a { color: var(--primary); text-decoration: underline; }
+.advisory-text { white-space: pre-wrap; }
+.replay-results { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+#risk-chart { display: block; width: 100%; height: auto; }
+.destination-controls { display: grid; gap: 8px; margin-top: 16px; }
+.destination-controls label { display: block; }
+.destination-controls input { accent-color: var(--primary); }
+.replay-panel table { border-collapse: collapse; width: 100%; font-size: 11px; }
+.replay-panel :is(th,td) { padding: 7px; border-bottom: 1px solid var(--border); text-align: left; }
+.replay-panel .table-wrap { max-height: 260px; }
+@media (max-width: 1150px) { .replay-results { grid-template-columns: 1fr; gap: 0; } }

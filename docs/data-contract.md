@@ -57,6 +57,50 @@ Hourly timestamps denote the end of each accumulation interval. The six timestam
 
 Do not silently replace fixtures. Add an explicit data mode and source status. Every real adapter must retain source URL/record ID, retrieval time, observation/issue/valid times where relevant, CRS, vertical datum, units, license and transformation steps. Add authoritative county geometry validation, source-age limits, missing/stale states, and tests for outside-county records. Store only normalized county-filtered features in the scoring pipeline. Do not turn a centroid association into a claim of building-level inundation.
 
+## Isaias 2026 hourly replay (additive contract)
+
+Scenario `isaias-2026` spans 2026-10-09T04:00:00Z through
+2026-10-10T04:00:00Z inclusive (25 whole-hour departure times). `at` selects
+the departure time; `preset` is `archived`, `plus-5`, or `plus-10`; `mode` is
+`archive` or `what_if`. Non-archived presets and road/destination overrides
+require what-if mode. UTC is canonical; display timezone is America/New_York.
+Each score uses rainfall intervals ending at at+1h through at+6h from the
+latest eligible initialization (not newer than the replay time, at most 12h old).
+If supplied, published_at must also be no later than at. Missing publication
+times are explicitly initialization-based reconstructions, not as-issued proof.
+Archived imports retain real retrieval time, but freshness is evaluated against
+the replay clock, never today's date. Current WeatherNext v1 freshness is unchanged.
+
+`GET /api/scenarios` adds replay metadata and source status. Existing scenarios
+remain unchanged. `GET /api/properties?scenario=isaias-2026&at=...&preset=archived&mode=archive`
+returns the existing scored GeoJSON with `replay` metadata, factor-level
+provenance and a six-hour forward validity window. Static site and gauge inputs
+remain fictional; incomplete/invalid forecast data is never zero-filled.
+
+`GET /api/timeline?site=demo-001&at=...&preset=archived&mode=archive` returns all
+25 hourly risk objects, their rainfall provenance and nullable change from the
+preceding score. Nulls are chart gaps. `POST /api/routes` accepts a JSON object
+with `site`, `at`, `preset`, `mode`, and optional `roads` / `destinations` maps.
+Road states: `open`, `closed`, `unknown`; destination values: booleans. Overrides
+are restricted to known IDs (max 100 road and 3 destination overrides; 16KB body).
+The equivalent GET endpoint supports selection without overrides. Both return
+county, mode, preset, at, source provenance, graph layers, selected route and
+unrestricted comparison; statuses distinguish unavailable data from no route.
+
+Historical WeatherNext files use schema_version 2 and kind `historical_forecasts`,
+with county/model/grid/statistic/units/table/retrieval metadata and `runs`.
+Each run contains init_time, optional published_at, and hourly rows with
+property_id, forecast_time, rainfall_1h_mm, native_cell_wkt. All rows must be
+curated points, finite nonnegative mm or null, and strictly after initialization.
+Duplicates invalidate that run, producing unknown rainfall rather than falling
+back to an older run. Source files, checksums and import commands remain local.
+
+Road graph geometry is county-contained EPSG:4326, sourced from Miami-Dade street
+centerlines. Topology, two-way traversal, 30km/h speeds, access connectors,
+restrictions and all three destinations are exercise assumptions, not navigation
+or shelter-opening evidence. Whole segments are checked against county rings,
+including holes and concavities. No H3 or property score determines passability.
+
 ## Reports and BI exports (additive contract)
 
 `GET /api/reports?scenario=baseline|heavy-rain|peak|weathernext` returns the shared

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci --ignore-scripts",
+  "buildCommand": "npm run build && python3 scripts/prepare_vercel.py",
+  "outputDirectory": "vercel-output",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "{quasar/**,data/processed/{weathernext,evacuation-network,isaias-advisories,isaias-2026}.json}",
+      "excludeFiles": "{node_modules/**,frontend/**,tests/**,notebooks/**,.context/**,.env*,**/__pycache__/**,**/*.pyc}",
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {"src": "/(.*)", "dest": "/api/index"}
+  ]
+}

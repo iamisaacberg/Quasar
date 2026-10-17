@@ -4,6 +4,15 @@ Miami-Dade County flood risk intelligence starter for the IBM Z Datathon.
 
 Quasar follows the team's Flood Emergency Alert System proposal, narrowed to **Miami-Dade County, Florida (FIPS `12086`)**. It gives the team a working path from a property-like record to an explainable score, a map, and a simulated notification.
 
+## Documentation
+
+Start with the [documentation index](docs/README.md) for the full reading guide, existing contracts, and setup references.
+
+- [App premise and product boundaries](docs/app-premise.md): the problem, intended audiences, current workflows, and limits of the demonstration.
+- [Data guide](docs/data-guide.md): fictional and imported inputs, provenance, geographic scales, freshness, missing data, and BI interpretation.
+- [Mechanisms](docs/mechanisms.md): scoring formulas, architecture, forecast imports, replay, routing, frontend behavior, API, and configuration.
+- [Improvement roadmap](docs/improvement-roadmap.md): concrete implementation gaps, data milestones, model evaluation, usability, scale, and completion evidence.
+
 ## Run locally
 
 Install Python 3.11 or later. From this repository's root:
@@ -14,13 +23,62 @@ python3 -m quasar
 
 Open <http://127.0.0.1:8000>. The Python backend has no third-party runtime dependencies. Add your Mapbox public token to enable the map. The site list, H3 indexing, score details and synthetic notification previews work without map credentials. Mapbox's SDK and basemap require internet access. The server is a local demo server, not a production hosting stack.
 
+### Share with teammates over Wi-Fi
+
+From a terminal, run:
+
+```sh
+npm run dev:wifi
+# Or, without Node.js:
+sh scripts/run-wifi.sh
+```
+
+Enter and confirm a shared password of at least 12 characters (use a unique,
+hard-to-guess passphrase). The launcher detects your Mac's Wi-Fi address and
+prints an **https://** team URL. Teammates on the same Wi-Fi open that URL, use
+username **team**, and enter your shared password in the browser's sign-in
+prompt. The password protects the page, static assets, health endpoint and API.
+
+The launcher creates a temporary HTTPS certificate and prints its SHA-256
+fingerprint. Browsers show a certificate warning: teammates should compare the
+certificate's SHA-256 fingerprint with yours before accepting it. The certificate
+and key are removed on normal shutdown; restarting creates a new certificate.
+The password is never printed or written by the launcher. For a noninteractive
+run, optionally set `QUASAR_WIFI_PASSWORD` in your ignored `.env` instead of
+entering it each time. Never put it in a command argument or share your `.env`.
+
+Keep your laptop awake and the terminal running; **Ctrl-C** stops sharing.
+Allow incoming connections for Python if macOS prompts. Guest/campus Wi-Fi may
+block device-to-device connections even when everyone uses the same network.
+The launcher requires OpenSSL and binds only to the selected Wi-Fi address;
+it does not open a public tunnel or configure your router. To select an address
+or a different port explicitly:
+
+```sh
+npm run dev:wifi -- --host 192.168.1.42 --port 8001
+```
+
+If your Mapbox public token is restricted to localhost, allow this HTTPS demo
+origin in its URL restrictions so teammates can load the map. This shared
+password gate is for temporary team demos; anyone with the password can access
+the app while it is running.
+
+### Share a hosted preview
+
+For networks that block device-to-device Wi-Fi traffic, use the
+[password-protected Vercel setup](docs/vercel.md). Every page, asset and API
+route requires the shared team password. The hosted app refuses access if
+`QUASAR_TEAM_PASSWORD` is missing or invalid.
+
+### Local configuration
+
 ```sh
 cp .env.example .env  # only if you do not already have .env
 ```
 
 Edit `.env` and set `MAPBOX_PUBLIC_TOKEN=pk.your_public_token`. The app reads `.env` at startup; restart after editing. Existing environment variables take precedence. Use a public browser token with the appropriate Mapbox URL restrictions for your local/demo origin. Secret `sk.` tokens are rejected. `.env` is ignored by Git. An optional `MAPBOX_STYLE` accepts a `mapbox://styles/...` URL.
 
-WeatherNext 3 BigQuery access is confirmed by the project owner. The importer and app integration are implemented; the team's actual project, linked table, account and data have not yet been connected or verified. Follow [integration setup](docs/integrations.md).
+WeatherNext 3 was imported from the existing linked dataset in project `quasar-ibm-z-datathon`, location `US`, on October 17, 2026. The local snapshot contains six hours for six fictional site coordinates; the restarted run on port `55000` reported `ready`. This snapshot requires explicit refresh and becomes stale after two hours; it is not an automatic live feed. Follow [integration setup](docs/integrations.md).
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -31,12 +89,12 @@ npm test
 
 ## Map workspace UI
 
-The map lives inside **Shadcnblocks Application Shell 2**, with an inset sidebar,
-icon collapse on desktop, and drawer navigation on mobile. Navigation links lead
-to the map, exercise sites, forecast/source status, and the exercise guide.
-Mapbox resizes when the sidebar width changes. Site inspection, H3 visibility,
-unknown data states, mixed forecast labels, and simulated notification previews
-use the existing controller and API.
+The Map overview fills the space beside the stock Application Shell 2 collapsible navigation
+sidebar (16rem desktop, 18rem mobile drawer), without dashboard headings, cards, tables or explainer panels. Satellite
+imagery with street labels is the default; `MAPBOX_STYLE` can override it.
+The other navigation links retain the exercise controls, sites, source status and
+guide. Mapbox resizes when the sidebar changes. Synthetic-demo attribution stays
+visible on the map, and unknown scores remain unscored.
 
 React/Tailwind source lives in `frontend/`. Vite builds the shell into
 `quasar/static/ui/`; those generated assets are committed so `python3 -m quasar`
@@ -76,7 +134,11 @@ runtime, scoring, and cloud-query behavior remain unchanged.
 - A JSON/GeoJSON API and a separately callable NWS point-alert client.
 - Automated tests, GitHub Actions, and a portable container starter.
 
-**This is a baseplate, not a validated flood model.** It has no live parcels, building footprints, FEMA joins, elevation raster processing, trained AI, historical storm replay, real subscriptions, or real delivery. WeatherNext rainfall can be imported for the six fictional site coordinates; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
+**This is a baseplate, not a validated flood model.** It has no live parcels, building footprints, FEMA joins, elevation raster processing, trained AI, a fully sourced historical replay, real subscriptions, or real delivery. WeatherNext rainfall can be imported for the six fictional site coordinates; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
+
+## Isaias 2026 replay
+
+The **Isaias 2026** sidebar view connects hourly forecast reconstruction, a selected-site trend, and a simulated resident evacuation route. Archive and what-if modes stay separate; missing historical rainfall stays unknown. Public NHC context and a county-contained real-road exercise network can be prepared locally with `python3 scripts/prepare_isaias.py`. Historical WeatherNext rainfall requires a separate explicit, capped import; the current October 17 snapshot is not reused. See [replay setup and walkthrough](docs/isaias-demo.md).
 
 ## Demo walkthrough
 
@@ -123,6 +185,9 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |
+| GET | `/api/timeline?site=demo-001` | Isaias hourly forward-six-hour scores and source status |
+| GET/POST | `/api/routes` | Isaias exercise routing, explicit availability, and simulated overrides |
+| GET | `/api/replay/context` | Locally acquired NHC advisory context |
 | GET | `/api/official-alerts` | Explicit `not_connected` status |
 | POST | `/api/notifications/preview` | Simulation only; no delivery |
 
@@ -132,7 +197,7 @@ Example preview body:
 {"property_ids":["demo-001"],"scenario":"peak","channel":"sms","opt_in":true}
 ```
 
-Other county FIPS values are rejected. `scenario` accepts `baseline`, `heavy-rain`, `peak`, or `weathernext` when a valid snapshot is configured. Unknown sites and scenarios return errors. No cloud query is triggered by loading the dashboard.
+Other county FIPS values are rejected. `scenario` accepts `baseline`, `heavy-rain`, `peak`, or `weathernext` when a valid snapshot is configured; `isaias-2026` adds optional `at`, `preset`, and `mode` parameters. Unknown sites and scenarios return errors. No cloud query is triggered by loading the dashboard.
 
 ## Team work areas
 
@@ -189,10 +254,10 @@ The container runs as a non-root user. The base image tag, container runtime, ou
 
 ## Next milestones
 
-1. Acquire an authoritative Miami-Dade county polygon and clip residential parcels/building footprints. Enforce real geometry membership before accepting external data.
-2. Add FEMA NFHL and USGS 3DEP features with CRS, vertical datum, missing-data flags, and source timestamps. Evaluate coastal/tidal and canal conditions specific to Miami-Dade.
-3. Ingest NWS official alerts and USGS observations. Implement caching, staleness, expired-alert handling and outage states before wiring a live feed into the UI.
-4. Configure the owner's existing WeatherNext BigQuery access, dry-run the generated query against the actual linked schema, and import a current forecast window. Extend coverage to real county-filtered assets after the GIS work.
+1. Use the locally acquired authoritative county polygon to validate and clip residential parcels/building footprints. Review source terms and keep owner/address fields out of the modeling dataset.
+2. Normalize the locally acquired FEMA NFHL and USGS 3DEP inputs with CRS, vertical datum, missing-data flags, source timestamps, and county clipping. Evaluate coastal/tidal and canal conditions specific to Miami-Dade.
+3. Select hydrologically relevant USGS stations and acquire observations; ingest NWS official alerts. Implement caching, staleness, expired-alert handling and outage states before wiring a live feed into the UI.
+4. Refresh WeatherNext snapshots explicitly with a dry run and byte cap. The first six-site import is verified; extend coverage to real county-filtered assets after the GIS work.
 5. Select and document a historical storm that affected Miami-Dade, acquire archived inputs and observed outcomes, and implement reproducible replay. Split training/evaluation by event/time to avoid leakage.
 6. Compare the transparent baseline with a trained model, document validation and uncertainty, then demonstrate the pipeline on IBM Z.
 7. Add persistent consent, unsubscribe, deduplication and delivery infrastructure only if real notifications are in scope. The datathon proposal calls for simulated delivery.

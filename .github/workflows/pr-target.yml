@@ -1,0 +1,21 @@
+name: PR target
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  pr-target:
+    name: PR target must be preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require preview as the base branch
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          if [ "$PR_BASE" != "preview" ]; then
+            echo "Pull requests must target preview (current base: $PR_BASE)."
+            exit 1
+          fi

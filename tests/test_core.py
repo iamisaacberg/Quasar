@@ -51,7 +51,7 @@ class PipelineTests(unittest.TestCase):
         for scenario in scenarios():
             data = collection(scenario["id"])
             self.assertEqual(data["county_fips"], "12086")
-            self.assertEqual(data["mode"], "synthetic_demo")
+            self.assertEqual(data["mode"], "historical_mixed_demo" if scenario["id"] == "isaias-2026" else "synthetic_demo")
             self.assertTrue(data["features"])
             self.assertEqual({f["properties"]["county_fips"] for f in data["features"]}, {"12086"})
             json.dumps(data, allow_nan=False)

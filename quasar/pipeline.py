@@ -18,6 +18,8 @@ def scenarios() -> list[dict]:
         items.append({"id": "weathernext", "label": "WeatherNext 3 + fictional site inputs",
                       "valid_from": forecast["valid_from"], "valid_to": forecast["valid_to"],
                       "rainfall_6h_mm": None, "gauge_margin_m": 1.2})
+    from .replay import descriptor
+    items.append(descriptor())
     return items
 
 
@@ -36,7 +38,12 @@ def feature_for(record: dict, scenario: dict) -> dict:
                            "county_fips": COUNTY_FIPS, "risk": score(values)}}
 
 
-def collection(scenario_id: str = "baseline") -> dict:
+def collection(scenario_id: str = "baseline", *, at=None, preset="archived", mode="archive") -> dict:
+    if scenario_id == "isaias-2026":
+        from .replay import collection as replay_collection
+        return replay_collection(at, preset, mode)
+    if at is not None or preset != "archived" or mode != "archive":
+        raise ValueError("Replay parameters require the Isaias scenario")
     scenario = next((s for s in scenarios() if s["id"] == scenario_id), None)
     if scenario is None:
         raise ValueError("Unknown scenario")

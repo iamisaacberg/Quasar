@@ -20,7 +20,17 @@ Planned: county GIS / FEMA / USGS / historical archive
     -> spatial joins + provenance + freshness -> validated model + replay
 ```
 
-One Python process serves the API and static frontend. The React/Tailwind application shell in `frontend/` wraps the existing map/data controller; Vite compiles it into committed `quasar/static/ui/` assets. The Python runtime serves only explicit asset routes, and its container needs no Node.js runtime. The Shadcnblocks key is used only by development tooling, never by the API or browser. There is no database, worker, scheduler or external message delivery. This keeps the starter easy to run on each teammate's computer and on IBM Z. A later public service needs an application hosting stack, authentication, persistence, rate limits and operational monitoring.
+One Python process serves the API and static frontend. The React/Tailwind application shell in `frontend/` wraps the existing map/data controller; Vite compiles it into committed `quasar/static/ui/` assets. The Python runtime serves only explicit asset routes, and its container needs no Node.js runtime. The Shadcnblocks key is used only by development tooling, never by the API or browser. There is no database, worker, scheduler or external message delivery. This keeps the starter easy to run on each teammate's computer and on IBM Z. A later public service needs an application hosting stack, individual authentication, persistence, rate limits and operational monitoring.
+
+The optional `quasar.wifi` launcher binds to the laptop's Wi-Fi IPv4 address and
+requires HTTPS plus a shared password through HTTP Basic authentication (username
+`team`). Its gate runs before routing for every HTTP method, protecting static
+files and API endpoints together. Credentials are compared through constant-time
+digest comparison and never enter frontend configuration. A temporary local TLS
+certificate is generated with OpenSSL and its fingerprint is printed for manual
+verification. The private key is removed on normal exit. This is temporary team access,
+not individual accounts or a public hosting service. The normal localhost command
+does not enable this gate; use `npm run dev:wifi` when sharing with teammates.
 
 The default API mode uses synthetic fixtures. A separate WeatherNext scenario uses imported rainfall with fictional property/gauge inputs and is explicitly labeled `mixed_forecast_demo`. No dashboard request queries Google Cloud. Notification previews are limited to fully synthetic scenarios. The NWS adapter is intentionally separate: live alerts must not appear to validate a synthetic property score. Call it explicitly to inspect official alerts for one fixture coordinate:
 
@@ -56,8 +66,24 @@ Hexagon boundaries are not clipped to the county and may cross its border; only 
 
 See [integration setup](integrations.md) for authentication, query semantics, required project details and remaining live checks.
 
+## Hosted team preview
+
+The optional Vercel adapter in `api/index.py` routes every page, static asset and
+API call through a shared-password gate. A missing or invalid
+`QUASAR_TEAM_PASSWORD` blocks all app requests. An unconditional route runs before
+filesystem lookup; static output contains only a harmless placeholder. Only named normalized demo
+snapshots may be uploaded; missing/stale states remain explicit. See the
+[Vercel setup](vercel.md) for environment configuration, verification and access
+revocation. The Python application and local IBM Z workflow remain reusable.
+
 ## IBM Z plan
 
 Research can use `notebooks/01_shared_code_starter.ipynb`, while regular Python/editor users can run `python -m quasar.analysis --compare`. Both call `quasar.analysis`, which delegates scoring to the existing application pipeline. Notebook-specific dependencies live in the optional `.[notebooks]` extra and are not installed by the application or container. CI executes clean notebook sources in fresh kernels; no running notebook is needed by the service. See [notebook workflow](../notebooks/README.md).
 
 The Python core has no third-party runtime packages and the container has no processor-specific build instructions. This is a portability design choice, not certification. Run the tests and container on the actual Linux `s390x` host before claiming IBM Z compatibility. Add ML/GIS packages only after checking native wheels or a reproducible build on the team's target host.
+
+## Isaias replay and exercise routing
+
+The additive `isaias-2026` scenario reads a separate historical archive; `quasar.replay` selects runs against a shared replay clock and calls the existing score function. Historical and current-forecast freshness policies are separate. A forward-six-hour score is recomputed hourly; missing values remain null. The timeline and routes include the same timestamp/mode/preset. The frontend commits their responses together and ignores late requests.
+
+`quasar.routing` uses standard-library Dijkstra over a locally prepared, county-contained road graph. Road geometry is from county centerlines; two-way traversal, constant speed, destinations, connectors and closure phases are explicitly simulated. Complete line validation in `quasar.geometry` checks polygon holes and concavities. No property score or H3 bin is treated as evidence of passability. Runtime graph reads are cached by file modification time and size. No replay or route API performs a cloud query.

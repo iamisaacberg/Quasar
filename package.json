@@ -2,9 +2,11 @@
   "name": "quasar-ui",
   "private": true,
   "scripts": {
+    "dev": "python3 -m quasar",
+    "dev:wifi": "sh scripts/run-wifi.sh",
     "vendor": "node scripts/vendor-h3.cjs",
     "test": "node --test tests/*.test.cjs",
-    "check": "tsc --noEmit && node --check quasar/static/app.js && node --check quasar/static/spatial.js",
+    "check": "tsc --noEmit && node --check quasar/static/app.js && node --check quasar/static/spatial.js && node --check quasar/static/replay.js",
     "build": "vite build"
   },
   "devDependencies": {
