@@ -4,9 +4,27 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const path = require('node:path');
 const React = require('react');
 const {renderToStaticMarkup} = require('react-dom/server');
 const {execFileSync} = require('node:child_process');
+
+// Load the real UI blocks and primitives without a browser or a dev server.
+// Only the dashboard's request/state lifecycle is controlled by this harness.
+const componentCache = new Map();
+function loadComponent(name, parent = process.cwd()) {
+  const base = name.startsWith('@/') ? path.resolve('frontend', name.slice(2)) : path.resolve(parent, name);
+  const file = ['.tsx', '.ts', ''].map(ext => base + ext).find(file => fs.existsSync(file) && fs.statSync(file).isFile());
+  if (!file) throw new Error(`Missing UI module: ${name}`);
+  if (componentCache.has(file)) return componentCache.get(file);
+  const exported = {};
+  componentCache.set(file, exported);
+  const compiled = ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+    compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText;
+  vm.runInNewContext(compiled, {exports: exported, require: dependency => dependency.startsWith('@/') || dependency.startsWith('.') ? loadComponent(dependency, path.dirname(file)) : require(dependency)}, {filename: file});
+  return exported;
+}
 
 const comparison = JSON.parse(execFileSync('python3', ['-c', 'import json; from quasar.analysis import report; print(json.dumps(report("compare")))'], {encoding: 'utf8'}));
 const reports = Object.fromEntries(comparison.scenarios.map(item => [item.scenario.id, {
@@ -16,7 +34,7 @@ const source = ts.transpileModule(fs.readFileSync('frontend/data-dashboard.tsx',
   compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
 }).outputText;
 const elements = (tree, predicate) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(child => elements(child, predicate)) : [
-  ...(predicate(tree) ? [tree] : []), ...elements(tree.props?.children, predicate),
+  ...(predicate(tree) ? [tree] : []), ...elements(tree.props?.children, predicate), ...elements(tree.props?.controls, predicate),
 ];
 
 function mount({active = true, reply} = {}) {
@@ -43,7 +61,7 @@ function mount({active = true, reply} = {}) {
         queued.push(() => { previous?.cleanup?.(); effects[slot] = {deps, cleanup: fn()}; });
       }
     },
-  } : name === './data-dashboard.css' ? {} : require(name)};
+  } : name === './data-dashboard.css' ? {} : name.startsWith('@/') ? loadComponent(name) : require(name)};
   vm.runInNewContext(source, context);
   const render = () => {
     stateCursor = 0; effectCursor = 0; queued = [];
@@ -54,7 +72,7 @@ function mount({active = true, reply} = {}) {
   return {calls, render,
     async settle() { for (let i = 0; i < 3; i++) { await new Promise(setImmediate); render(); } return render(); },
     find: predicate => elements(tree, predicate),
-    select: value => elements(tree, node => node.type === 'select')[0].props.onChange({target: {value}}),
+    select: value => elements(tree, node => typeof node.props?.onValueChange === 'function')[0].props.onValueChange(value),
     setActive: value => {active = value; return render();},
   };
 }
@@ -69,25 +87,26 @@ test('Data starts only when active, uses shared pipeline values, and excludes re
   assert.match(html, /5 scored · 1 unknown/);
   assert.ok(html.includes(String(reports.baseline.summary.mean_score)));
   assert.match(html, /Missing terrain exercise site/);
-  assert.match(html, /<meter min="0" max="6" value="5" aria-label="Terrain elevation available sites"/);
+  assert.match(html, /<meter[^>]*min="0"[^>]*max="6"[^>]*value="5"[^>]*aria-label="Terrain elevation available sites"/);
   assert.match(html, /role="img"/);
   assert.match(html, /View band counts/);
   assert.match(html, /scenario=baseline&amp;format=csv/);
-  assert.doesNotMatch(html, /value="isaias-2026"/);
+  const timeWindow = app.find(node => typeof node.props?.onValueChange === 'function')[0];
+  assert.doesNotMatch(JSON.stringify(timeWindow.props.children), /isaias-2026/);
   assert.equal(app.calls.length, 4);
   assert.ok(app.calls.every(call => call.url.startsWith('/api/') && call.cache === 'no-store'));
 });
 
 test('search and band filters affect only the table; CSV keeps the selected window', async () => {
   const app = mount(); app.render(); await app.settle();
-  app.find(node => node.type === 'input')[0].props.onChange({target: {value: 'demo-006'}});
+  app.find(node => node.props?.['aria-label'] === 'Find a fictional site')[0].props.onChange({target: {value: 'demo-006'}});
   let html = app.render();
   assert.match(html, /1 of 6 sites/);
   assert.match(html, /5 scored · 1 unknown/);
   assert.match(html, /scenario=baseline&amp;format=csv/);
-  const siteRows = () => app.find(node => node.type === 'section' && node.props.className === 'data-card data-explorer')[0];
+  const siteRows = () => app.find(node => node.props?.id === 'data-explorer')[0];
   assert.doesNotMatch(renderToStaticMarkup(siteRows()), /Biscayne exercise site/);
-  app.find(node => node.type === 'select')[1].props.onChange({target: {value: 'elevated'}});
+  app.find(node => typeof node.props?.onValueChange === 'function')[1].props.onValueChange('elevated');
   html = app.render();
   assert.match(html, /No sites match these filters/);
 });
@@ -130,11 +149,14 @@ test('stale rainfall stays unknown even with six hourly inputs and retains prove
   const html = await app.settle();
   assert.match(html, /MIXED DEMO/);
   assert.match(html, /0 scored · 6 unknown/);
-  assert.match(html, /Mean relative score<\/p><strong>Unknown<\/strong>/);
+  assert.match(html, /Mean relative score.*?Unknown/s);
   assert.match(html, /data-status="stale"/);
-  assert.match(html, /0\/6<\/div><\/td><td>6<\/td><td>Imported forecast/);
+  assert.match(html, /0\/6<\/div><\/td><td[^>]*>6<\/td><td[^>]*>Imported forecast/);
   assert.match(html, /6\/6 hourly inputs/);
   assert.match(html, /project.dataset.forecast/);
+  const chart = app.find(node => node.type?.name === 'ChartGroup6')[0];
+  assert.ok(chart.props.rainfall.every(row => row.value === null));
+  assert.equal(chart.props.bands.find(row => row.name === 'Unknown').value, 6);
   for (const label of ['Initialized', 'Imported', 'Valid from', 'Valid to', '0.1 degree']) assert.ok(html.includes(label));
 });
 
@@ -142,7 +164,7 @@ test('report failure clears metrics and download; recheck retries local endpoint
   let failed = false;
   const app = mount({reply: url => failed && url.includes('/api/reports?') ? {error: 'Invalid snapshot'} : undefined});
   app.render(); await app.settle(); failed = true;
-  app.find(node => node.type === 'button')[0].props.onClick();
+  app.find(node => typeof node.props?.onClick === 'function')[0].props.onClick();
   app.render();
   const html = await app.settle();
   assert.match(html, /role="alert"/);
@@ -158,5 +180,6 @@ test('a valid zero rainfall value renders as zero rather than unknown', async ()
   const app = mount({reply: url => url.includes('/api/reports?') ? zero : undefined});
   app.render(); const html = await app.settle();
   assert.match(html, /Six-hour rainfall in millimeters\. Biscayne: 0/);
-  assert.match(html, /width:0%/);
+  const chart = app.find(node => node.type?.name === 'ChartGroup6')[0];
+  assert.ok(chart.props.rainfall.every(row => row.value === 0));
 });

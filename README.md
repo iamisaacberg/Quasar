@@ -100,6 +100,11 @@ npm test
 | Reports & exports | Read scenario, comparison or site reports; print/save a PDF and download CSV, GeoJSON or a BI bundle. |
 
 Data is a separate sidebar view at `#data`, with its own time-window selector.
+Its layout uses the original `@shadcnblocks/dashboard2` summary and table
+sections with `@shadcnblocks/chart-group6`'s donut and horizontal bar pair,
+adapted to Quasar values. The existing application shell provides navigation;
+the chart group's outer landing-page padding is omitted and its legend wraps
+on narrow screens. No custom card/chart style overrides are applied.
 It reads the existing shared report pipeline, scenario list and source-status
 endpoints. Charts and summary cards include every site in that window; search
 and band filters affect only the site table. Its CSV contains the full window.
