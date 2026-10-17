@@ -115,8 +115,7 @@ rainfall is not replaced with synthetic values. Charts have corresponding
 table values. No Mapbox token is needed for this view.
 
 The Map overview fills the space beside the stock Application Shell 2 collapsible navigation
-sidebar (16rem desktop, 18rem mobile drawer), without dashboard headings, cards, tables or explainer panels. Satellite
-imagery with street labels is the default; `MAPBOX_STYLE` can override it.
+sidebar (16rem desktop, 18rem mobile drawer), without dashboard headings, cards, tables or explainer panels. The Mapbox Light style is the default; `MAPBOX_STYLE` can override it.
 The sidebar links to the map, exercise sites, Data and reports. Existing replay,
 source-status and guide content remains available through its section anchors.
 Mapbox resizes when the sidebar changes. Synthetic-demo attribution stays

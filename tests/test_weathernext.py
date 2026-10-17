@@ -127,11 +127,15 @@ class WeatherNextTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
-    def test_satellite_map_is_default_and_custom_styles_are_preserved(self):
+    def test_light_map_is_default_and_custom_styles_are_preserved(self):
         with patch.dict(os.environ, {"MAPBOX_STYLE": ""}):
-            self.assertEqual(map_settings()["style"], "mapbox://styles/mapbox/satellite-streets-v12")
+            self.assertEqual(map_settings()["style"], "mapbox://styles/mapbox/light-v11")
         with patch.dict(os.environ, {"MAPBOX_STYLE": "mapbox://styles/example/custom"}):
             self.assertEqual(map_settings()["style"], "mapbox://styles/example/custom")
+
+    def test_example_configuration_uses_the_light_map_default(self):
+        example_env = Path(".env.example").read_text()
+        self.assertIn("MAPBOX_STYLE=mapbox://styles/mapbox/light-v11", example_env)
 
     def test_only_public_mapbox_token_is_returned(self):
         with patch.dict(os.environ,{"MAPBOX_PUBLIC_TOKEN":"pk.test", "MAPBOX_STYLE":""}):

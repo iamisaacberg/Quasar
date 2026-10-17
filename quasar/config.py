@@ -36,7 +36,7 @@ def map_settings() -> dict:
     token = os.environ.get("MAPBOX_PUBLIC_TOKEN", "").strip()
     if token and (not token.startswith("pk.") or any(c.isspace() for c in token)):
         raise ValueError("MAPBOX_PUBLIC_TOKEN must be a public pk. token; secret tokens are never served")
-    style = os.environ.get("MAPBOX_STYLE") or "mapbox://styles/mapbox/satellite-streets-v12"
+    style = os.environ.get("MAPBOX_STYLE") or "mapbox://styles/mapbox/light-v11"
     if not style.startswith("mapbox://styles/"):
         raise ValueError("MAPBOX_STYLE must be a Mapbox style URL")
     return {"provider": "mapbox", "public_token": token, "style": style,

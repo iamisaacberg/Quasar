@@ -31,7 +31,7 @@ Create `.env` from `.env.example` if it does not exist and set:
 
 ```dotenv
 MAPBOX_PUBLIC_TOKEN=pk.your_public_browser_token
-MAPBOX_STYLE=mapbox://styles/mapbox/dark-v11
+MAPBOX_STYLE=mapbox://styles/mapbox/light-v11
 QUASAR_WEATHERNEXT_FILE=
 ```
 
