@@ -72,7 +72,7 @@ class HostedGateTests(unittest.TestCase):
 
     def test_wrong_password_and_bypass_headers_do_not_unlock(self):
         attempts = [
-            {"Authorization": "Basic dGVhbTp3cm9uZw=="},
+            {"Authorization": "Basic " + base64.b64encode(b"team:wrong").decode()},
             {"Authorization": "Basic !!!"},
             {"Cookie": f"authenticated=true; QUASAR_TEAM_PASSWORD={PASSWORD}"},
             {"X-Vercel-Protection-Bypass": PASSWORD, "X-Forwarded-User": "team"},
