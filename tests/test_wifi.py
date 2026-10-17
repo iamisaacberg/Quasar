@@ -1,4 +1,3 @@
-import base64
 import contextlib
 from http.client import HTTPSConnection
 import io
@@ -10,32 +9,31 @@ import ssl
 import tempfile
 import threading
 import unittest
+from urllib.parse import urlencode
 from unittest.mock import patch
 
 from quasar.server import ASSETS, make_server
+from quasar.access import SESSION_COOKIE
 from quasar.wifi import TeamGate, lan_address, main, tls_context, wifi_address
 
 
 PASSWORD = "test-only-shared-passphrase"
 
 
-def authorization(username="team", password=PASSWORD):
-    return "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
-
-
 class GateTests(unittest.TestCase):
-    def test_only_correct_credentials_unlock(self):
+    def test_only_correct_passphrase_and_signed_session_unlock(self):
         gate = TeamGate(PASSWORD)
-        self.assertTrue(gate.allows(authorization()))
-        self.assertTrue(gate.allows(authorization().replace("Basic", "basic")))
-        for header in ["", "Bearer secret", "Basic !!!", "Basic ☃",
-                       authorization("other"), authorization(password="wrong")]:
+        self.assertTrue(gate.allows_password(PASSWORD))
+        self.assertFalse(gate.allows_password("wrong"))
+        token, _ = gate.issue_session()
+        self.assertTrue(gate.allows_cookie_header(f"{SESSION_COOKIE}={token}"))
+        for header in ["", "authenticated=true", f"{SESSION_COOKIE}=invalid"]:
             with self.subTest(header=header):
-                self.assertFalse(gate.allows(header))
+                self.assertFalse(gate.allows_cookie_header(header))
 
     def test_unicode_password(self):
         gate = TeamGate("A long shared ☃ passphrase")
-        self.assertTrue(gate.allows(authorization(password="A long shared ☃ passphrase")))
+        self.assertTrue(gate.allows_password("A long shared ☃ passphrase"))
 
     def test_empty_and_short_passwords_are_refused(self):
         for password in ["", "short", " " * 12, "a" * 257, "long-password\n"]:
@@ -99,12 +97,12 @@ class ProtectedHttpsTests(unittest.TestCase):
         cls.thread.join()
         cls.directory.cleanup()
 
-    def request(self, path, *, method="GET", auth=None, body=None, context=None):
+    def request(self, path, *, method="GET", auth=None, body=None, context=None, headers=None):
         connection = HTTPSConnection(
             "127.0.0.1", self.server.server_port, timeout=5,
             context=context or self.client_context,
         )
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **(headers or {})}
         if auth is not None:
             headers["Authorization"] = auth
         try:
@@ -125,23 +123,56 @@ class ProtectedHttpsTests(unittest.TestCase):
                      "/api/exports", "/unknown"]:
             with self.subTest(path=path):
                 status, body, headers = self.request(path)
-                self.assertEqual(status, 401)
-                self.assertEqual(body, b"Team sign-in required.\n")
-                self.assertIn('Basic realm="Quasar team"', headers["WWW-Authenticate"])
-                self.assertEqual(headers["Cache-Control"], "no-store")
+                self.assertEqual(status, 200)
+                self.assertIn(b"Shared passphrase", body)
+                self.assertNotIn("WWW-Authenticate", headers)
+                self.assertEqual(headers["Cache-Control"], "private, no-store")
+
+    def test_passphrase_page_creates_a_protected_session(self):
+        body = urlencode({"password": PASSWORD, "return_to": "/api/config"})
+        status, result, headers = self.request(
+            "/_team/access", method="POST", body=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual((status, result), (303, b""))
+        self.assertEqual(headers["Location"], "/api/config")
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        self.assertTrue(cookie.startswith(f"{SESSION_COOKIE}="))
+        status, result, _ = self.request("/api/config", headers={"Cookie": cookie})
+        self.assertEqual(status, 200)
+        self.assertIn(b"county_fips", result)
+        status, _, _ = self.request("/api/config", headers={"Authorization": "Basic dGVhbTpwYXNz"})
+        self.assertEqual(status, 200)
 
     def test_bad_password_does_not_return_app_or_configuration(self):
-        for auth in [authorization(password="wrong"), "Basic !!!", "Bearer secret"]:
+        for auth in ["Basic dGVhbTp3cm9uZw==", "Basic !!!", "Bearer secret"]:
             with self.subTest(auth=auth):
                 status, body, _ = self.request("/api/config", auth=auth)
-                self.assertEqual(status, 401)
+                self.assertEqual(status, 200)
+                self.assertIn(b"Shared passphrase", body)
                 self.assertNotIn(b"public_token", body)
                 self.assertNotIn(PASSWORD.encode(), body)
 
+    def test_wrong_passphrase_shows_inline_error(self):
+        body = urlencode({"password": "wrong-passphrase", "return_to": "/"})
+        status, result, _ = self.request(
+            "/_team/access", method="POST", body=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn(b"did not match", result)
+
     def test_authenticated_page_and_api_work_over_tls(self):
+        body = urlencode({"password": PASSWORD, "return_to": "/"})
+        status, _, headers = self.request(
+            "/_team/access", method="POST", body=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        self.assertEqual(status, 303)
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
         for path in ["/", "/ui/app-shell.js", "/api/config", "/api/properties?scenario=peak"]:
             with self.subTest(path=path):
-                status, body, _ = self.request(path, auth=authorization())
+                status, body, _ = self.request(path, headers={"Cookie": cookie})
                 self.assertEqual(status, 200)
                 self.assertTrue(body)
                 self.assertNotIn(PASSWORD.encode(), body)
@@ -152,9 +183,12 @@ class ProtectedHttpsTests(unittest.TestCase):
             status, _, _ = self.request("/api/notifications/preview", method="POST", body=body)
             self.assertEqual(status, 401)
             preview.assert_not_called()
-        status, result, _ = self.request(
-            "/api/notifications/preview", method="POST", body=body, auth=authorization(),
-        )
+        login_body = urlencode({"password": PASSWORD, "return_to": "/"})
+        _, _, headers = self.request("/_team/access", method="POST", body=login_body,
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        status, result, _ = self.request("/api/notifications/preview", method="POST", body=body,
+                                         headers={"Cookie": cookie})
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(result)["sent_count"], 0)
 
@@ -162,6 +196,6 @@ class ProtectedHttpsTests(unittest.TestCase):
         for method in ["HEAD", "OPTIONS", "PUT"]:
             with self.subTest(method=method):
                 status, body, _ = self.request("/api/config", method=method)
-                self.assertEqual(status, 401)
+                self.assertEqual(status, 200 if method == "HEAD" else 401)
                 if method == "HEAD":
                     self.assertEqual(body, b"")

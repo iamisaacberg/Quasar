@@ -23,9 +23,7 @@ Planned: county GIS / FEMA / USGS / historical archive
 One Python process serves the API and static frontend. The React/Tailwind application shell in `frontend/` wraps the existing map/data controller; Vite compiles it into committed `quasar/static/ui/` assets. The Python runtime serves only explicit asset routes, and its container needs no Node.js runtime. The Shadcnblocks key is used only by development tooling, never by the API or browser. There is no database, worker, scheduler or external message delivery. This keeps the starter easy to run on each teammate's computer and on IBM Z. A later public service needs an application hosting stack, individual authentication, persistence, rate limits and operational monitoring.
 
 The optional `quasar.wifi` launcher binds to the laptop's Wi-Fi IPv4 address and
-requires HTTPS plus a shared password through HTTP Basic authentication (username
-`team`). Its gate runs before routing for every HTTP method, protecting static
-files and API endpoints together. Credentials are compared through constant-time
+requires HTTPS plus a shared passphrase entered on the Quasar team access page. A signed, HTTP-only session cookie protects static files and API endpoints together. Credentials are compared through constant-time
 digest comparison and never enter frontend configuration. A temporary local TLS
 certificate is generated with OpenSSL and its fingerprint is printed for manual
 verification. The private key is removed on normal exit. This is temporary team access,

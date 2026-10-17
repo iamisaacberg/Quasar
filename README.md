@@ -35,9 +35,10 @@ sh scripts/run-wifi.sh
 
 Enter and confirm a shared password of at least 12 characters (use a unique,
 hard-to-guess passphrase). The launcher detects your Mac's Wi-Fi address and
-prints an **https://** team URL. Teammates on the same Wi-Fi open that URL, use
-username **team**, and enter your shared password in the browser's sign-in
-prompt. The password protects the page, static assets, health endpoint and API.
+prints an **https://** team URL. Teammates on the same Wi-Fi open that URL and
+enter the shared passphrase on the Quasar team access page. The passphrase
+protects the page, static assets, health endpoint and API. A successful
+sign-in opens a short-lived browser session.
 
 The launcher creates a temporary HTTPS certificate and prints its SHA-256
 fingerprint. Browsers show a certificate warning: teammates should compare the

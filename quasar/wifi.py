@@ -104,7 +104,7 @@ def main(argv=None):
                     server.socket, server_side=True, do_handshake_on_connect=False,
                 )
                 print(f"\nTeam URL: https://{host}:{server.server_port}", flush=True)
-                print("Username: team\nPassword: the shared password you supplied.", flush=True)
+                print("Sign in with the shared passphrase on the access page.", flush=True)
                 print("Local certificate: verify this SHA-256 fingerprint before accepting the browser warning:")
                 print(fingerprint, flush=True)
                 print("Keep this laptop awake. Ctrl-C stops sharing. No public tunnel is opened.\n", flush=True)

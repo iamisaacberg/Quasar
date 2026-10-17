@@ -10,6 +10,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
+from .access import SESSION_COOKIE, SESSION_TTL, access_page, safe_return_to
 
 from .config import COUNTY_FIPS, COUNTY_NAME, NOTICE, TIMEZONE, map_settings, require_county
 from .adapters.weathernext import load_forecast
@@ -43,19 +44,67 @@ class Handler(BaseHTTPRequestHandler):
         if not super().parse_request():
             return False
         gate = getattr(self.server, "access_gate", None)
-        if gate is not None and not gate.allows(self.headers.get("Authorization", "")):
-            body = b"Team sign-in required.\n"
-            self.send_response(HTTPStatus.UNAUTHORIZED)
-            self.send_header("WWW-Authenticate", 'Basic realm="Quasar team", charset="UTF-8"')
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.end_headers()
-            if self.command != "HEAD":
-                self.wfile.write(body)
+        if gate is not None and not self._team_authorized(gate):
+            if self.command in ("GET", "HEAD"):
+                self._access_response(access_page(return_to=self.path).encode("utf-8"), 200)
+            else:
+                self._access_response(b"Team sign-in required.\n", HTTPStatus.UNAUTHORIZED,
+                                      "text/plain; charset=utf-8")
             self.close_connection = True
             return False
+        return True
+
+    def _team_authorized(self, gate):
+        if getattr(self, "_team_gate_checked", False):
+            return getattr(self, "_team_gate_allowed", False)
+        self._team_gate_checked = True
+        self._team_gate_allowed = (
+            (self.command == "POST" and urlsplit(self.path).path == "/_team/access")
+            or gate.allows_cookie_header(self.headers.get("Cookie", ""))
+        )
+        return self._team_gate_allowed
+
+    def _access_response(self, body, status, content_type="text/html; charset=utf-8", headers=()):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in headers:
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _team_login(self):
+        gate = getattr(self.server, "access_gate", None)
+        if gate is None:
+            return False
+        if self.headers.get_content_type() != "application/x-www-form-urlencoded":
+            self._access_response(access_page(error="Use the sign-in form to continue.").encode("utf-8"), 415)
+            return True
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if not 0 < length <= 4096:
+            self._access_response(access_page(error="Please enter your passphrase and try again.").encode("utf-8"), 400)
+            return True
+        fields = parse_qs(self.rfile.read(length).decode("utf-8", "replace"), keep_blank_values=True)
+        password = fields.get("password", [""])[0]
+        if not gate.allows_password(password):
+            target = safe_return_to(fields.get("return_to", ["/"])[0])
+            self._access_response(access_page(return_to=target, error="That passphrase did not match. Try again.").encode("utf-8"), 401)
+            return True
+        token, _ = gate.issue_session()
+        target = safe_return_to(fields.get("return_to", ["/"])[0])
+        self.send_response(303)
+        self.send_header("Location", target)
+        self.send_header("Set-Cookie", f"{SESSION_COOKIE}={token}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; Secure; SameSite=Strict")
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
         return True
 
     def setup(self):
@@ -120,6 +169,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 
     def do_POST(self):
+        if urlsplit(self.path).path == "/_team/access" and self._team_login():
+            return
         if self.path not in ("/api/notifications/preview", "/api/routes"):
             return self.send(404, {"error": "Route not found"})
         try:

@@ -9,15 +9,13 @@ in effect. The hosted app never loads `.env` or starts cloud queries.
 
 Set `QUASAR_TEAM_PASSWORD` as a **runtime secret** for each Vercel environment
 that will be deployed. Use a unique, randomly generated password of at least
-12 characters. Visitors sign in through the browser prompt with username
-`team`. Do not use a `VITE_` or other frontend environment variable for this
+12 characters. Visitors sign in through Quasar’s team access page. A successful sign-in sets a signed, HTTP-only browser session cookie that expires after 12 hours. Do not use a `VITE_` or other frontend environment variable for this
 password, and do not put credentials in a URL.
 
 Missing, blank, or invalid passwords block every app route with HTTP 503.
-Missing or incorrect visitor credentials return HTTP 401. Authentication runs
+Missing access shows the sign-in page; an incorrect passphrase returns the same page with an error. API and non-page requests without a valid session return HTTP 401. Authentication runs
 before serving the page, JavaScript, CSS, configuration, reports, exports and
-all other API routes. Unsupported methods are protected too. Query strings,
-cookies and Vercel bypass headers cannot unlock the application gate.
+all other API routes. Unsupported methods are protected too. Query strings and Vercel bypass headers cannot unlock the application gate. Only a signed session cookie issued after the passphrase check is accepted.
 
 All app responses disable caching and indexing. The static output directory may
 contain only a harmless placeholder because Vercel rejects empty outputs; the
@@ -77,5 +75,5 @@ unauthenticated visitor.
 Share the URL and password separately with teammates. To revoke access, change
 `QUASAR_TEAM_PASSWORD` and redeploy. Existing immutable deployments retain their
 original environment: remove or protect older deployments separately when
-revoking their credentials. Browsers may remember Basic credentials; closing
-the private browsing session is the simplest way to finish a shared demo.
+revoking their credentials. The browser session expires after 12 hours. Changing
+`QUASAR_TEAM_PASSWORD` invalidates existing sessions.
