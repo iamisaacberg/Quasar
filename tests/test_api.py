@@ -72,3 +72,32 @@ class ApiTests(unittest.TestCase):
                                              (" "*17000,"application/json",413)]:
             with self.subTest(expected=expected):
                 self.assertEqual(self.request("/api/notifications/preview", raw=raw, content_type=content_type)[0], expected)
+
+
+    def test_reports_and_export_routes(self):
+        for scenario, count in [("baseline", 6), ("compare", 18)]:
+            status, body, _ = self.request(f"/api/reports?scenario={scenario}")
+            self.assertEqual(status, 200)
+            self.assertEqual(len(json.loads(body)["rows"]), count)
+            for fmt, mime in [("csv", "text/csv; charset=utf-8"), ("geojson", "application/geo+json"), ("zip", "application/zip")]:
+                connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+                try:
+                    connection.request("GET", f"/api/exports?scenario={scenario}&format={fmt}")
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.getheader("Content-Type"), mime)
+                    self.assertEqual(response.getheader("Content-Disposition"), f'attachment; filename="quasar-{scenario}.{fmt}"')
+                    self.assertEqual(response.getheader("Cache-Control"), "no-store")
+                    self.assertTrue(response.read())
+                finally:
+                    connection.close()
+
+    def test_report_export_errors_are_json_not_downloads(self):
+        for path in ["/api/reports?scenario=invalid", "/api/exports?scenario=invalid",
+                     "/api/exports?format=exe", "/api/exports?county_fips=12011",
+                     "/api/reports?county_fips=12011", "/api/exports?format="]:
+            with self.subTest(path=path):
+                status, body, mime = self.request(path)
+                self.assertEqual(status, 400)
+                self.assertEqual(mime, "application/json")
+                self.assertIn("error", json.loads(body))

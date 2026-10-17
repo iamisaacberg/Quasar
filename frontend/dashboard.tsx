@@ -1,4 +1,5 @@
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
+import { Reports } from "./reports";
 import { ArrowUpRight, CircleHelp, CloudRain, Layers3, MapPin, Radar, TriangleAlert, Waves } from "lucide-react";
 
 declare global {
@@ -6,6 +7,16 @@ declare global {
 }
 
 export const QuasarDashboard = memo(function QuasarDashboard() {
+  const [isReportsView, setIsReportsView] = useState(window.location.hash === "#reports");
+  useEffect(() => {
+    // Mapbox may have initialized while the Reports view hid its container.
+    if (!isReportsView) window.dispatchEvent(new Event("resize"));
+  }, [isReportsView]);
+  useEffect(() => {
+    const update = () => setIsReportsView(window.location.hash === "#reports");
+    window.addEventListener("hashchange", update);
+    return () => window.removeEventListener("hashchange", update);
+  }, []);
   useEffect(() => {
     const start = () => { void window.Quasar?.start(); };
     if (window.Quasar) start();
@@ -13,7 +24,8 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
     return () => document.removeEventListener("quasar:ready", start);
   }, []);
   return (
-    <>
+    <div className={`workspace-view${isReportsView ? " is-reports-view" : ""}`}>
+      <Reports active={isReportsView} />
       <header className="workspace-header">
         <div className="breadcrumb"><span>Miami-Dade County</span><span aria-hidden="true">/</span><strong>Map overview</strong></div>
         <span className="demo-badge" id="mode-badge">SYNTHETIC DEMO</span>
@@ -54,6 +66,6 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
         <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read this exercise</summary><p>Choose a time window, then inspect a site on the map or in the table. The explainer shows how each input contributes to an illustrative relative score. Unknown sites are missing required data and receive no score. Synthetic exercise dates are a fictional clock, not current weather.</p><p>WeatherNext mode uses imported forecast rainfall with fictional site inputs and is labeled MIXED DEMO. H3 cells summarize occupied sites; they do not represent flood depth or probability. Follow official NWS and local guidance for real decisions.</p></details>
         <footer className="dashboard-footer"><span><Waves aria-hidden="true" />Quasar · IBM Z Datathon</span><p>Miami-Dade only · Synthetic exercise, not a historical storm replay · No notifications are sent</p></footer>
       </div>
-    </>
+    </div>
   );
 });

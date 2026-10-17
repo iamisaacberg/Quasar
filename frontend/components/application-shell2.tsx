@@ -4,7 +4,7 @@
 import * as React from "react";
 import {
   ChevronRight, ChevronsUpDown, CircleHelp, CloudRain, ExternalLink,
-  Layers3, Map, MapPin, Radar, ShieldCheck, Waves,
+  FileChartColumn, Layers3, Map, MapPin, Radar, ShieldCheck, Waves,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -32,6 +32,7 @@ const navGroups = [
     { label: "Map overview", icon: Map, href: "#map-overview" },
     { label: "Exercise sites", icon: MapPin, href: "#exercise-sites" },
     { label: "Forecast & sources", icon: CloudRain, href: "#data-sources" },
+    { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
   ] },
   { title: "Resources", items: [
     { label: "Exercise guide", icon: CircleHelp, href: "#exercise-guide", children: [

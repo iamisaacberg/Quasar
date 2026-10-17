@@ -90,6 +90,27 @@ The exercise dates are a fixed fictional clock, not today's weather or an actual
 
 After importing a valid WeatherNext snapshot and setting `QUASAR_WEATHERNEXT_FILE` in `.env`, restart and choose **WeatherNext 3 + fictional site inputs** in the time-window selector. The UI shows initialization/import timestamps and forecast status. Stale or incomplete rainfall yields unknown scores; it never silently falls back to synthetic rain in that mode. Notification previews remain limited to the synthetic exercise scenarios.
 
+## Reports & exports
+
+Open **Reports & exports** in the sidebar for a scenario overview, a comparison
+of the three exercise windows, or an explanation of one fictional site. Charts
+have matching data tables. **Print / Save as PDF** prints the selected report with
+its labels, dates, source notes and limitations; it links to the interactive map.
+Reports work without a Mapbox token. Isaac reviews visual and print layout.
+
+Download CSV for Power BI/Tableau, GeoJSON for spatial analysis, or the **BI bundle**
+for all data plus factor rows, metadata and import instructions. Start both
+teammates with `/api/exports?scenario=compare&format=zip`: six fictional sites across
+three windows produce 18 rows. Power BI can explore changes and completeness;
+Tableau can explore spatial patterns and unknowns. Relate factor rows by both
+site and scenario; preserve blank scores as unknown, never zero. Download again
+to refresh all files together. No export starts a cloud query or sends messages.
+
+These are synthetic or mixed demonstrations of an unvalidated heuristic, not a
+trained flood model or countywide coverage. WeatherNext reports keep the imported
+forecast's freshness and native resolution visible alongside fictional site inputs.
+See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-contract).
+
 ## API
 
 | Method | Path | Result |
@@ -100,6 +121,8 @@ After importing a valid WeatherNext snapshot and setting `QUASAR_WEATHERNEXT_FIL
 | GET | `/api/properties?scenario=peak` | Scored GeoJSON points |
 | GET | `/api/properties?scenario=weathernext` | Imported forecast + fictional property inputs, when a valid snapshot is configured |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
+| GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
+| GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |
 | GET | `/api/official-alerts` | Explicit `not_connected` status |
 | POST | `/api/notifications/preview` | Simulation only; no delivery |
 

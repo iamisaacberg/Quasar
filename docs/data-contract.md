@@ -56,3 +56,52 @@ Hourly timestamps denote the end of each accumulation interval. The six timestam
 ## Contract for future real adapters
 
 Do not silently replace fixtures. Add an explicit data mode and source status. Every real adapter must retain source URL/record ID, retrieval time, observation/issue/valid times where relevant, CRS, vertical datum, units, license and transformation steps. Add authoritative county geometry validation, source-age limits, missing/stale states, and tests for outside-county records. Store only normalized county-filtered features in the scoring pipeline. Do not turn a centroid association into a claim of building-level inundation.
+
+## Reports and BI exports (additive contract)
+
+`GET /api/reports?scenario=baseline|heavy-rain|peak|weathernext` returns the shared
+analysis report with `generated_at`, scenario, summary, provenance, forecast
+metadata and `rows`. Each row includes coordinates, site/scenario keys, relative
+score, band, missing input names and available factor contributions. It also
+repeats county, mode, input status, window validity, model version, generation
+and forecast initialization/import times, source table, statistic and native
+resolution. Rainfall is mm per six hours; coordinates are EPSG:4326. The original
+property API and scoring are unchanged. Unknown scores have no factor rows.
+
+`scenario=compare` returns only the three synthetic windows, a `scenarios` array
+of scenario/summary pairs, and 18 rows (six fictional sites per window). It has
+no single scenario/summary. All rows share one generation timestamp. The Python
+`compare_scenarios()` helper continues returning a list for notebook callers.
+
+`GET /api/exports?scenario=...&format=csv|geojson|zip` defaults to baseline CSV.
+Responses use attachment filenames `quasar-SCENARIO.EXT`, `Cache-Control: no-store`
+and the matching CSV, GeoJSON or ZIP MIME type. Invalid county, scenario and
+format return JSON errors, not successful attachments. The exports invoke only
+local shared analysis; they never query BigQuery, load notebook code or expose
+configuration credentials. A missing/invalid WeatherNext snapshot is an error;
+a structurally valid stale/incomplete snapshot retains unknown rainfall/scores.
+
+CSV has one row per `(property_id, scenario)`. Numeric nulls are empty cells;
+`missing` is semicolon-separated. Text uses CSV quoting and potentially executable
+spreadsheet text is prefixed with an apostrophe; negative numeric coordinates
+remain numeric. GeoJSON has the same flat fields with JSON nulls and a missing
+array. Feature IDs are `property_id:scenario`, so compare features remain unique.
+Compare maps repeat point coordinates; filter scenario before mapping.
+
+ZIP includes `sites.csv`, `factors.csv`, `sites.geojson`, `metadata.json` and
+`README.txt`. Factors relate on BOTH property_id and scenario, with one row per
+available scoring factor. An inner join drops unknown sites, and a flattened
+factor join repeats site counts: prefer a relationship or left join with distinct
+site/window counts. Metadata lists columns and meanings, units, CRS, timezones,
+source terms, transformation notes, scenario summaries and forecast provenance.
+All bundle files derive from the same report snapshot. Keep nulls distinct from
+zero; score averages exclude unknown sites and an all-unknown average is null.
+
+App reports default to baseline and provide scenario overview, synthetic-window
+comparison, and site explanation. Site selection affects only the explanation;
+downloads contain all sites in the selected window or comparison. Every report
+and export carries synthetic/mixed status and limitations. Printable reports
+retain charts, tables, validity/generation/source timestamps and official-guidance
+notes; they link to the interactive map rather than capturing a basemap. Print
+uses the browser's Print / Save as PDF. BI tools refresh by manual file replacement;
+no hosted embedding, automated refresh or native workbook generation is included.

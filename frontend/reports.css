@@ -1,0 +1,53 @@
+/* Report styles stay local to the new view and its printable document. */
+.is-reports-view > :not(.reports-page) { display: none; }
+.reports-page { max-width: 1120px; padding: 30px; margin: 0 auto; color: var(--foreground); }
+.reports-page[hidden] { display: none; }
+.reports-page h1 { font-size: 28px; font-weight: 600; letter-spacing: -.035em; }
+.reports-page h2 { font-size: 21px; font-weight: 600; margin: 12px 0; }
+.reports-page h3 { font-size: 15px; font-weight: 600; margin: 12px 0; }
+.reports-page p { font-size: 13px; line-height: 1.7; margin: 8px 0; }
+.reports-page .report-eyebrow { color: var(--primary); font-size: 10px; font-weight: 600; letter-spacing: .1em; }
+.report-controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin: 24px 0; }
+.report-controls label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.report-controls select { max-width: 100%; background: white; border: 1px solid var(--border); padding: 9px; border-radius: 6px; font: inherit; }
+.report-controls button, .report-downloads a { display: inline-block; border: 1px solid var(--border); background: var(--secondary); color: var(--primary); border-radius: 6px; padding: 9px 12px; font-size: 12px; text-decoration: none; }
+.report-controls button:disabled { opacity: .5; cursor: default; }
+.report-document { border: 1px solid var(--border); border-radius: 10px; padding: 24px; background: var(--background); }
+.report-mode { font-size: 10px; letter-spacing: .06em; background: #fffbeb; color: #876219; padding: 6px 8px; border-radius: 5px; }
+.report-notice { background: #fffcf3; color: #806329; padding: 12px; border: 1px solid #f0e7cb; border-radius: 6px; font-size: 12px; line-height: 1.7; margin: 20px 0; }
+.report-block { margin-top: 26px; }
+.report-chart { width: 100%; height: auto; display: block; margin: 16px 0; }
+.report-table-wrap { overflow-x: auto; }
+.reports-page table { border-collapse: collapse; width: 100%; font-size: 12px; text-align: left; margin: 14px 0; }
+.reports-page caption { text-align: left; font-weight: 500; margin-bottom: 8px; }
+.reports-page th, .reports-page td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.reports-page th { font-weight: 500; }
+.reports-page thead { background: var(--secondary); }
+.report-sources { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 14px; overflow-wrap: anywhere; }
+.report-sources a { text-decoration: underline; }
+.report-downloads { padding: 16px 0; }
+.report-downloads > div { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.report-error { color: #9c352e; padding: 12px; border: 1px solid #f2d1cb; }
+.report-print-map { display: none; }
+.reports-page :is(a, select, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media (max-width: 767px) { .reports-page { padding: 18px; }.report-document { padding: 14px; }.report-controls label { width: 100%; } }
+@media print {
+  @page { margin: 16mm; }
+  html:has(.reports-page:not([hidden])), body:has(.reports-page:not([hidden])),
+  body:has(.reports-page:not([hidden])) :is(#root, .quasar-shell, .quasar-shell > main) { height: auto !important; min-height: 0 !important; overflow: visible !important; display: block !important; }
+  .quasar-shell:has(.reports-page:not([hidden])) > :not(main),
+  .quasar-shell:has(.reports-page:not([hidden])) > main > header,
+  body:has(.reports-page:not([hidden])) .skip-link { display: none !important; }
+  .is-reports-view > :not(.reports-page), .reports-page > :not(.report-document), .report-controls, .report-downloads { display: none !important; }
+  .reports-page[hidden] { display: none !important; }
+  .reports-page { max-width: none; padding: 0; margin: 0; color: #111; }
+  .report-document { border: 0; border-radius: 0; padding: 0; }
+  .report-chart { break-inside: avoid; print-color-adjust: exact; }
+  .report-mode, .report-notice { print-color-adjust: exact; }
+  .report-table-wrap { overflow: visible; }
+  .reports-page table { font-size: 10px; }
+  .reports-page tr { break-inside: avoid; }
+  .reports-page thead { display: table-header-group; }
+  .reports-page h2, .reports-page h3, .reports-page caption { break-after: avoid; }
+  .report-print-map { display: inline; }
+}

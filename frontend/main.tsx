@@ -4,5 +4,5 @@ import { QuasarDashboard } from "@/dashboard";
 import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
-  <ApplicationShell2><QuasarDashboard /></ApplicationShell2>,
+  <ApplicationShell2 className="quasar-shell"><QuasarDashboard /></ApplicationShell2>,
 );
