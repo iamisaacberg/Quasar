@@ -153,6 +153,49 @@ rainfall/stage, verified flooding/closures, building footprints and floor height
 are still separate acquisition/modeling tasks. Feature preparation does not
 validate the heuristic or produce safe navigation/evacuation guidance.
 
+## Application inspection artifact
+
+The optional inspection layer exposes these descriptive inputs in parcel details
+and cell summaries. It does not change the scoring pipeline. Prepare a **new**
+artifact using the completed reconciled inputs, matching indexed parcel database,
+the original authoritative county boundary and any already-imported schema-3
+forecast snapshots:
+
+```sh
+.context/gis-venv/bin/python scripts/prepare_parcel_inspection.py \
+  --database data/processed/okaloosa/linuxone/quasar-parcels.sqlite3 \
+  --inputs data/processed/okaloosa/parcel-inputs/20261017-reconciled \
+  --boundary data/raw/census_okaloosa_county.geojson \
+  --weather data/processed/weathernext.json data/processed/isaias-2026.json \
+  --output data/processed/okaloosa/parcel-inspection/NEW_RUN
+```
+
+Run `npm ci --ignore-scripts` first: preparation uses pinned `h3-js` to obtain
+cell geometry. GIS work uses the existing optional local dependencies only.
+Omit `--weather` when no snapshots are available; native overlap coverage then
+remains unavailable. The command never downloads sources or runs cloud queries.
+
+Preparation verifies source/input/database hashes and county compatibility,
+validates exact parcel containment, preserves the original descriptive records,
+computes positive-area overlaps with native forecast polygons in EPSG:26916,
+and counts distinct indexed parcel IDs directly at each H3 resolution. A cell
+summary describes indexed memberships, not a count of homes; coarse memberships
+follow the existing R7 ancestor index. Failed runs have no final manifest.
+
+Set `QUASAR_PARCEL_CONTEXT_DIRECTORY` to the new output directory on the host
+serving `QUASAR_PARCEL_DATABASE`. Runtime requires only Python's standard library
+and verifies the completed inspection manifest, database checksum, parcel version,
+cell index and county boundary before serving it. A changed source bundle needs
+a newly prepared artifact. Transfer/configuration and service restarts are
+operator actions; committing code does not activate real inputs remotely.
+Vercel uses the existing authenticated server-only parcel proxy for the new
+manifest/context/summary endpoints; the inspection SQLite file is never exposed.
+
+The browser joins prepared native IDs and exact geometries to the selected
+forecast response. Multiple overlaps stay separate; stale/missing hours stay
+unavailable. Synthetic exercise rainfall never applies to real parcels. The
+overall parcel score remains unknown in all modes.
+
 ## October 17, 2026 preparation checkpoint
 
 Completed artifact:

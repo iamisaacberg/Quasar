@@ -222,6 +222,11 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
 .selection-parcel-row { display: flex; align-items: center; justify-content: space-between; width: 100%; gap: .5rem; border-bottom: 1px solid var(--border); padding: .6rem .2rem; text-align: left; }
 .selection-parcel-row strong { font-size: .7rem; font-family: ui-monospace, monospace; }
 .selection-parcel-row span { font-size: .58rem; color: var(--muted-foreground); }
+.selection-actions, #parcel-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .6rem; }
+.selection-actions button, #parcel-pagination button { border: 1px solid var(--border); border-radius: 5px; padding: .3rem .45rem; color: var(--primary); }
+#parcel-search-label { display: block; font-size: .66rem; margin: .5rem 0; }
+#parcel-search { display: block; width: 100%; border: 1px solid var(--border); border-radius: 5px; padding: .4rem; margin-top: .25rem; }
+#parcel-page, #context-status { font-size: .66rem; color: var(--muted-foreground); }
 .selection-factors > div { display: flex; justify-content: space-between; gap: .7rem; padding: .35rem 0; }
 .selection-factors dd { text-align: right; color: var(--muted-foreground); overflow-wrap: anywhere; min-width: 0; }
 .selection-note { color: var(--muted-foreground); font-size: .66rem; line-height: 1.5; margin-top: .5rem; overflow-wrap: anywhere; }

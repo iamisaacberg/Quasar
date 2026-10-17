@@ -22,6 +22,64 @@ PAGE_SIZE = 100
 _ids_cache = OrderedDict()
 
 
+def indexed_version(metadata):
+    return metadata["source_provenance"]["output_sha256"] + ":" + metadata["cell_index_sha256"]
+
+
+def parcel_manifest():
+    if os.environ.get("QUASAR_LINUXONE_API_URL"):
+        return remote_inspection("/api/parcels/manifest")
+    if os.environ.get("QUASAR_PARCEL_DATABASE"):
+        from .parcel_context import inventory_metadata
+        meta = inventory_metadata()
+        source = meta["source_provenance"]
+        return {"status": "ready", "county_fips": COUNTY_FIPS, "source_mode": "indexed",
+                "source_url": source["source_url"], "dataset_version": indexed_version(meta),
+                "inventory_id": source["output_sha256"],
+                "boundary_version": source["county_boundary"]["sha256"],
+                "retrieved_at": source["retrieved_at"], "crs": "EPSG:4326", "geometry_valid_until": None}
+    boundary = county_boundary()
+    boundary_version = hashlib.sha256(json.dumps(boundary["features"][0]["geometry"], sort_keys=True).encode()).hexdigest()
+    day = int(time.time() // 86400)
+    return {"status": "ready", "county_fips": COUNTY_FIPS, "source_mode": "live_gis",
+            "source_url": PARCEL_URL, "dataset_version": f"gis-day-{day}", "inventory_id": None,
+            "boundary_version": boundary_version, "retrieved_at": _now(), "crs": "EPSG:4326",
+            "geometry_valid_until": datetime.fromtimestamp((day + 1) * 86400, timezone.utc).isoformat()}
+
+
+def remote_inspection(path, inventory_id=None):
+    """Only fixed inspection routes can cross the existing server-only proxy."""
+    if not (path == "/api/parcels/manifest" or re.fullmatch(r"/api/parcels/[0-9]{1,16}/context", path)
+            or re.fullmatch(r"/api/cells/8[4-7][0-9a-f]{13}/summary", path)):
+        raise ValueError("Invalid parcel inspection route")
+    base = os.environ.get("QUASAR_LINUXONE_API_URL", "").rstrip("/")
+    token = os.environ.get("QUASAR_LINUXONE_API_TOKEN", "")
+    parsed = urlsplit(base)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or len(token) < 32):
+        raise SourceUnavailable("LinuxONE parcel service is not configured.")
+    query = "?" + urlencode({"inventory_id": inventory_id}) if inventory_id else ""
+    request = Request(base + path + query, headers={"X-Quasar-Parcel-Token": token})
+    try:
+        with build_opener(_NoRedirect).open(request, timeout=12) as response:
+            body = response.read(2_000_001)
+        if len(body) > 2_000_000:
+            raise ValueError("Inspection response too large")
+        data = json.loads(body)
+        if data.get("county_fips") != COUNTY_FIPS or data.get("status") != "ready":
+            raise ValueError("Invalid county inspection")
+        if path.endswith("manifest"):
+            if (data.get("source_mode") != "indexed" or not all(isinstance(data.get(k), str) and data[k]
+                    for k in ("dataset_version", "inventory_id", "boundary_version", "source_url", "crs"))):
+                raise ValueError("Invalid inventory manifest")
+        elif (data.get("risk_score") is not None or data.get("risk_band") != "unknown"
+              or (inventory_id and data.get("inventory_id") != inventory_id)):
+            raise ValueError("Unsupported score or mismatched inventory")
+        return data
+    except Exception as exc:
+        raise SourceUnavailable("LinuxONE parcel inspection unavailable; inputs remain unknown.") from exc
+
+
 class SourceUnavailable(Exception):
     """Source failures must never masquerade as an empty inventory."""
 
@@ -157,6 +215,7 @@ def _database_page(cell_id, offset, inventory_id):
             "county_fips": COUNTY_FIPS,
             "source_total": total, "checked_count": next_offset, "excluded_count": 0,
             "inventory_id": source["output_sha256"], "next_offset": next_offset if next_offset < total else None,
+            "dataset_version": indexed_version(metadata),
             "source_url": source["source_url"], "terms_url": source["terms_url"],
             "retrieved_at": source["retrieved_at"], "inventory_at": source["retrieved_at"],
             "county_boundary_retrieved_at": source["county_boundary"]["retrieved_at"],
@@ -264,6 +323,7 @@ def parcel_page(ring_value, offset_value="0", inventory_id=None, cell_id=None):
             "county_fips": COUNTY_FIPS,
             "source_total": len(ids), "checked_count": next_offset, "excluded_count": excluded,
             "inventory_id": fingerprint,
+            "dataset_version": f"gis-day-{int(time.time() // 86400)}",
             "next_offset": next_offset if next_offset < len(ids) else None,
             "source_url": PARCEL_URL, "terms_url": TERMS_URL, "retrieved_at": _now(), "inventory_at": queried_at,
             "county_boundary_retrieved_at": county["retrieved_at"], "crs": "EPSG:4326", "units": "degrees",

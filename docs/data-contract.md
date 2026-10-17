@@ -164,6 +164,35 @@ no hosted embedding, automated refresh or native workbook generation is included
 
 ## County grid and parcel browsing
 
+### Persistent inspection (additive)
+
+`GET /api/parcels/manifest` returns county, source mode/URL, dataset and boundary
+versions, CRS, retrieval time and geometry freshness. Indexed dataset versions
+include the parcel snapshot and cell-index checksums. Live GIS versions expire
+at the next UTC day; an ID inventory alone does not version changed shapes.
+The browser checks this manifest on entry and after 15 minutes before reuse.
+IndexedDB retains validated pages/progress for seven days, up to 100 MiB by LRU;
+failed checks preserve cached geometry with an explicit unavailable-source label.
+HTTP responses remain private/no-store; the application cache stores no credentials.
+
+`GET /api/parcels/{integer-id}/context?inventory_id=...` and
+`GET /api/cells/{h3-id}/summary?inventory_id=...` read the completed inspection
+artifact configured by `QUASAR_PARCEL_CONTEXT_DIRECTORY`. Its final manifest,
+SQLite checksum, county, parcel snapshot and boundary must match the indexed
+inventory. Responses keep `risk_score: null` and `risk_band: unknown`.
+Context contains descriptive `inputs`, `forecast_overlaps`, artifact version and
+`provenance`. Cell summaries support R4–R7 and count distinct indexed parcel IDs,
+with terrain/FEMA coverage counts. Missing artifacts return explicit unavailable
+states, never zero coverage. Invalid IDs/scope return 400; source failures 502.
+The same server-only parcel authentication/proxy applies to all these endpoints.
+
+Offline preparation copies verified descriptive records and computes positive-area
+native forecast overlaps in EPSG:26916, keeping native IDs, geometry and overlap
+fractions. Multiple cells remain separate. Browser rainfall comes only from the
+selected scenario's existing `weather_cells`, matched by native ID and geometry;
+stale/missing values stay null. Synthetic exercise rainfall is never assigned to
+real parcels. No runtime GIS dependency, cloud query or score calculation is added.
+
 `GET /api/county` returns a WGS84 GeoJSON collection with the single authoritative
 Census TIGERweb `GEOID=12091` boundary, source URL, retrieval time, CRS, units,
 license and processing notes. It is cached in memory for the UTC day. The browser
@@ -190,19 +219,23 @@ five minutes in a bounded in-memory cache; each worker may reacquire them.
 County validation is authoritative geometry validation, not trust in a supplied
 FIPS or an envelope. Page/source failures are HTTP 502 with `status: unavailable`,
 never successful empty inventories. Bad requests and non-pilot FIPS are HTTP 400.
-The browser discards late results after selection changes, labels partial loads,
-and offers retry; only a completed load claims all source matches were checked.
+The browser retains completed late pages in cache without changing the current
+selection, labels partial loads and offers retry. Only a completed load claims
+all source matches were checked. Lists show 50 searchable rows per page without
+limiting the complete inventory.
 
 Parcel properties are `parcel_id`, `county_fips: 12091`,
 `risk_score: null`, and `risk_band: unknown`. Metadata includes source/terms URLs,
 retrieval/inventory/boundary retrieval times, CRS `EPSG:4326`, degrees, license
 notes and processing steps. No forecast, terrain, FEMA or gauge joins are implied.
 Raw/derived research downloads stay in ignored `data/raw/` / `data/processed/`.
-Runtime reads are kept in memory; no durable parcel dataset is written by the app.
+Server runtime reads remain read-only. The browser persists public geometry and
+pagination in IndexedDB under the bounded inspection cache policy above.
 
 Separate offline descriptive-input artifacts are defined in
 [parcel input preparation](parcel-inputs.md). Their terrain/FEMA/reference-distance
-fields do not enter this API or the scoring pipeline. A complete artifact requires
+fields enter the opt-in inspection endpoints above, separately from geometry, and
+never enter the scoring pipeline. A complete artifact requires
 its final manifest; every research record retains null risk scores and explicit
 coverage/unknown states.
 

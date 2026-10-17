@@ -3,6 +3,8 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const Replay=require('../quasar/static/replay.js');
+const QuasarParcelCache=require('../quasar/static/parcel-cache.js');
+const QuasarInspection=require('../quasar/static/inspection.js');
 
 class Element {
   constructor(tag='div'){this.tag=tag;this.children=[];this.style={};this.value='';this.checked=true;}
@@ -38,7 +40,7 @@ async function boot(hash="#isaias-replay",{weather=false}={}){
   };
   const context={console,URLSearchParams,fetch,document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
     Event:class{},setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
-    window:{location:{hash},addEventListener:(name,fn)=>{events[name]=fn;}}};
+    window:{QuasarParcelCache,QuasarInspection,location:{hash},addEventListener:(name,fn)=>{events[name]=fn;}}};
   vm.runInNewContext(fs.readFileSync('quasar/static/replay.js','utf8'),context);
   await vm.runInNewContext(fs.readFileSync('quasar/static/app.js','utf8'),context);
   return{get,requests,timers,location:context.window.location,hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};

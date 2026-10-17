@@ -44,7 +44,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["status"], "not_connected")
 
     def test_static_assets(self):
-        for path in ["/", "/app.js", "/style.css", "/ui/app-shell.js", "/ui/app-shell.css", "/spatial.js", "/vendor/h3-js.umd.js"]:
+        for path in ["/", "/app.js", "/style.css", "/ui/app-shell.js", "/ui/app-shell.css", "/spatial.js", "/parcel-cache.js", "/inspection.js", "/vendor/h3-js.umd.js"]:
             with self.subTest(path=path):
                 status, body, _ = self.request(path)
                 self.assertEqual(status, 200)

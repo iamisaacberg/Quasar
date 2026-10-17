@@ -7,6 +7,7 @@ add individual authentication, request limits, monitoring, and persistence befor
 import json
 import hmac
 import os
+import re
 import ssl
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,8 @@ from .replay import timeline, advisory_context
 from .routing import route
 from .analysis import report
 from .exports import export
-from .parcels import county_boundary, parcel_page, SourceUnavailable
+from .parcels import county_boundary, parcel_page, parcel_manifest, remote_inspection, SourceUnavailable
+from .parcel_context import inspection
 from .bridge import serve_snapshot
 
 STATIC = Path(__file__).parent / "static"
@@ -33,6 +35,8 @@ ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
           "/app.js": ("app.js", "text/javascript; charset=utf-8"),
           "/style.css": ("style.css", "text/css; charset=utf-8"),
           "/spatial.js": ("spatial.js", "text/javascript; charset=utf-8"),
+          "/parcel-cache.js": ("parcel-cache.js", "text/javascript; charset=utf-8"),
+          "/inspection.js": ("inspection.js", "text/javascript; charset=utf-8"),
           "/vendor/h3-js.umd.js": ("vendor/h3-js.umd.js", "text/javascript; charset=utf-8")}
 
 
@@ -158,13 +162,26 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
-            if url.path == "/api/parcels":
+            if url.path.startswith(("/api/parcels", "/api/cells/")):
                 parcel_token = os.environ.get("QUASAR_PARCEL_API_TOKEN", "")
                 parcel_database = os.environ.get("QUASAR_PARCEL_DATABASE", "")
                 if parcel_database and len(parcel_token) < 32:
                     return self.send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Parcel API authentication is not configured"})
                 if parcel_token and not hmac.compare_digest(self.headers.get("X-Quasar-Parcel-Token", ""), parcel_token):
                     return self.send(HTTPStatus.UNAUTHORIZED, {"error": "Parcel API authentication required"})
+                if url.path == "/api/parcels/manifest":
+                    return self.send(200, parcel_manifest())
+                match = re.fullmatch(r"/api/(parcels|cells)/([^/]+)/(context|summary)", url.path)
+                if match:
+                    group, identifier, action = match.groups()
+                    if (group, action) not in (("parcels", "context"), ("cells", "summary")):
+                        raise ValueError("Invalid inspection route")
+                    inventory = query.get("inventory_id", [None])[0]
+                    result = (remote_inspection(url.path, inventory) if os.environ.get("QUASAR_LINUXONE_API_URL")
+                              else inspection("parcel" if group == "parcels" else "cell", identifier, inventory))
+                    return self.send(200, result)
+                if url.path != "/api/parcels":
+                    return self.send(404, {"error": "Route not found"})
                 return self.send(200, parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
                                                  query.get("inventory_id", [None])[0], query.get("cell", [None])[0]))
             if url.path == "/api/scenarios":
