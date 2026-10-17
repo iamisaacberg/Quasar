@@ -197,7 +197,7 @@ JSON responses and downloads use `Cache-Control: no-store`; JSON serialization r
 | Setting | Default or rule |
 | --- | --- |
 | `MAPBOX_PUBLIC_TOKEN` | Empty; only whitespace-free `pk.` values accepted; deliberately browser-visible |
-| `MAPBOX_STYLE` | `mapbox://styles/mapbox/satellite-streets-v12`; requires a Mapbox style URL |
+| `MAPBOX_STYLE` | `mapbox://styles/mapbox/light-v11`; requires a Mapbox style URL |
 | `QUASAR_WEATHERNEXT_FILE` | Unconfigured unless explicitly set |
 | `QUASAR_REPLAY_FILE` | `data/processed/isaias-2026.json` |
 | `QUASAR_ROUTES_FILE` | `data/processed/evacuation-network.json` |

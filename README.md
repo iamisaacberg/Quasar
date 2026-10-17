@@ -98,7 +98,7 @@ The **Data** sidebar view provides a separate selected-window summary, charts, i
 The Map overview fills the space beside the stock Application Shell 2 navigation
 sidebar. Its toolbar keeps the data-source selector, rainfall/exposure display,
 **Isaias simulation** action and **Inspect sites** panel available on the map.
-Satellite imagery with street labels is the default; `MAPBOX_STYLE` can override it.
+The Mapbox Light style is the default; `MAPBOX_STYLE` can override it.
 Mapbox resizes when either sidebar changes.
 
 When an imported WeatherNext snapshot is selectable, the map opens with that
