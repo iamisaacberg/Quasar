@@ -23,6 +23,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   const exposureTimers=new Map();
   class Clock extends Date {static now(){return clock;}}
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
+  get("map").parentElement = get("map-viewport");
   const data = {type:"FeatureCollection", mode:mixed ? "mixed_forecast_demo" : "synthetic_demo", notice:"demo notice",
     scenario:{id:mixed ? "weathernext" : "baseline",rainfall_6h_mm:15,valid_from:"2026-10-17T12:00:00Z",valid_to:"2026-10-17T18:00:00Z"},
     forecast:mixed ? {status:forecastStatus,init_time:"2026-10-17T12:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"} : null,
@@ -154,7 +155,7 @@ test("React shell can mount before starting the controller, and repeated starts 
 test("changing the shell content width resizes Mapbox without replacing its sources", async () => {
   const app = await boot({configured:true});
   app.map.handlers["load:"]();
-  assert.equal(app.observed,app.get("map"));
+  assert.equal(app.observed,app.get("map-viewport"));
   app.resize();
   assert.equal(app.resizeCount,1);
   assert.equal(app.map.sources.sites.data.features.length,1);
