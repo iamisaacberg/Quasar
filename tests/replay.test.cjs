@@ -9,14 +9,15 @@ class Element {
   append(...items){this.children.push(...items);if(this.tag==='select'&&!this.value)this.value=items[0]?.value;}
   replaceChildren(...items){this.children=items;}
   setAttribute(name,value){this[name]=value;}
+  getAttribute(name){return this[name];}
 }
-async function boot(){
+async function boot(hash="#isaias-replay",{weather=false}={}){
   const ids=new Map(),timers=new Map(),requests=[],held=[];
   let hold=null,fail=null;
   const get=id=>{if(!ids.has(id))ids.set(id,new Element(id==='scenario'?'select':'div'));return ids.get(id);};
   get('replay-mode').value='archive';get('replay-preset').value='archived';get('road-state').value='closed';
   const events={};
-  const feature=(id,score)=>({type:'Feature',id,geometry:{type:'Point',coordinates:[-80.2,25.8]},properties:{id,label:id,risk:{score,band:score===null?'unknown':'moderate',factors:[],missing:[]}}});
+  const feature=(id,score)=>({type:'Feature',id,geometry:{type:'Point',coordinates:[-86.5,30.5]},properties:{id,label:id,risk:{score,band:score===null?'unknown':'moderate',factors:[],missing:[]}}});
   const fetch=async(url,options)=>{
     requests.push({url,body:options?.body});
     const path=url.split('?')[0],params=options?.body?JSON.parse(options.body):Object.fromEntries(new URLSearchParams(url.split('?')[1]));
@@ -24,22 +25,23 @@ async function boot(){
     if(path==='/api/timeline'&&params.at===fail)return{ok:false,json:async()=>({error:'timeline unavailable'})};
     let body;
     if(path==='/api/config')body={map:{configured:false}};
-    else if(path==='/api/scenarios')body={scenarios:[{id:'baseline',label:'Baseline'},{id:'isaias-2026',label:'Isaias 2026'}]};
+    else if(path==='/api/scenarios')body={scenarios:[{id:'baseline',label:'Baseline'},{id:'isaias-2026',label:'Isaias 2026'},...(weather?[{id:'weathernext',label:'WeatherNext 3'}]:[])]};
     else if(path==='/api/weather/status')body={status:'not_configured',message:'No current forecast'};
     else if(path==='/api/official-alerts')body={message:'Not connected'};
     else if(path==='/api/replay/context')body={status:'loaded',advisories:[{number:1,issued_at:'2026-10-06T21:00:00Z',text:'Synthetic test advisory context',source_url:'https://www.nhc.noaa.gov/'}]};
+    else if(path==='/api/properties'&&params.scenario!=='isaias-2026')body={type:'FeatureCollection',mode:params.scenario==='weathernext'?'mixed_forecast_demo':'synthetic_demo',scenario:{id:params.scenario,valid_from:Replay.hour(0),valid_to:Replay.hour(6),rainfall_6h_mm:15},features:[feature('demo-001',33),feature('demo-002',44)]};
     else if(path==='/api/properties')body={type:'FeatureCollection',mode:'historical_mixed_demo',notice:'Mixed exercise',scenario:{id:'isaias-2026',valid_from:params.at,valid_to:Replay.hour(6)},replay:{at:params.at},features:[feature('demo-001',33),feature('demo-002',44)]};
     else if(path==='/api/timeline')body={...params,source_status:'loaded',reconstruction:'initialization-based',label:'Illustrative exposure for the next six hours',points:Array.from({length:25},(_,i)=>({at:Replay.hour(i),risk:{score:i===2?null:33},change:i===0||i===2||i===3?null:0,forecast:{status:i===2?'incomplete':'ready'}}))};
-    else if(path==='/api/routes')body={...params,status:params.mode==='what_if'?'ready':'historical_conditions_unavailable',message:'Exercise routing',route:null,unrestricted:null,notice:'Exercise only',excluded_roads:[],network:{type:'FeatureCollection',features:[{id:'road-1',geometry:{type:'LineString',coordinates:[[-80.2,25.8],[-80.21,25.8]]},properties:{id:'road-1',label:'Test road',kind:'road',state:'open'}}]},destinations:[{id:'exercise-north',label:'Exercise North',coordinates:[-80.21,25.8],available:true}]};
+    else if(path==='/api/routes')body={...params,status:params.mode==='what_if'?'ready':'historical_conditions_unavailable',message:'Exercise routing',route:null,unrestricted:null,notice:'Exercise only',excluded_roads:[],network:{type:'FeatureCollection',features:[{id:'road-1',geometry:{type:'LineString',coordinates:[[-86.5,30.5],[-86.51,30.5]]},properties:{id:'road-1',label:'Test road',kind:'road',state:'open'}}]},destinations:[{id:'exercise-north',label:'Exercise North',coordinates:[-86.51,30.5],available:true}]};
     else throw Error(url);
     return {ok:true,json:async()=>body};
   };
   const context={console,URLSearchParams,fetch,document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
     Event:class{},setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
-    window:{location:{hash:'#isaias-replay'},addEventListener:(name,fn)=>{events[name]=fn;}}};
+    window:{location:{hash},addEventListener:(name,fn)=>{events[name]=fn;}}};
   vm.runInNewContext(fs.readFileSync('quasar/static/replay.js','utf8'),context);
   await vm.runInNewContext(fs.readFileSync('quasar/static/app.js','utf8'),context);
-  return{get,requests,timers,hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};
+  return{get,requests,timers,location:context.window.location,hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};
 }
 
 test('replay hour bounds and chart gaps preserve isolated valid points',()=>{
@@ -94,4 +96,48 @@ test('playback stops at the last hour and pause removes its timer',async()=>{
   app.get('replay-play').onclick();assert.equal(app.timers.size,1);
   app.timers.get(1)();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(app.get('replay-hour').value,'24');assert.equal(app.timers.size,0);assert.equal(app.get('replay-play').textContent,'Play');
+});
+
+
+test('Isaias toolbar action enters and exits simulation in the primary map',async()=>{
+  const app=await boot('#map-overview');
+  assert.equal(app.get('isaias-replay').hidden,true);
+  assert.equal(app.get('replay-toggle').disabled,false);
+  await app.get('replay-toggle').onclick();
+  assert.equal(app.get('scenario').value,'isaias-2026');
+  assert.equal(app.location.hash,'#map-overview');
+  assert.equal(app.get('isaias-replay').hidden,false);
+  assert.equal(app.get('replay-toggle')['aria-pressed'],'true');
+  assert.equal(app.get('map-layer').value,'rainfall');
+  await app.get('replay-next').onclick();
+  assert.match(app.get('replay-clock').textContent,/1 AM/);
+  await app.get('replay-toggle').onclick();
+  assert.equal(app.get('scenario').value,'baseline');
+  assert.equal(app.get('isaias-replay').hidden,true);
+  assert.equal(app.get('replay-results').hidden,true);
+  assert.equal(app.get('replay-toggle')['aria-pressed'],'false');
+  assert.equal(app.get('map-layer').value,'exposure');
+  assert.equal(app.timers.size,0);
+});
+
+
+test('exiting Isaias restores the preceding WeatherNext source and stops playback',async()=>{
+  const app=await boot('#map-overview',{weather:true});
+  assert.equal(app.get('scenario').value,'weathernext');
+  await app.get('replay-toggle').onclick();
+  app.get('replay-play').onclick();
+  assert.equal(app.timers.size,1);
+  await app.get('replay-toggle').onclick();
+  assert.equal(app.get('scenario').value,'weathernext');
+  assert.equal(app.timers.size,0);
+  assert.equal(app.get('map-layer').value,'rainfall');
+});
+
+test('failed entry to simulation retains the displayed source and closed replay panel',async()=>{
+  const app=await boot('#map-overview');app.fail(Replay.hour(0));
+  await app.get('replay-toggle').onclick();
+  assert.equal(app.get('scenario').value,'baseline');
+  assert.equal(app.get('replay-toggle')['aria-pressed'],'false');
+  assert.equal(app.get('isaias-replay').hidden,true);
+  assert.match(app.get('error').textContent,/timeline unavailable/);
 });

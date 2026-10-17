@@ -2,7 +2,7 @@
 
 ## How to use this plan
 
-This is a proposed backlog based on the reviewed code and project records, not a delivery commitment or a claim that the work has been implemented. It prioritizes trustworthy inputs and evaluation before additional predictive claims. Scope remains Miami-Dade County, FIPS `12086`.
+This is a proposed backlog based on the reviewed code and project records, not a delivery commitment or a claim that the work has been implemented. It prioritizes trustworthy inputs and evaluation before additional predictive claims. Scope remains Okaloosa County, FIPS `12091`.
 
 Priorities describe dependencies: **P0** resolves inconsistencies in the current demonstration; **P1** makes real inputs reproducible and usable; **P2** evaluates models and extends evidence; **P3** addresses a broader service only if explicitly in scope. The team should assign an owner and one reviewable outcome per task.
 
@@ -68,7 +68,7 @@ Keep official messages identifiable as source material and distinct from Quasar'
 
 ## P2 — Establish historical truth before model evaluation
 
-The current reconstruction can replay archived **forecasts**. It does not contain an observed local flood-outcome dataset. NHC text supplies storm context; it does not label which Miami-Dade assets flooded or which roads were passable.
+The current reconstruction can replay archived **forecasts**. It does not contain an observed local flood-outcome dataset. NHC text supplies storm context; it does not label which Okaloosa assets flooded or which roads were passable.
 
 For the selected event, document its relevance to the county and acquire independent outcomes with spatial/time coverage and quality limitations. Potential research targets include a documented inundation extent, measured water level, or a verified impact label. A road-closure record and a building-flood record are different outcomes and need different tasks.
 

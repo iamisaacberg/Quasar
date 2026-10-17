@@ -1,7 +1,7 @@
 """WeatherNext 3 BigQuery importer. No cloud calls during dashboard requests.
 
 Uses locally authenticated bq CLI; dry-run is the default. An explicit --execute
-imports one run and one six-hour window for the curated Miami-Dade demo points.
+imports one run and one six-hour window for the curated Okaloosa demo points.
 """
 
 import argparse
@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..config import COUNTY_FIPS
+from ..bridge import BridgeUnavailable, read_snapshot
 
 TABLE_PATTERN = r"[a-zA-Z0-9_-]+\.[a-zA-Z0-9_]+\.weathernext_3_0_0_0p1deg"
 MAX_INIT_AGE = timedelta(hours=12)
@@ -105,7 +106,7 @@ def snapshot(rows: list, *, table: str, init_time: str, valid_from: str, now=Non
     return result
 
 
-def summarize(data: dict, *, now=None) -> dict:
+def summarize(data: dict, *, now=None, allowed=None) -> dict:
     now = now or datetime.now(timezone.utc)
     if not isinstance(data, dict) or data.get("schema_version") != 1 or data.get("model") != "WeatherNext 3":
         raise ValueError("Unrecognized WeatherNext snapshot")
@@ -122,14 +123,15 @@ def summarize(data: dict, *, now=None) -> dict:
     if init > now + timedelta(minutes=5) or retrieved > now + timedelta(minutes=5) or retrieved < init:
         raise ValueError("Invalid forecast initialization or retrieval time")
     expected_hours = {start + timedelta(hours=h) for h in range(1, 7)}
-    allowed = {p["id"] for p in points()}
+    county_mode = allowed is not None
+    allowed = set(allowed) if county_mode else {p["id"] for p in points()}
     by_site = {identifier: {} for identifier in allowed}
     rows = data.get("rows")
-    if not isinstance(rows, list) or len(rows) > 1000:
+    if not isinstance(rows, list) or len(rows) > (200000 if county_mode else 1000):
         raise ValueError("Invalid WeatherNext rows")
     for row in rows:
         if not isinstance(row, dict) or row.get("property_id") not in allowed:
-            raise ValueError("WeatherNext row must reference a curated Miami-Dade demo point")
+            raise ValueError("WeatherNext row must reference a curated Okaloosa demo point")
         identifier = row["property_id"]
         hour = timestamp(row.get("forecast_time"))
         if hour not in expected_hours or hour in by_site[identifier]:
@@ -163,14 +165,19 @@ def summarize(data: dict, *, now=None) -> dict:
 
 
 def load_forecast(*, now=None) -> dict:
-    path = os.environ.get("QUASAR_WEATHERNEXT_FILE", "")
-    if not path:
-        return {"status": "not_configured", "message": "WeatherNext 3 access confirmed; import a BigQuery snapshot to connect forecasts."}
     try:
-        source = Path(path)
-        if source.stat().st_size > 5_000_000:
-            raise ValueError("Snapshot too large")
-        return summarize(json.loads(source.read_text()), now=now)
+        data = read_snapshot("weathernext")
+        if data is None:
+            return {"status": "not_configured", "message": "Import a WeatherNext snapshot to connect forecasts."}
+        if data.get("schema_version") == 3:
+            from .county_weather import for_sites, collection
+            result = summarize(for_sites(data), now=now)
+            result["county_cells"] = collection(data, now=now)
+            result["coverage"] = "County native forecast cells; site scores still use fictional inputs"
+            return result
+        return summarize(data, now=now)
+    except BridgeUnavailable:
+        return {"status": "unavailable", "message": "The configured WeatherNext data bridge is unavailable."}
     except (OSError, ValueError, TypeError, KeyError):
         return {"status": "invalid", "message": "WeatherNext snapshot is unavailable or invalid. Re-import before use."}
 

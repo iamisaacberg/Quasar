@@ -1,6 +1,6 @@
 # Quasar documentation
 
-Quasar is a Miami-Dade County flood intelligence research application for the IBM Z Datathon. It connects exercise sites, rainfall inputs, an explainable relative score, maps, historical forecast reconstruction, simulated routing, and reports. The current score is an unvalidated heuristic. All six sites and their terrain, FEMA, waterway, and gauge attributes are fictional.
+Quasar is a Okaloosa County flood intelligence research application for the IBM Z Datathon. It connects exercise sites, rainfall inputs, an explainable relative score, maps, historical forecast reconstruction, simulated routing, and reports. The current score is an unvalidated heuristic. All six sites and their terrain, FEMA, waterway, and gauge attributes are fictional.
 
 These guides describe the code and existing project records reviewed on **October 17, 2026**, including local work in progress. They do not certify a deployed build, current source availability, current snapshot freshness, historical accuracy, or IBM Z execution. Runtime status must be checked separately.
 
@@ -25,7 +25,9 @@ The guides explain the whole application; the following files retain the detaile
 | [Architecture](architecture.md) | Runtime structure, scoring baseline, browser aggregation, and portability boundaries |
 | [Data contract](data-contract.md) | Record fields, API payloads, forecast schemas, replay additions, and export semantics |
 | [Source catalog](data-sources.md) | Source identifiers, access history, acquisition checkpoints, and pending integrations |
+| [Parcel input preparation](parcel-inputs.md) | Optional local GIS environment, elevation coverage and unscored FEMA/mapped-waterway joins |
 | [Integration setup](integrations.md) | Mapbox, WeatherNext, H3, and the recorded October 17 forecast import |
+| [LinuxONE data bridge](data-bridge.md) | Authenticated reads of normalized snapshots from IBM LinuxONE into the Vercel API |
 | [Isaias exercise](isaias-demo.md) | Replay preparation, archive versus what-if behavior, and routing walkthrough |
 | [Notebook workflow](../notebooks/README.md) | Optional research environment, shared functions, notebook ownership, and clean source files |
 | [Team workflow](../CONTRIBUTING.md) | Ownership, focused changes, review, and pull requests into `preview` |

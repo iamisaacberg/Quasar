@@ -25,7 +25,7 @@ const labels: Record<string, string> = {
 };
 const colors: Record<string, string> = { lower_relative: "#347e73", moderate: "#a87812", elevated: "#b64d36", unknown: "#6b7280" };
 const number = (value: number | null) => value === null ? "Unknown" : value.toLocaleString("en-US", { maximumFractionDigits: 3 });
-const time = (value: string) => new Date(value).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " Miami time";
+const time = (value: string) => new Date(value).toLocaleString("en-US", { timeZone: "America/Chicago", dateStyle: "medium", timeStyle: "short" }) + " Central time";
 
 async function get<T,>(url: string, signal: AbortSignal): Promise<T> {
   const response = await fetch(url, { signal });
@@ -97,7 +97,7 @@ export function Reports({ active }: { active: boolean }) {
   const title = preset === "compare" ? "Compare exercise windows" : preset === "site" ? "Explain a site" : "Scenario overview";
   const exportUrl = `/api/exports?scenario=${encodeURIComponent(selection)}`;
   return <section className="reports-page" id="reports" hidden={!active} aria-labelledby="reports-heading">
-    <header><p className="report-eyebrow">MIAMI-DADE · FIPS 12086</p><h1 id="reports-heading">Reports &amp; exports</h1><p>Read a report, print a summary, or explore the same data in Power BI or Tableau.</p></header>
+    <header><p className="report-eyebrow">OKALOOSA · FIPS 12091</p><h1 id="reports-heading">Reports &amp; exports</h1><p>Read a report, print a summary, or explore the same data in Power BI or Tableau.</p></header>
     <div className="report-controls">
       <label>Report<select value={preset} onChange={event => setPreset(event.target.value as Preset)}><option value="overview">Scenario overview</option><option value="compare">Compare exercise windows</option><option value="site">Explain a site</option></select></label>
       {preset !== "compare" && <label>Time window<select value={scenario} onChange={event => setScenario(event.target.value)}><option value="baseline">Exercise hour 0</option>{scenarios.filter(item => item.id !== "baseline").map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
@@ -143,7 +143,7 @@ export function Reports({ active }: { active: boolean }) {
         </section>}
         <footer className="report-sources"><h3>Sources and limitations</h3><p>{data.provenance}</p>
           {data.forecast && <><p>Forecast status: {data.forecast.status}. Source: {data.forecast.source_table}.</p><p>Initialized {time(data.forecast.init_time)} · Imported {time(data.forecast.retrieved_at)}.</p><p>Native resolution: {data.forecast.native_resolution} · {data.forecast.statistic}. Rainfall is mm per six-hour window; native hourly means are summed once. Other site, terrain, FEMA and gauge inputs remain fictional. Stale or incomplete rainfall stays unknown.</p></>}
-          <p>Official NWS alerts are not connected. This is not an all-clear. Follow <a href="https://www.weather.gov/mfl/" target="_blank" rel="noopener noreferrer">NWS Miami and local emergency guidance</a>. No notifications are sent.</p>
+          <p>Official NWS alerts are not connected. This is not an all-clear. Follow <a href="https://www.weather.gov/mob/" target="_blank" rel="noopener noreferrer">NWS Mobile/Pensacola and local emergency guidance</a>. No notifications are sent.</p>
           <p className="report-map-link"><a href="#map-overview" onClick={() => {
             const control = document.getElementById("scenario") as HTMLSelectElement | null;
             if (control && !control.disabled) { control.value = preset === "compare" ? "baseline" : scenario; control.dispatchEvent(new Event("change", { bubbles: true })); }

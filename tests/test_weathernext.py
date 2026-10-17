@@ -19,7 +19,7 @@ NOW = INIT + timedelta(minutes=30)
 
 def rows():
     return [{"property_id": p["id"], "forecast_time": iso(INIT+timedelta(hours=h)),
-             "rainfall_1h_mm": 2.5, "native_cell_wkt": "POLYGON((-80.2 25.8,-80.1 25.8,-80.1 25.9,-80.2 25.8))"}
+             "rainfall_1h_mm": 2.5, "native_cell_wkt": "POLYGON((-86.5 30.5,-86.4 30.5,-86.4 30.6,-86.5 30.5))"}
             for p in points() for h in range(1,7)]
 
 
@@ -93,7 +93,7 @@ class WeatherNextTests(unittest.TestCase):
 
     def test_invalid_snapshot_has_explicit_status(self):
         with patch.dict(os.environ,{"QUASAR_WEATHERNEXT_FILE":"/nonexistent/quasar-weather.json"}):
-            self.assertEqual(load_forecast()["status"],"invalid")
+            self.assertEqual(load_forecast()["status"],"not_configured")
         with patch.dict(os.environ,{"QUASAR_WEATHERNEXT_FILE":""}):
             self.assertEqual(load_forecast()["status"],"not_configured")
 

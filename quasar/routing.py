@@ -7,19 +7,22 @@ from pathlib import Path
 
 from .adapters.weathernext import points, timestamp
 from .geometry import covers, line_covered, length_m
+from .geometry_index import CountyBoundaryIndex
 from .replay import START, selection
+from .bridge import BridgeUnavailable, read_snapshot
 
 NOTICE = ('EXERCISE ROUTE · 30 km/h assumed speed; two-way exercise topology; '
           'fictional destinations and restrictions. Not navigation, a verified open shelter or a guarantee of safety.')
 
 
 def validate_graph(data):
-    if data.get('county_fips') != '12086' or data.get('schema_version') != 1:
+    if data.get('county_fips') != '12091' or data.get('schema_version') != 1:
         raise ValueError('Invalid routing graph county/version')
     boundary, nodes = data['county_geometry'], data['nodes']
     if not isinstance(nodes, dict) or len(nodes) > 10000 or not data.get('provenance'):
         raise ValueError('Invalid routing nodes/provenance')
-    if not all(covers(p, boundary) for p in nodes.values()):
+    county_index = CountyBoundaryIndex(boundary)
+    if not all(county_index.covers(p) for p in nodes.values()):
         raise ValueError('Routing node outside authoritative county geometry')
     if len(data['edges']) > 10000 or len(data['destinations']) != 3:
         raise ValueError('Invalid routing graph size')
@@ -28,7 +31,7 @@ def validate_graph(data):
         coords = edge['coordinates']
         if (edge['id'] in seen or edge['from'] not in nodes or edge['to'] not in nodes
                 or coords[0] != nodes[edge['from']] or coords[-1] != nodes[edge['to']]
-                or not line_covered(coords, boundary) or length_m(coords) <= 0):
+                or not county_index._line_inside(coords) or length_m(coords) <= 0):
             raise ValueError('Invalid, duplicate or outside-county complete road geometry')
         if edge.get('kind') not in ('road', 'simulated_access'):
             raise ValueError('Missing road geometry classification')
@@ -55,6 +58,12 @@ def _read_graph(path, mtime, size):
 
 
 def load_graph():
+    if os.environ.get('QUASAR_DATA_BRIDGE_URL', '').strip():
+        try:
+            data = read_snapshot('evacuation-network')
+            return validate_graph(data) if data is not None else None
+        except (BridgeUnavailable, OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
+            return None
     path = Path(os.environ.get('QUASAR_ROUTES_FILE', 'data/processed/evacuation-network.json'))
     try:
         stat = path.stat()

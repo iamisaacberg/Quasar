@@ -2,7 +2,7 @@
 
 ## The idea
 
-Quasar explores how a county-focused application can combine rainfall forecasts with local site characteristics and explain which locations deserve closer investigation as conditions change. Its scope is **Miami-Dade County, Florida, FIPS `12086`**. The project is an IBM Z Datathon research application, with a working demonstration that teammates can inspect and extend.
+Quasar explores how a county-focused application can combine rainfall forecasts with local site characteristics and explain which locations deserve closer investigation as conditions change. Its scope is **Okaloosa County, Florida, FIPS `12091`**. The project is an IBM Z Datathon research application, with a working demonstration that teammates can inspect and extend.
 
 The central question is: **How can we show changing exposure, the inputs behind it, and the limits of the available evidence in one place?**
 
@@ -44,7 +44,7 @@ Existing integration notes record a successful October 17 import. That record es
 
 ### Reconstruct a historical forecast sequence
 
-The `isaias-2026` scenario is configured for October 7–11, 2026, with 97 hourly selections including both endpoints. Each selected hour looks forward over the next six forecast hours. This is the app's configured reconstruction interval, not a claim of Miami-Dade landfall or observed local flooding.
+The `isaias-2026` scenario is configured for October 7–11, 2026, with 97 hourly selections including both endpoints. Each selected hour looks forward over the next six forecast hours. This is the app's configured reconstruction interval, not a claim of Okaloosa landfall or observed local flooding.
 
 Archive mode uses eligible historical forecast runs when a separate archive is present. What-if mode allows explicit synthetic rainfall additions and road/destination overrides. Missing historical rainfall stays unknown in both modes. NHC advisory text supplies storm context when prepared; it is not a local flood-outcome dataset.
 

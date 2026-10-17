@@ -5,6 +5,8 @@ add individual authentication, request limits, monitoring, and persistence befor
 """
 
 import json
+import hmac
+import os
 import ssl
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +22,8 @@ from .replay import timeline, advisory_context
 from .routing import route
 from .analysis import report
 from .exports import export
+from .parcels import county_boundary, parcel_page, SourceUnavailable
+from .bridge import serve_snapshot
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
@@ -130,6 +134,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if any(len(values) != 1 for values in query.values()):
                 raise ValueError("Duplicate query parameters are not supported")
+            if url.path.startswith("/bridge/v1/snapshots/"):
+                name = url.path.removeprefix("/bridge/v1/snapshots/")
+                if "/" in name or not name:
+                    return self.send(404, {"error": "Route not found"})
+                status, payload = serve_snapshot(name, self.headers.get("Authorization", ""))
+                if isinstance(payload, bytes):
+                    return self.send(status, payload, "application/json; charset=utf-8")
+                return self.send(status, payload)
             require_county(query.get("county_fips", [COUNTY_FIPS])[0])
             replay_args = {key: query[key][0] for key in ("at", "preset", "mode") if key in query}
             if url.path in ASSETS:
@@ -143,7 +155,18 @@ class Handler(BaseHTTPRequestHandler):
                                        "map": map_settings()})
             if url.path == "/api/weather/status":
                 forecast = load_forecast()
-                return self.send(200, {k: v for k, v in forecast.items() if k != "records"})
+                return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
+            if url.path == "/api/county":
+                return self.send(200, county_boundary())
+            if url.path == "/api/parcels":
+                parcel_token = os.environ.get("QUASAR_PARCEL_API_TOKEN", "")
+                parcel_database = os.environ.get("QUASAR_PARCEL_DATABASE", "")
+                if parcel_database and len(parcel_token) < 32:
+                    return self.send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Parcel API authentication is not configured"})
+                if parcel_token and not hmac.compare_digest(self.headers.get("X-Quasar-Parcel-Token", ""), parcel_token):
+                    return self.send(HTTPStatus.UNAUTHORIZED, {"error": "Parcel API authentication required"})
+                return self.send(200, parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
+                                                 query.get("inventory_id", [None])[0], query.get("cell", [None])[0]))
             if url.path == "/api/scenarios":
                 return self.send(200, {"scenarios": scenarios(), "historical_replay": True})
             if url.path == "/api/properties":
@@ -163,8 +186,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/official-alerts":
                 return self.send(200, {"status": "not_connected", "alerts": [],
                                        "message": "Official NWS alerts are not loaded. This is not an all-clear.",
-                                       "source_url": "https://www.weather.gov/mfl/"})
+                                       "source_url": "https://www.weather.gov/mob/"})
             self.send(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
+        except SourceUnavailable as exc:
+            self.send(HTTPStatus.BAD_GATEWAY, {"status": "unavailable", "error": str(exc)})
         except ValueError as exc:
             self.send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
 

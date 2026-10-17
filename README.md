@@ -1,8 +1,8 @@
 # Quasar
 
-Miami-Dade County flood risk intelligence starter for the IBM Z Datathon.
+Okaloosa County flood risk intelligence starter for the IBM Z Datathon.
 
-Quasar follows the team's Flood Emergency Alert System proposal, narrowed to **Miami-Dade County, Florida (FIPS `12086`)**. It gives the team a working path from a property-like record to an explainable score, a map, and a simulated notification.
+Quasar follows the team's Flood Emergency Alert System proposal, narrowed to **Okaloosa County, Florida (FIPS `12091`)**. It gives the team a working path from a property-like record to an explainable score, a map, and a simulated notification.
 
 ## Documentation
 
@@ -10,6 +10,7 @@ Start with the [documentation index](docs/README.md) for the full reading guide,
 
 - [App premise and product boundaries](docs/app-premise.md): the problem, intended audiences, current workflows, and limits of the demonstration.
 - [Data guide](docs/data-guide.md): fictional and imported inputs, provenance, geographic scales, freshness, missing data, and BI interpretation.
+- [Local parcel input preparation](docs/parcel-inputs.md): separate research environment, terrain coverage and unscored FEMA/waterway joins.
 - [Mechanisms](docs/mechanisms.md): scoring formulas, architecture, forecast imports, replay, routing, frontend behavior, API, and configuration.
 - [Improvement roadmap](docs/improvement-roadmap.md): concrete implementation gaps, data milestones, model evaluation, usability, scale, and completion evidence.
 
@@ -79,7 +80,7 @@ cp .env.example .env  # only if you do not already have .env
 
 Edit `.env` and set `MAPBOX_PUBLIC_TOKEN=pk.your_public_token`. The app reads `.env` at startup; restart after editing. Existing environment variables take precedence. Use a public browser token with the appropriate Mapbox URL restrictions for your local/demo origin. Secret `sk.` tokens are rejected. `.env` is ignored by Git. An optional `MAPBOX_STYLE` accepts a `mapbox://styles/...` URL.
 
-WeatherNext 3 was imported from the existing linked dataset in project `quasar-ibm-z-datathon`, location `US`, on October 17, 2026. The local snapshot contains six hours for six fictional site coordinates; the restarted run on port `55000` reported `ready`. This snapshot requires explicit refresh and becomes stale after two hours; it is not an automatic live feed. Follow [integration setup](docs/integrations.md).
+The app now targets Okaloosa County (12091), uses Central time, and supports countywide native WeatherNext rainfall cells. Old Miami-Dade snapshots are incompatible. Boundary, parcels, FEMA, elevation, monitoring stations and roads are reacquired separately; real parcel scores stay unknown. WeatherNext imports are explicit and capped; see [integration setup and monthly budget](docs/integrations.md).
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -90,12 +91,27 @@ npm test
 
 ## Map workspace UI
 
-The Map overview fills the space beside the stock Application Shell 2 collapsible navigation
-sidebar (16rem desktop, 18rem mobile drawer), without dashboard headings, cards, tables or explainer panels. Satellite
-imagery with street labels is the default; `MAPBOX_STYLE` can override it.
-The other navigation links retain the exercise controls, sites, source status and
-guide. Mapbox resizes when the sidebar changes. Synthetic-demo attribution stays
-visible on the map, and unknown scores remain unscored.
+The Map overview fills the space beside the stock Application Shell 2 navigation
+sidebar. Its toolbar keeps the data-source selector, rainfall/exposure display,
+**Isaias simulation** action and **Inspect sites** panel available on the map.
+Satellite imagery with street labels is the default; `MAPBOX_STYLE` can override it.
+Mapbox resizes when either sidebar changes.
+
+When an imported WeatherNext snapshot is selectable, the map opens with that
+source and **Rainfall · mm / 6h**. Native forecast polygons show county rainfall when a county snapshot is imported; blue points and numeric labels show rainfall at the six fictional sites. The summary shows the
+validity window, initialization/import times, native resolution, available-site
+count and unavailable values. Stale or incomplete rainfall remains unavailable;
+valid zero rainfall stays zero even when missing terrain prevents a site score.
+Site scores remain fictional; native rainfall cells are not flood depth. **Relative
+exposure** switches to the illustrative score colors and optional H3 summaries.
+A neutral county H3 grid stays available for parcel browsing in rainfall mode. Legends and demo labels remain visible.
+
+**Inspect sites** opens the site selector and factor explanation, including when
+Mapbox is unavailable. The **Isaias simulation** button opens archive/what-if
+controls, playback, selected-site trend and simulated routing in the same map's
+side panel. Exit returns to the preceding data source. The old `/#isaias-replay`
+link still opens the simulation within Map overview. The other navigation links
+retain sites, source status, reports and the guide.
 
 React/Tailwind source lives in `frontend/`. Vite builds the shell into
 `quasar/static/ui/`; those generated assets are committed so `python3 -m quasar`
@@ -126,20 +142,20 @@ runtime, scoring, and cloud-query behavior remain unchanged.
 
 ## What works today
 
-- Six **fictional** Miami-Dade exercise sites, including one with missing terrain data.
+- Six **fictional** Okaloosa exercise sites, including one with missing terrain data.
 - Three deterministic exercise windows with changing synthetic rainfall and gauge conditions.
 - A Mapbox GL JS map, prioritized site list, factor contributions, and explicit unknown scores.
-- H3 resolution-7 hotspot summaries of occupied exercise sites, with counts, unknown counts and maximum relative score. Hexagons are not flood extents or sharper weather predictions.
+- Countywide H3 browsing at resolutions 4–7, adapting to zoom like TrialSmiles. Coarse-cell clicks zoom in; resolution-7 clicks open a cell panel and progressively load every matching county GIS parcel polygon. A parcel opens its own details panel with a back-to-cell action. Parcel flood inputs remain unknown. Hexagons intersect the authoritative Census boundary and can extend past it; they are not county boundaries, flood extents or sharper weather predictions.
 - A WeatherNext 3 BigQuery importer for the native 0.1-degree ensemble-mean hourly precipitation product, with six-hour aggregation, provenance, missing-data and staleness checks.
 - Opt-in SMS/email **previews** for elevated scores. Nothing is sent or stored, and no contact details are collected.
 - A JSON/GeoJSON API and a separately callable NWS point-alert client.
 - Automated tests, GitHub Actions, and a portable container starter.
 
-**This is a baseplate, not a validated flood model.** It has no live parcels, building footprints, FEMA joins, elevation raster processing, trained AI, a fully sourced historical replay, real subscriptions, or real delivery. WeatherNext rainfall can be imported for the six fictional site coordinates; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
+**This is a baseplate, not a validated flood model.** Offline [parcel input preparation](docs/parcel-inputs.md) produces descriptive terrain summaries and FEMA/mapped-waterway joins in separate research artifacts. Those inputs are not connected to app scoring. Building footprints, trained AI, a fully sourced historical replay, real subscriptions and real delivery remain unavailable. Real parcel geometry is loaded on selection from Okaloosa GIS, with full county containment checks; exercise scores never apply to those parcels. WeatherNext rainfall can be imported once for county native cells and associated locally with the six fictional sites; when selected, the UI says **MIXED DEMO** because terrain, FEMA and gauge inputs remain invented. Forecasts never validate those property inputs. The dashboard's official-alert panel deliberately says the feed is not connected.
 
 ## Isaias 2026 replay
 
-The **Isaias 2026** sidebar view connects hourly forecast reconstruction, a selected-site trend, and a simulated resident evacuation route. Archive and what-if modes stay separate; missing historical rainfall stays unknown. Public NHC context and a county-contained real-road exercise network can be prepared locally with `python3 scripts/prepare_isaias.py`. Historical WeatherNext rainfall requires a separate explicit, capped import; the current October 17 snapshot is not reused. See [replay setup and walkthrough](docs/isaias-demo.md).
+The map toolbar’s **Isaias simulation** action connects hourly forecast reconstruction, a selected-site trend, and a simulated resident evacuation route. Archive and what-if modes stay separate; missing historical rainfall stays unknown. Public NHC context and a county-contained real-road exercise network can be prepared locally with `python3 scripts/prepare_isaias.py`. Historical WeatherNext rainfall requires a separate explicit, capped import; the current October 17 snapshot is not reused. See [replay setup and walkthrough](docs/isaias-demo.md).
 
 ## Demo walkthrough
 
@@ -147,7 +163,7 @@ The **Isaias 2026** sidebar view connects hourly forecast reconstruction, a sele
 2. Switch to hours 6 and 12. The synthetic weather factors change the scores.
 3. Inspect the missing-terrain site: it remains unknown rather than receiving a low score.
 4. At hour 12, inspect an elevated site, select the simulation opt-in checkbox, and preview an email. The API reports `sent_count: 0`.
-5. Explain that the next milestone replaces fixture inputs with timestamped source data and validates the model against a documented Miami-Dade storm.
+5. Explain that the next milestone replaces fixture inputs with timestamped source data and validates the model against a documented Okaloosa storm.
 
 The exercise dates are a fixed fictional clock, not today's weather or an actual hurricane. All site labels, FEMA zones, elevations, and other attributes are invented.
 
@@ -183,6 +199,8 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/scenarios` | Three synthetic windows |
 | GET | `/api/properties?scenario=peak` | Scored GeoJSON points |
 | GET | `/api/properties?scenario=weathernext` | Imported forecast + fictional property inputs, when a valid snapshot is configured |
+| GET | `/api/county` | Authoritative Census Okaloosa boundary and provenance; unavailable sources return 502 |
+| GET | `/api/parcels?ring=...&offset=0` | County-validated parcel polygons intersecting an R7 ring; automatically paginated by the map |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |
@@ -223,7 +241,7 @@ Agree on ownership before editing shared contracts. Use feature branches and sma
 
 ## IBM Z / LinuxONE
 
-Develop locally first and run an early compatibility check on IBM Z. The backend uses only Python's standard library, avoiding compiled GIS/ML packages at this stage. No IBM server has been accessed or tested yet.
+Develop locally first and run an early compatibility check on IBM Z. The backend uses only Python's standard library, avoiding compiled GIS/ML packages at this stage. This local transition does not establish the current IBM server state; verify a transferred bundle independently.
 
 On your IBM Z Linux host with Python 3.11+:
 
@@ -256,10 +274,10 @@ The container runs as a non-root user. The base image tag, container runtime, ou
 ## Next milestones
 
 1. Use the locally acquired authoritative county polygon to validate and clip residential parcels/building footprints. Review source terms and keep owner/address fields out of the modeling dataset.
-2. Normalize the locally acquired FEMA NFHL and USGS 3DEP inputs with CRS, vertical datum, missing-data flags, source timestamps, and county clipping. Evaluate coastal/tidal and canal conditions specific to Miami-Dade.
+2. Normalize the locally acquired FEMA NFHL and USGS 3DEP inputs with CRS, vertical datum, missing-data flags, source timestamps, and county clipping. Evaluate coastal/tidal and canal conditions specific to Okaloosa.
 3. Select hydrologically relevant USGS stations and acquire observations; ingest NWS official alerts. Implement caching, staleness, expired-alert handling and outage states before wiring a live feed into the UI.
-4. Refresh WeatherNext snapshots explicitly with a dry run and byte cap. The first six-site import is verified; extend coverage to real county-filtered assets after the GIS work.
-5. Select and document a historical storm that affected Miami-Dade, acquire archived inputs and observed outcomes, and implement reproducible replay. Split training/evaluation by event/time to avoid leakage.
+4. Refresh WeatherNext snapshots explicitly with a dry run and byte cap. Use native county cells, then associate assets locally without per-parcel cloud queries.
+5. Select and document a historical storm that affected Okaloosa, acquire archived inputs and observed outcomes, and implement reproducible replay. Split training/evaluation by event/time to avoid leakage.
 6. Compare the transparent baseline with a trained model, document validation and uncertainty, then demonstrate the pipeline on IBM Z.
 7. Add persistent consent, unsubscribe, deduplication and delivery infrastructure only if real notifications are in scope. The datathon proposal calls for simulated delivery.
 

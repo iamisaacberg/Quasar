@@ -1,12 +1,66 @@
 {
   "provenance": "Hand-authored synthetic points. Labels, property attributes, FEMA zones and elevations are fictional; these are not actual homes or parcel records.",
-  "county_fips": "12086",
+  "county_fips": "12091",
   "properties": [
-    {"id":"demo-001","label":"Biscayne exercise site","county_fips":"12086","longitude":-80.185,"latitude":25.850,"elevation_m":1.2,"fema_zone":"AE","waterway_distance_m":90},
-    {"id":"demo-002","label":"Little River exercise site","county_fips":"12086","longitude":-80.207,"latitude":25.836,"elevation_m":2.4,"fema_zone":"AE","waterway_distance_m":200},
-    {"id":"demo-003","label":"Doral exercise site","county_fips":"12086","longitude":-80.355,"latitude":25.819,"elevation_m":5.5,"fema_zone":"X","waterway_distance_m":650},
-    {"id":"demo-004","label":"Kendall exercise site","county_fips":"12086","longitude":-80.360,"latitude":25.680,"elevation_m":7.0,"fema_zone":"X","waterway_distance_m":1200},
-    {"id":"demo-005","label":"Homestead exercise site","county_fips":"12086","longitude":-80.478,"latitude":25.474,"elevation_m":1.5,"fema_zone":"AE","waterway_distance_m":300},
-    {"id":"demo-006","label":"Missing terrain exercise site","county_fips":"12086","longitude":-80.295,"latitude":25.750,"elevation_m":null,"fema_zone":"AE","waterway_distance_m":400}
+    {
+      "id": "demo-001",
+      "label": "Destin exercise site",
+      "county_fips": "12091",
+      "longitude": -86.485,
+      "latitude": 30.399,
+      "elevation_m": 1.2,
+      "fema_zone": "AE",
+      "waterway_distance_m": 90
+    },
+    {
+      "id": "demo-002",
+      "label": "Fort Walton Beach exercise site",
+      "county_fips": "12091",
+      "longitude": -86.616,
+      "latitude": 30.425,
+      "elevation_m": 2.4,
+      "fema_zone": "AE",
+      "waterway_distance_m": 200
+    },
+    {
+      "id": "demo-003",
+      "label": "Niceville exercise site",
+      "county_fips": "12091",
+      "longitude": -86.482,
+      "latitude": 30.516,
+      "elevation_m": 5.5,
+      "fema_zone": "X",
+      "waterway_distance_m": 650
+    },
+    {
+      "id": "demo-004",
+      "label": "Crestview exercise site",
+      "county_fips": "12091",
+      "longitude": -86.57,
+      "latitude": 30.763,
+      "elevation_m": 7.0,
+      "fema_zone": "X",
+      "waterway_distance_m": 1200
+    },
+    {
+      "id": "demo-005",
+      "label": "Laurel Hill exercise site",
+      "county_fips": "12091",
+      "longitude": -86.459,
+      "latitude": 30.965,
+      "elevation_m": 1.5,
+      "fema_zone": "AE",
+      "waterway_distance_m": 300
+    },
+    {
+      "id": "demo-006",
+      "label": "Missing terrain exercise site · Shalimar",
+      "county_fips": "12091",
+      "longitude": -86.58,
+      "latitude": 30.446,
+      "elevation_m": null,
+      "fema_zone": "AE",
+      "waterway_distance_m": 400
+    }
   ]
 }

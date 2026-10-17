@@ -50,10 +50,10 @@ class PipelineTests(unittest.TestCase):
     def test_every_scenario_is_county_scoped_and_json_safe(self):
         for scenario in scenarios():
             data = collection(scenario["id"])
-            self.assertEqual(data["county_fips"], "12086")
+            self.assertEqual(data["county_fips"], "12091")
             self.assertEqual(data["mode"], "historical_mixed_demo" if scenario["id"] == "isaias-2026" else "synthetic_demo")
             self.assertTrue(data["features"])
-            self.assertEqual({f["properties"]["county_fips"] for f in data["features"]}, {"12086"})
+            self.assertEqual({f["properties"]["county_fips"] for f in data["features"]}, {"12091"})
             json.dumps(data, allow_nan=False)
 
     def test_out_of_county_record_rejected(self):
@@ -63,7 +63,7 @@ class PipelineTests(unittest.TestCase):
     def test_invalid_coordinates_rejected(self):
         for lon, lat in [(math.nan, 25), (-80, 100), ("-80", 25)]:
             with self.subTest(lon=lon, lat=lat), self.assertRaises(ValueError):
-                feature_for({"county_fips": "12086", "longitude": lon, "latitude": lat}, scenarios()[0])
+                feature_for({"county_fips": "12091", "longitude": lon, "latitude": lat}, scenarios()[0])
 
     def test_unknown_scenario_rejected(self):
         with self.assertRaises(ValueError):

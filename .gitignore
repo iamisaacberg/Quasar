@@ -21,3 +21,5 @@ work/
 .vercel/
 vercel-output/
 .context/
+.vercel
+.env*

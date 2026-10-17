@@ -30,11 +30,11 @@ test('overview renders accessible charts, unknown rows, context and downloads', 
   assert.match(html, /Scenario overview/);
   assert.match(html, /role="img"/);
   assert.match(html, /<caption>Relative scores and input completeness/);
-  assert.match(html, /Missing terrain exercise site/);
+  assert.match(html, /Missing terrain exercise site · Shalimar/);
   assert.match(html, /Unknown/);
   assert.match(html, /SYNTHETIC DEMO/);
   assert.match(html, /Generated/);
-  assert.match(html, /Miami time/);
+  assert.match(html, /Central time/);
   assert.match(html, /scenario=baseline&amp;format=zip/);
   assert.match(html, /not trained AI/);
   assert.match(html, /not an all-clear/);
@@ -45,7 +45,7 @@ test('comparison renders all three windows with gaps explicitly unknown', () => 
   assert.match(html, /Exercise hour 0/);
   assert.match(html, /Exercise hour 6/);
   assert.match(html, /Exercise hour 12/);
-  assert.match(html, /Missing terrain exercise site<\/th><td>Unknown<\/td><td>Unknown<\/td><td>Unknown/);
+  assert.match(html, /Missing terrain exercise site · Shalimar<\/th><td>Unknown<\/td><td>Unknown<\/td><td>Unknown/);
   assert.match(html, /scenario=compare&amp;format=csv/);
   assert.match(html, /18 site\/window rows/);
 });
@@ -111,7 +111,7 @@ test('returning from Reports signals Mapbox to resize after its container become
   }, require:name=> name === 'react' ? {...React, memo: fn=>fn,
     useState: initial => {const slot=cursor++; if (!(slot in state)) state[slot]=typeof initial==='function' ? initial() : initial; return [state[slot],value=>state[slot]=value];},
     useEffect: (fn, dependencies) => {const slot=effectCursor++; if (!deps[slot] || dependencies.some((d,i)=>d!==deps[slot][i])) queued.push(fn); deps[slot]=dependencies;},
-  } : name === './reports' ? {Reports:()=>null} : require(name)};
+  } : name === './reports' ? {Reports:()=>null} : name === './components/map-selection-panel' ? {MapSelectionPanel:()=>null} : require(name)};
   vm.runInNewContext(dashboard, context);
   const renderDashboard = () => { cursor=0; effectCursor=0; queued=[]; const tree=exported.QuasarDashboard(); queued.forEach(fn=>fn()); return tree; };
   renderDashboard();

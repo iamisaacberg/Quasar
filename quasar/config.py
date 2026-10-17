@@ -3,9 +3,15 @@
 import os
 from pathlib import Path
 
-COUNTY_FIPS = "12086"
-COUNTY_NAME = "Miami-Dade County, Florida"
-TIMEZONE = "America/New_York"
+COUNTY_FIPS = "12091"
+COUNTY_NAME = "Okaloosa County, Florida"
+TIMEZONE = "America/Chicago"
+COUNTY_SLUG = "okaloosa"
+COUNTY_BOUNDARY_URL = "https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1"
+PARCEL_SOURCE_URL = "https://okgis.myokaloosa.com/arcgis/rest/services/Land-Ownership/Parcels/MapServer/0"
+COUNTY_TERMS_URL = "https://www.okaloosapa.com/gis-mapping/"
+PARCEL_LICENSE = ("Okaloosa County GIS and Property Appraiser public reference data; "
+                  "retain attribution and the source's no-warranty disclaimer. Not a survey or legal document.")
 MODEL_VERSION = "illustrative-baseline-v1"
 NOTICE = (
     "Synthetic demonstration only. Relative risk estimates are unvalidated, "
@@ -15,7 +21,7 @@ NOTICE = (
 
 def require_county(fips: str) -> None:
     if fips != COUNTY_FIPS:
-        raise ValueError("This pilot supports Miami-Dade County (12086) only.")
+        raise ValueError("This pilot supports Okaloosa County (12091) only.")
 
 
 def load_env(path=Path(".env")) -> None:

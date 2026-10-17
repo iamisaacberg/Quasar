@@ -77,3 +77,33 @@ Share the URL and password separately with teammates. To revoke access, change
 original environment: remove or protect older deployments separately when
 revoking their credentials. The browser session expires after 12 hours. Changing
 `QUASAR_TEAM_PASSWORD` invalidates existing sessions.
+
+
+## County map and parcel availability
+
+A database is not required for the county outline. The county grid reads the
+public Census TIGERweb county polygon. Parcel selection can read the prepared
+county SQLite inventory from LinuxONE through the Vercel Python API. Pages are
+100 polygons each, and a signed-in browser never receives the server-to-server
+token. Without the LinuxONE URL configured, the existing live GIS adapter is
+used; upstream failures stay unavailable or partial.
+
+Forecast snapshots and replay inputs use the file paths described above; those
+are separate from parcel browsing. A Git-based deployment cannot include ignored
+files that exist only on a developer's laptop. Shared object storage or a database
+is an option for durable, refreshable imports, but no storage or refresh service
+is configured by this map change.
+
+For live normalized snapshots stored on IBM LinuxONE, see the
+[authenticated data bridge](data-bridge.md). It is opt-in and requires an HTTPS
+reverse proxy on the IBM host plus server-only `QUASAR_DATA_BRIDGE_URL` and
+`QUASAR_DATA_BRIDGE_TOKEN` variables in Vercel. The browser never receives the
+bridge token or talks to LinuxONE directly.
+
+For the county parcel database, set server-side `QUASAR_LINUXONE_API_URL` to the
+LinuxONE HTTPS origin and `QUASAR_LINUXONE_API_TOKEN` to its random parcel API
+token in Vercel. On LinuxONE set `QUASAR_PARCEL_DATABASE` to the prepared SQLite
+file and `QUASAR_PARCEL_API_TOKEN` to the same token. The reverse proxy should
+forward `/api/parcels` to Quasar and must not log the token header. See
+`data-guide.md` for the countywide preparation pipeline. Do not expose the
+database file itself or add it to the Vercel deployment.

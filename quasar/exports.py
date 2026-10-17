@@ -24,7 +24,7 @@ FIELDS = {
     "property_id": "Stable fictional site identifier; text. Join factors on property_id AND scenario.",
     "scenario": "Exercise window ID or weathernext. Distinct windows are not distinct sites.",
     "label": "Fictional display label; not an owner or address.",
-    "county_fips": "Text county identifier, fixed to 12086. Curated fictional points only.",
+    "county_fips": "Text county identifier, fixed to 12091. Curated fictional points only.",
     "longitude": "WGS84 longitude, decimal degrees (EPSG:4326).",
     "latitude": "WGS84 latitude, decimal degrees (EPSG:4326).",
     "rainfall_6h_mm": "Total rainfall in mm over valid_from to valid_to; null if unavailable/stale.",
@@ -131,7 +131,7 @@ def export(scenario_id="baseline", file_format="csv"):
                 "notice": data["notice"], "provenance": data["provenance"],
                 "forecast": data["forecast"], "scenarios": data.get("scenarios") or [
                     {"scenario": data["scenario"], "summary": data["summary"]}],
-                "crs": "EPSG:4326", "display_timezone": "America/New_York",
+                "crs": "EPSG:4326", "display_timezone": "America/Chicago",
                 "row_count": len(data["rows"]), "site_fields": list(SITE_FIELDS),
                 "factor_fields": list(FACTOR_FIELDS), "fields": FIELDS,
                 "null_policy": "Empty numeric CSV cells and JSON null are unknown/not applicable; consult status fields.",

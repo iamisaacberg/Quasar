@@ -6,12 +6,13 @@ from datetime import timedelta
 from pathlib import Path
 
 from .adapters.weathernext import iso, timestamp, points, query_sql, MAX_INIT_AGE
+from .bridge import BridgeUnavailable, read_snapshot
 from .config import COUNTY_FIPS
 from .scoring import score
 
-# October 9 in Miami time: peak intensity and landfall day, not a local flood claim.
-START = timestamp('2026-10-09T04:00:00Z')
-END = timestamp('2026-10-10T04:00:00Z')
+# October 9 in Central time: peak intensity and landfall day, not a local flood claim.
+START = timestamp('2026-10-09T05:00:00Z')
+END = timestamp('2026-10-10T05:00:00Z')
 HOURS = int((END - START).total_seconds() // 3600)
 PRESETS = {'archived': 0, 'plus-5': 5, 'plus-10': 10}
 NOTICE = ('Isaias 2026 archive reconstruction with fictional site and gauge inputs. '
@@ -34,6 +35,23 @@ def selection(at=None, preset='archived', mode='archive'):
 
 
 def load_archive(path=None):
+    if path is None:
+        try:
+            data = read_snapshot('isaias-2026')
+        except BridgeUnavailable:
+            return {'status': 'unavailable', 'message': 'Historical WeatherNext bridge is unavailable; rainfall remains unknown.', 'runs': []}
+        if data is None:
+            return {'status': 'not_imported', 'message': 'Historical WeatherNext rainfall has not been imported.', 'runs': []}
+        try:
+            if data.get('schema_version') == 3:
+                from .adapters.county_weather import for_sites
+                if data.get('kind') != 'historical_county_forecasts':
+                    raise ValueError('Historical county archive required')
+                return {'status':'loaded', **for_sites(data), '_county_data':data}
+            validate_archive(data)
+            return {'status': 'loaded', **data}
+        except (ValueError, OSError, TypeError, KeyError, AttributeError):
+            return {'status': 'invalid', 'message': 'Historical archive invalid; rainfall remains unknown.', 'runs': []}
     path = Path(path or os.environ.get('QUASAR_REPLAY_FILE', 'data/processed/isaias-2026.json'))
     if not path.exists():
         return {'status': 'not_imported', 'message': 'Historical WeatherNext rainfall has not been imported.', 'runs': []}
@@ -41,13 +59,18 @@ def load_archive(path=None):
         if path.stat().st_size > 30_000_000:
             raise ValueError('Archive too large')
         data = json.loads(path.read_text())
+        if data.get('schema_version') == 3:
+            from .adapters.county_weather import for_sites
+            if data.get('kind') != 'historical_county_forecasts':
+                raise ValueError('Historical county archive required')
+            return {'status':'loaded', **for_sites(data), '_county_data':data}
         validate_archive(data)
         return {'status': 'loaded', **data}
     except (ValueError, OSError, TypeError, KeyError, AttributeError):
         return {'status': 'invalid', 'message': 'Historical archive invalid; rainfall remains unknown.', 'runs': []}
 
 
-def validate_archive(data):
+def validate_archive(data, *, max_rows=10000):
     expected = {'schema_version': 2, 'kind': 'historical_forecasts', 'county_fips': COUNTY_FIPS,
                 'model': 'WeatherNext 3', 'native_resolution': '0.1 degree',
                 'units': 'mm_per_hour', 'statistic': 'ensemble_mean'}
@@ -66,13 +89,13 @@ def validate_archive(data):
         inits.add(init)
         if run.get('published_at') and not init <= timestamp(run['published_at']) <= retrieved:
             raise ValueError('Invalid historical publication time')
-        if not isinstance(run.get('rows'), list) or len(run['rows']) > 10000:
+        if not isinstance(run.get('rows'), list) or len(run['rows']) > max_rows:
             raise ValueError('Invalid historical rows')
     return data
 
 
-def run_rows(run):
-    allowed = {p['id'] for p in points()}
+def run_rows(run, *, allowed=None):
+    allowed = {p['id'] for p in points()} if allowed is None else allowed
     result = {}
     init = timestamp(run['init_time'])
     for row in run['rows']:
@@ -111,7 +134,7 @@ def rainfall(archive, at, site, preset):
     if clock - timestamp(run['init_time']) > MAX_INIT_AGE:
         return {**base, 'status': 'stale_at_replay_time'}
     try:
-        index = run_rows(run)
+        index = run_rows(run, allowed=archive.get('cell_ids'))
     except (ValueError, KeyError, TypeError, AttributeError):
         return {**base, 'status': 'invalid_run'}
     rows = [index.get((site, iso(clock+timedelta(hours=h)))) for h in range(1, 7)]
@@ -149,7 +172,7 @@ def descriptor():
     archive = load_archive()
     return {'id': 'isaias-2026', 'label': 'Isaias 2026 · historical / what-if',
             'valid_from': iso(START), 'valid_to': iso(END), 'step_hours': 1,
-            'county_fips': COUNTY_FIPS, 'display_timezone': 'America/New_York',
+            'county_fips': COUNTY_FIPS, 'display_timezone': 'America/Chicago',
             'modes': ['archive', 'what_if'],
             'hours': HOURS + 1, 'presets': [{'id': p, 'added_mm_per_hour': v} for p, v in PRESETS.items()],
             'source_status': archive['status'], 'advisory_status': advisory_context()['status']}
@@ -158,6 +181,10 @@ def descriptor():
 def collection(at=None, preset='archived', mode='archive'):
     sel = selection(at, preset, mode)
     archive = load_archive()
+    weather_cells = None
+    if archive.get('_county_data'):
+        from .adapters.county_weather import collection as county_collection
+        weather_cells = county_collection(archive['_county_data'], at=sel['at'], preset=preset, mode=mode)
     features = []
     for site in points():
         weather = rainfall(archive, sel['at'], site['id'], preset)
@@ -166,13 +193,13 @@ def collection(at=None, preset='archived', mode='archive'):
                          'properties': {'id': site['id'], 'label': site['label'], 'county_fips': COUNTY_FIPS,
                                         'risk': risk_for(site, weather), 'forecast': weather}})
     features.sort(key=lambda f: (f['properties']['risk']['score'] is None, -(f['properties']['risk']['score'] or 0)))
-    return {'type': 'FeatureCollection', 'county_fips': COUNTY_FIPS, 'county_name': 'Miami-Dade County',
+    return {'type': 'FeatureCollection', 'county_fips': COUNTY_FIPS, 'county_name': 'Okaloosa County',
             'mode': 'what_if_exercise' if mode == 'what_if' else 'historical_mixed_demo',
             'scenario': {'id': 'isaias-2026', 'valid_from': sel['at'],
                          'valid_to': iso(timestamp(sel['at'])+timedelta(hours=6))},
             'replay': context(sel, archive), 'notice': NOTICE,
             'provenance': 'Historical rainfall when available; all six sites and non-rainfall factors are fictional.',
-            'forecast': None, 'features': features}
+            'forecast': None, 'weather_cells': weather_cells, 'features': features}
 
 
 def timeline(site, at=None, preset='archived', mode='archive'):
@@ -196,13 +223,15 @@ def timeline(site, at=None, preset='archived', mode='archive'):
 
 def advisory_context():
     try:
-        path = Path('data/processed/isaias-advisories.json')
-        if path.stat().st_size > 2_000_000:
-            raise ValueError('Advisory metadata too large')
-        data = json.loads(path.read_text())
+        data = read_snapshot('isaias-advisories')
+        if data is None:
+            raise FileNotFoundError
         if not isinstance(data.get('advisories'), list):
             raise ValueError('Invalid advisory metadata')
         return {'status': 'loaded', **data}
+    except BridgeUnavailable:
+        return {'status': 'unavailable', 'advisories': [],
+                'source_url': 'https://www.nhc.noaa.gov/archive/2026/ISAIAS.shtml'}
     except (OSError, ValueError, AttributeError):
         return {'status': 'not_imported', 'advisories': [],
                 'source_url': 'https://www.nhc.noaa.gov/archive/2026/ISAIAS.shtml'}

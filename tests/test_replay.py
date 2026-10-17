@@ -17,7 +17,7 @@ from quasar.geometry import covers, line_covered
 from quasar.server import make_server
 
 TABLE = 'quasar-ibm-z-datathon.weathernext_3.weathernext_3_0_0_0p1deg'
-CELL = 'POLYGON((-81 25,-80 25,-80 26,-81 26,-81 25))'
+CELL = 'POLYGON((-87 30,-86 30,-86 32,-87 32,-87 30))'
 
 
 def archive():
@@ -29,13 +29,13 @@ def archive():
 
 def graph():
     nodes = {p['id']:[p['longitude'],p['latitude']] for p in points()}
-    nodes.update(hub=[-80.2,25.85], north=[-80.21,25.85], detour=[-80.205,25.86], west=[-80.24,25.85], south=[-80.22,25.81])
+    nodes.update(hub=[-86.5,30.55], north=[-86.51,30.55], detour=[-86.505,30.56], west=[-86.54,30.55], south=[-86.52,30.51])
     edges = [{'id':'access-'+p['id'],'from':p['id'],'to':'hub','coordinates':[nodes[p['id']],nodes['hub']],
               'label':'Synthetic test access','kind':'simulated_access'} for p in points()]
     for a,b,key in [('hub','north','direct'),('hub','detour','alternate-a'),('detour','north','alternate-b'),('north','west','west-road'),('west','south','south-road')]:
         edges.append({'id':key,'from':a,'to':b,'coordinates':[nodes[a],nodes[b]],'label':key,'kind':'road'})
-    return {'schema_version':1,'county_fips':'12086','nodes':nodes,'edges':edges,
-            'county_geometry':{'type':'Polygon','coordinates':[[[-81,25],[-80,25],[-80,26],[-81,26],[-81,25]]]},
+    return {'schema_version':1,'county_fips':'12091','nodes':nodes,'edges':edges,
+            'county_geometry':{'type':'Polygon','coordinates':[[[-87,30],[-86,30],[-86,32],[-87,32],[-87,30]]]},
             'sites':{p['id']:p['id'] for p in points()},'destinations':[{'id':n,'node':n,'label':n} for n in ('north','west','south')],
             'provenance':{'source':'synthetic test geometry, not actual roads'}}
 
@@ -109,7 +109,7 @@ class ReplayTests(unittest.TestCase):
         cmd=historical_command('quasar-ibm-z-datathon',TABLE,'US',1000)
         self.assertEqual(replay.END-replay.START,timedelta(hours=24))
         self.assertIn('--parameter=init_start:TIMESTAMP:2026-10-09T00:00:00Z',cmd)
-        self.assertIn('--parameter=window_end:TIMESTAMP:2026-10-10T04:00:00Z',cmd)
+        self.assertIn('--parameter=window_end:TIMESTAMP:2026-10-10T05:00:00Z',cmd)
         self.assertIn('MOD(EXTRACT(HOUR FROM t.init_time), 6) = 0',sql)
         self.assertIn('--dry_run=true',cmd);self.assertIn('--maximum_bytes_billed=1000',cmd)
         self.assertNotIn('--dry_run=true',historical_command('quasar-ibm-z-datathon',TABLE,'US',1000,True))
@@ -136,7 +136,7 @@ class GeometryTests(unittest.TestCase):
 class RoutingTests(unittest.TestCase):
     def test_full_graph_county_validation(self):
         d=graph();routing.validate_graph(d)
-        d['edges'][0]['coordinates'].insert(1,[-82,25.5])
+        d['edges'][0]['coordinates'].insert(1,[-82,30.2])
         with self.assertRaises(ValueError):routing.validate_graph(d)
 
     def test_shortest_closed_unknown_and_deterministic_ties(self):

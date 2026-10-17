@@ -31,5 +31,26 @@
     });
     return {points:{...collection, features:points}, cells:{type:"FeatureCollection", features:cells}};
   }
-  return {aggregate};
+  // Same zoom thresholds and click targets as TrialSmiles' zoomScoreCells.
+  function resolutionForZoom(zoom) {
+    return zoom < 6.75 ? 4 : zoom < 8.5 ? 5 : zoom < 10.75 ? 6 : 7;
+  }
+  function childZoom(resolution) { return resolution <= 4 ? 7.25 : resolution === 5 ? 9.25 : 11.25; }
+  function countyCells(geometry, h3, resolution) {
+    const polygons = geometry.type === "MultiPolygon" ? geometry.coordinates : [geometry.coordinates];
+    // Overlap mode includes shorelines, islands and slivers whose centers fall outside the county.
+    const indexes = new Set(polygons.flatMap(rings => h3.polygonToCellsExperimental(
+      rings, resolution, h3.POLYGON_TO_CELLS_FLAGS.containmentOverlapping, true)));
+    return {type:"FeatureCollection", features:Array.from(indexes, cell => ({
+      type:"Feature", id:cell,
+      geometry:{type:"Polygon", coordinates:[h3.cellToBoundary(cell, true)]},
+      properties:{h3_index:cell, resolution, site_count:0, unknown_count:0, scored_count:0,
+        max_score:null, mean_score:null, risk_band:"unknown"}
+    }))};
+  }
+  function coverage(grid, collection, h3, resolution) {
+    const occupied = new Map(aggregate(collection, h3, resolution).cells.features.map(f => [f.id, f.properties]));
+    return {...grid, features:grid.features.map(f => ({...f, properties:occupied.get(f.id) || f.properties}))};
+  }
+  return {aggregate, resolutionForZoom, childZoom, countyCells, coverage};
 });

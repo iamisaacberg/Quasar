@@ -21,11 +21,12 @@ from quasar.adapters.historical import write_json
 from quasar.adapters.weathernext import points, iso
 from quasar.geometry import covers, line_covered, distance_m, length_m
 from quasar.routing import validate_graph
+from quasar.geometry_index import CountyBoundaryIndex
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / 'data/raw/isaias'
 PROCESSED = ROOT / 'data/processed'
-ROADS_URL = 'https://gisweb.miamidade.gov/arcgis/rest/services/LandManagement/MD_ZoningLandManagementViewer/MapServer/8/query'
+ROADS_URL = 'https://okgis.myokaloosa.com/arcgis/rest/services/Infrastructure/Transportation/MapServer/120/query'
 BOUNDARY_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/State_County/MapServer/1/query'
 
 
@@ -75,41 +76,30 @@ def advisories():
 
 
 def boundary():
-    path = ROOT / 'data/raw/census_miami_dade_county.geojson'
+    path = ROOT / 'data/raw/census_okaloosa_county.geojson'
     if not path.exists():
-        params = {'where': "GEOID='12086'", 'outFields': 'GEOID,NAME', 'outSR': '4326', 'f': 'geojson'}
+        params = {'where': "GEOID='12091'", 'outFields': 'GEOID,NAME', 'outSR': '4326', 'f': 'geojson'}
         fetch(BOUNDARY_URL+'?'+urlencode(params), path)
     data = json.loads(path.read_text())
     f = data['features'][0]
-    if str(f['properties']['GEOID']) != '12086':
+    if str(f['properties']['GEOID']) != '12091':
         raise ValueError('Unexpected county boundary')
     return f['geometry'], hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def source_roads():
-    collected = []
-    offset = 0
-    while True:
-        path = RAW / f'roads-{offset}.json'
-        params = {'where': "CLASS IN ('1','2','3','4')", 'outFields': 'OBJECTID,PRE_DIR,ST_NAME,ST_TYPE',
-                  'geometry': '-80.53,25.43,-80.16,25.91', 'geometryType': 'esriGeometryEnvelope',
-                  'inSR': '4326', 'spatialRel': 'esriSpatialRelIntersects', 'outSR': '4326',
-                  'resultOffset': offset, 'resultRecordCount': 1000, 'orderByFields': 'OBJECTID', 'f': 'geojson'}
-        data = json.loads(path.read_text()) if path.exists() else json.loads(fetch(ROADS_URL+'?'+urlencode(params), path))
-        if 'error' in data:
-            raise ValueError(str(data['error']))
-        features = data['features']
-        collected.extend(features)
-        print(f'Road source: {len(collected)} segments', flush=True)
-        if len(features) < 1000:
-            return collected
-        offset += 1000
-        if offset > 30000:
-            raise ValueError('Road response exceeded acquisition bound')
+    path = ROOT / 'data/processed/okaloosa/roads.geojson'
+    if not path.exists():
+        raise ValueError('Run scripts/acquire_supporting_data.py first')
+    data = json.loads(path.read_text())
+    if data.get('county_fips') != '12091':
+        raise ValueError('Wrong road county')
+    return data['features']
 
 
 def curate():
     county, boundary_hash = boundary()
+    county_index = CountyBoundaryIndex(county)
     roads = source_roads()
     nodes, edges, adjacent = {}, {}, {}
     def node(p):
@@ -129,7 +119,7 @@ def curate():
             key = f'road-{props["OBJECTID"]}-{n}'
             edge = {'id': key, 'from': a, 'to': b, 'coordinates': coords, 'kind': 'road',
                     'source_identifier': props['OBJECTID'],
-                    'label': ' '.join(str(props.get(k) or '').strip() for k in ('PRE_DIR','ST_NAME','ST_TYPE')).strip()}
+                    'label': ' '.join(str(props.get(k) or '').strip() for k in ('PREDIR','NAME','TYPE','SUFDIR')).strip()}
             edges[key] = edge
             meters = length_m(coords)
             for u,v in ((a,b),(b,a)):
@@ -150,9 +140,9 @@ def curate():
     print(f'Largest exercise component: {len(component)} junctions', flush=True)
     def nearest(p):
         return min(component, key=lambda k: distance_m(p,nodes[k]))
-    dests = [{'id': 'exercise-north', 'label': 'Exercise destination North', 'node': nearest([-80.30,25.87])},
-             {'id': 'exercise-west', 'label': 'Exercise destination West', 'node': nearest([-80.38,25.81])},
-             {'id': 'exercise-south', 'label': 'Exercise destination South', 'node': nearest([-80.40,25.68])}]
+    dests = [{'id': 'exercise-north', 'label': 'Exercise destination North', 'node': nearest([-86.48,30.52])},
+             {'id': 'exercise-west', 'label': 'Exercise destination West', 'node': nearest([-86.62,30.43])},
+             {'id': 'exercise-south', 'label': 'Exercise destination Inland', 'node': nearest([-86.57,30.76])}]
     def path(start,end,blocked=None):
         queue, seen = [(0,(),start)], set()
         while queue:
@@ -176,7 +166,7 @@ def curate():
         key = 'access-'+identifier
         connector = {'id':key,'from':identifier,'to':start,'coordinates':[coords,nodes[start]],
                      'kind':'simulated_access','label':p['label']+' · simulated access connector'}
-        if length_m(connector['coordinates']) <= 0 or not line_covered(connector['coordinates'],county):
+        if length_m(connector['coordinates']) <= 0 or not county_index._line_inside(connector['coordinates']):
             raise ValueError('Invalid exercise access connector')
         edges[key] = connector
         chosen.add(key)
@@ -190,16 +180,16 @@ def curate():
     selected = [edges[k] for k in sorted(chosen)]
     print(f'Validating complete county containment for {len(selected)} curated segments',flush=True)
     for e in selected:
-        if not line_covered(e['coordinates'],county):
+        if not county_index._line_inside(e['coordinates']):
             raise ValueError('Curated road leaves county; must recurate: '+e['id'])
     used = {e[k] for e in selected for k in ('from','to')}
-    data = {'schema_version':1,'county_fips':'12086','county_geometry':county,
+    data = {'schema_version':1,'county_fips':'12091','county_geometry':county,
             'nodes':{k:nodes[k] for k in sorted(used)},'edges':selected,'sites':origins,'destinations':dests,
-            'provenance':{'source_url':ROADS_URL,'source_identifier':'Miami-Dade street centerlines, layer 8',
-                          'retrieved_at':iso(datetime.fromtimestamp(max(p.stat().st_mtime for p in RAW.glob('roads-*.json')),timezone.utc)),'crs':'EPSG:4326','units':'decimal degrees; haversine meters',
-                          'license':'Miami-Dade public GIS service; local research use. Review county terms before redistributing source geometry.',
+            'provenance':{'source_url':ROADS_URL,'source_identifier':'Okaloosa street centerlines, layer 120',
+                          'retrieved_at':iso(datetime.fromtimestamp((ROOT/'data/processed/okaloosa/roads.geojson').stat().st_mtime,timezone.utc)),'crs':'EPSG:4326','units':'decimal degrees; haversine meters',
+                          'license':'Okaloosa public GIS service; local research use. Review county terms before redistributing source geometry.',
                           'boundary_source':BOUNDARY_URL,'boundary_sha256':boundary_hash,
-                          'source_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(RAW.glob('roads-*.json'))},
+                          'source_sha256':{'roads.geojson':hashlib.sha256((ROOT/'data/processed/okaloosa/roads.geojson').read_bytes()).hexdigest()},
                           'processing':'Curated shortest and alternative paths on endpoint-connected road geometry; rounded 6 decimals; two-way exercise topology. Polygon and full-segment containment checked. Simulated access lines and three fictional destinations; no historical road claims.'}}
     validate_graph(data)
     write_json(PROCESSED/'evacuation-network.json',data)

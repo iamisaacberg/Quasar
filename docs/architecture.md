@@ -2,7 +2,7 @@
 
 ```text
 Synthetic JSON adapters
-    -> Miami-Dade scope checks
+    -> Okaloosa scope checks
     -> property/weather feature contract
     -> illustrative score + factor contributions + unknown state
     -> GeoJSON API
@@ -20,7 +20,7 @@ Planned: county GIS / FEMA / USGS / historical archive
     -> spatial joins + provenance + freshness -> validated model + replay
 ```
 
-One Python process serves the API and static frontend. The React/Tailwind application shell in `frontend/` wraps the existing map/data controller; Vite compiles it into committed `quasar/static/ui/` assets. The Python runtime serves only explicit asset routes, and its container needs no Node.js runtime. The Shadcnblocks key is used only by development tooling, never by the API or browser. There is no database, worker, scheduler or external message delivery. This keeps the starter easy to run on each teammate's computer and on IBM Z. A later public service needs an application hosting stack, individual authentication, persistence, rate limits and operational monitoring.
+One Python process serves the API and static frontend. The React/Tailwind application shell in `frontend/` wraps the existing map/data controller; Vite compiles it into committed `quasar/static/ui/` assets. The Python runtime serves only explicit asset routes, and its container needs no Node.js runtime. The Shadcnblocks key is used only by development tooling, never by the API or browser. A separate SQLite store holds minimal county parcel geometry and H3 memberships. There is no scoring database, worker, scheduler or external message delivery. This keeps the starter easy to run on each teammate's computer and on IBM Z. A later public service needs an application hosting stack, individual authentication, persistence, rate limits and operational monitoring.
 
 The optional `quasar.wifi` launcher binds to the laptop's Wi-Fi IPv4 address and
 requires HTTPS plus a shared passphrase entered on the Quasar team access page. A signed, HTTP-only session cookie protects static files and API endpoints together. Credentials are compared through constant-time
@@ -60,7 +60,7 @@ Mapbox GL JS 3.33.0 renders the site GeoJSON as a circle layer and H3 cells as f
 
 H3 4.3.0 is bundled as browser JavaScript with its Apache license/notice. `spatial.js` indexes sites at resolution 7 and builds occupied-cell summaries: site count, scored count, unknown count, maximum and mean score. Unknowns are excluded from score statistics and reported separately. A fully unknown cell remains unknown. The map uses the maximum score for color so averaging does not hide a high-scoring demo site.
 
-Hexagon boundaries are not clipped to the county and may cross its border; only curated Miami-Dade sample sites are included. Hexagons are neither inundation areas nor countywide coverage. Their sizes do not increase WeatherNext's original 0.1-degree resolution. Forecast values are associated using the source polygon directly, before any H3 display aggregation. Real property terrain, footprints and waterway relations must retain their own geometry.
+Hexagon boundaries are not clipped to the county and may cross its border; only curated Okaloosa sample sites are included. Hexagons are neither inundation areas nor countywide coverage. Their sizes do not increase WeatherNext's original 0.1-degree resolution. Forecast values are associated using the source polygon directly, before any H3 display aggregation. Real property terrain, footprints and waterway relations must retain their own geometry.
 
 See [integration setup](integrations.md) for authentication, query semantics, required project details and remaining live checks.
 
@@ -79,6 +79,11 @@ revocation. The Python application and local IBM Z workflow remain reusable.
 Research can use `notebooks/01_shared_code_starter.ipynb`, while regular Python/editor users can run `python -m quasar.analysis --compare`. Both call `quasar.analysis`, which delegates scoring to the existing application pipeline. Notebook-specific dependencies live in the optional `.[notebooks]` extra and are not installed by the application or container. CI executes clean notebook sources in fresh kernels; no running notebook is needed by the service. See [notebook workflow](../notebooks/README.md).
 
 The Python core has no third-party runtime packages and the container has no processor-specific build instructions. This is a portability design choice, not certification. Run the tests and container on the actual Linux `s390x` host before claiming IBM Z compatibility. Add ML/GIS packages only after checking native wheels or a reproducible build on the team's target host.
+
+An optional authenticated [LinuxONE snapshot bridge](data-bridge.md) lets the
+Vercel Python function fetch the allow-listed normalized inputs from the IBM
+host. The browser still calls the Vercel API; no IBM token reaches frontend code.
+The bridge is disabled by default and requires operator-provided HTTPS ingress.
 
 ## Isaias replay and exercise routing
 

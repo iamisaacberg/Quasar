@@ -2,7 +2,7 @@
 
 ## Scope
 
-- This repository is Quasar, a Miami-Dade County flood intelligence datathon project. Only county FIPS `12086` is in scope.
+- This repository is Quasar, a Okaloosa County flood intelligence datathon project. Only county FIPS `12091` is in scope.
 - Read `README.md` and relevant `docs/` before changing interfaces. The supplied proposal is context; direct user instructions control scope.
 - Keep synthetic data visibly labeled. Never invent source access, official alerts, historic observations, real parcels, or model validation.
 - Project estimates supplement official NWS/local guidance. Do not express a score as flood depth, flood probability, an evacuation order, or a guarantee of safety.

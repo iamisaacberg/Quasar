@@ -2,7 +2,7 @@
 
 ## Pilot boundary
 
-Miami-Dade County is fixed to FIPS `12086`, timezone `America/New_York`. API coordinates are WGS84 (EPSG:4326), `[longitude, latitude]`. The fixture loader checks county tags and coordinate validity. **It does not yet perform a county polygon intersection** and must not be used as an external-data import path without that check.
+Okaloosa County is fixed to FIPS `12091`, timezone `America/Chicago`. API coordinates are WGS84 (EPSG:4326), `[longitude, latitude]`. The fixture loader checks county tags and coordinate validity. **It does not yet perform a county polygon intersection** and must not be used as an external-data import path without that check.
 
 Fixtures contain six invented points. They are not parcels or building footprints. They are deliberately small enough for every teammate to read.
 
@@ -12,7 +12,7 @@ Fixtures contain six invented points. They are not parcels or building footprint
 | --- | --- | --- |
 | `id` | string | Stable adapter identifier; demo IDs start `demo-` |
 | `label` | string | Display label; do not use real owner names |
-| `county_fips` | string | Must be `12086` |
+| `county_fips` | string | Must be `12091` |
 | `longitude`, `latitude` | number | WGS84 point |
 | `elevation_m` | number or null | Terrain elevation; real integration must specify vertical datum |
 | `fema_zone` | string or null | Illustrative normalized FEMA code; unknown codes remain unknown |
@@ -22,7 +22,7 @@ Fixtures contain six invented points. They are not parcels or building footprint
 
 `id`, `label`, `valid_from`, `valid_to`, `rainfall_6h_mm`, and `gauge_margin_m`.
 
-Times are ISO 8601 UTC with `Z`; UI formats them in Miami's local time. Each fixture window uses one countywide rainfall and gauge value as an explicit simplification. The rainfall value represents total mm for that six-hour window. Gauge margin is `flood_stage_m - observed_stage_m`, using matching datum and units; negative means above the illustrative stage threshold.
+Times are ISO 8601 UTC with `Z`; UI formats them in Central time (America/Chicago). Each fixture window uses one countywide rainfall and gauge value as an explicit simplification. The rainfall value represents total mm for that six-hour window. Gauge margin is `flood_stage_m - observed_stage_m`, using matching datum and units; negative means above the illustrative stage threshold.
 
 ## Scored GeoJSON
 
@@ -45,7 +45,7 @@ Complete risk outputs contain five factors: `name`, original `value`, `weight`, 
 
 `GET /api/properties?scenario=weathernext` is available only when a structurally valid imported snapshot is configured. The response mode is `mixed_forecast_demo`. The collection's `forecast` metadata includes connection/freshness status, exact source table, initialization, retrieval time, validity window, native resolution and statistic. Each point adds `forecast.status`, `rainfall_6h_mm`, `available_hours` and `native_cells_wkt`. Its non-rainfall inputs remain synthetic. Non-null scores report `data_status: mixed_demo`; missing/stale rainfall remains an unknown score.
 
-The snapshot schema uses `schema_version: 1`, `model: WeatherNext 3`, `county_fips: 12086`, `native_resolution: 0.1 degree`, `statistic: ensemble_mean`, `units: mm_per_hour`, `source_table`, `init_time`, `retrieved_at`, `valid_from`, `valid_to` and `rows`. Rows contain `property_id`, `forecast_time`, `rainfall_1h_mm` and `native_cell_wkt`. The importer converts source meters to mm exactly once in SQL. It sums six hourly **means**, not marginal percentile values.
+The snapshot schema uses `schema_version: 1`, `model: WeatherNext 3`, `county_fips: 12091`, `native_resolution: 0.1 degree`, `statistic: ensemble_mean`, `units: mm_per_hour`, `source_table`, `init_time`, `retrieved_at`, `valid_from`, `valid_to` and `rows`. Rows contain `property_id`, `forecast_time`, `rainfall_1h_mm` and `native_cell_wkt`. The importer converts source meters to mm exactly once in SQL. It sums six hourly **means**, not marginal percentile values.
 
 Hourly timestamps denote the end of each accumulation interval. The six timestamps must be start+1h through start+6h from one initialization. Missing/null steps produce unknown totals; duplicates or out-of-window steps invalidate the import. Each point ID must be in the curated fixture catalog. This is not an import route for arbitrary coordinates or external parcels.
 
@@ -57,13 +57,24 @@ Hourly timestamps denote the end of each accumulation interval. The six timestam
 
 Do not silently replace fixtures. Add an explicit data mode and source status. Every real adapter must retain source URL/record ID, retrieval time, observation/issue/valid times where relevant, CRS, vertical datum, units, license and transformation steps. Add authoritative county geometry validation, source-age limits, missing/stale states, and tests for outside-county records. Store only normalized county-filtered features in the scoring pipeline. Do not turn a centroid association into a claim of building-level inundation.
 
+## LinuxONE snapshot bridge
+
+The optional IBM-to-Vercel bridge serves only the named normalized snapshots in
+[the bridge guide](data-bridge.md). The LinuxONE endpoint requires a bearer token
+and an operator-provided HTTPS reverse proxy. Vercel reads snapshots only from
+server-side Python code; the token is never returned to the browser. The bridge
+preserves each file's source metadata and timestamps, then existing adapter
+validation applies the normal county, schema, freshness, and missing-input rules.
+An upstream failure is `unavailable`, and does not select synthetic rainfall.
+Raw downloads, credentials, and property datasets are outside this contract.
+
 ## Isaias 2026 hourly replay (additive contract)
 
-Scenario `isaias-2026` spans 2026-10-09T04:00:00Z through
-2026-10-10T04:00:00Z inclusive (25 whole-hour departure times). `at` selects
+Scenario `isaias-2026` spans 2026-10-09T05:00:00Z through
+2026-10-10T05:00:00Z inclusive (25 whole-hour departure times). `at` selects
 the departure time; `preset` is `archived`, `plus-5`, or `plus-10`; `mode` is
 `archive` or `what_if`. Non-archived presets and road/destination overrides
-require what-if mode. UTC is canonical; display timezone is America/New_York.
+require what-if mode. UTC is canonical; display timezone is America/Chicago.
 Each score uses rainfall intervals ending at at+1h through at+6h from the
 latest eligible initialization (not newer than the replay time, at most 12h old).
 If supplied, published_at must also be no later than at. Missing publication
@@ -95,7 +106,7 @@ curated points, finite nonnegative mm or null, and strictly after initialization
 Duplicates invalidate that run, producing unknown rainfall rather than falling
 back to an older run. Source files, checksums and import commands remain local.
 
-Road graph geometry is county-contained EPSG:4326, sourced from Miami-Dade street
+Road graph geometry is county-contained EPSG:4326, sourced from Okaloosa street
 centerlines. Topology, two-way traversal, 30km/h speeds, access connectors,
 restrictions and all three destinations are exercise assumptions, not navigation
 or shelter-opening evidence. Whole segments are checked against county rings,
@@ -149,3 +160,55 @@ retain charts, tables, validity/generation/source timestamps and official-guidan
 notes; they link to the interactive map rather than capturing a basemap. Print
 uses the browser's Print / Save as PDF. BI tools refresh by manual file replacement;
 no hosted embedding, automated refresh or native workbook generation is included.
+
+
+## County grid and parcel browsing
+
+`GET /api/county` returns a WGS84 GeoJSON collection with the single authoritative
+Census TIGERweb `GEOID=12091` boundary, source URL, retrieval time, CRS, units,
+license and processing notes. It is cached in memory for the UTC day. The browser
+fills all intersecting county cells at H3 resolutions 4, 5, 6 and 7, including
+coastal slivers and islands. Hexagons can extend beyond the dashed county outline.
+Zoom thresholds are 6.75, 8.5 and 10.75, matching TrialSmiles. No site-derived
+score exists for unoccupied cells; their score stays null. In rainfall mode the
+grid is neutral and is not a forecast layer.
+
+`GET /api/parcels?ring=<JSON closed lon/lat R7 ring>&offset=0` queries the fixed
+Okaloosa parcel GIS layer for intersecting polygons. Only `OBJECTID`
+and geometry are requested; owner, address and mailing fields are excluded. Every
+complete polygon is checked against the authoritative county geometry, including
+edges, concavities and holes. Boundary-crossing polygons are excluded rather
+than represented as wholly inside the county. This is an intersection inventory,
+so a parcel can appear in adjacent cells. It is not a count of homes or units.
+
+Responses contain `features`, `status: ready`, `source_total` (raw GIS matches),
+`checked_count`, page-local `excluded_count`, `next_offset` (null on completion),
+and `inventory_id`. Continue with the returned offset and inventory ID until
+null; there is no UI row cap. A changed ID inventory or incomplete source page
+fails explicitly. Each page has at most 100 source records. IDs are cached for
+five minutes in a bounded in-memory cache; each worker may reacquire them.
+County validation is authoritative geometry validation, not trust in a supplied
+FIPS or an envelope. Page/source failures are HTTP 502 with `status: unavailable`,
+never successful empty inventories. Bad requests and non-pilot FIPS are HTTP 400.
+The browser discards late results after selection changes, labels partial loads,
+and offers retry; only a completed load claims all source matches were checked.
+
+Parcel properties are `parcel_id`, `county_fips: 12091`,
+`risk_score: null`, and `risk_band: unknown`. Metadata includes source/terms URLs,
+retrieval/inventory/boundary retrieval times, CRS `EPSG:4326`, degrees, license
+notes and processing steps. No forecast, terrain, FEMA or gauge joins are implied.
+Raw/derived research downloads stay in ignored `data/raw/` / `data/processed/`.
+Runtime reads are kept in memory; no durable parcel dataset is written by the app.
+
+Separate offline descriptive-input artifacts are defined in
+[parcel input preparation](parcel-inputs.md). Their terrain/FEMA/reference-distance
+fields do not enter this API or the scoring pipeline. A complete artifact requires
+its final manifest; every research record retains null risk scores and explicit
+coverage/unknown states.
+
+
+## Okaloosa county weather (schema 3)
+
+County snapshots have `schema_version: 3`, county FIPS `12091`, kind `current_county_forecasts` or `historical_county_forecasts`, source table/model, native resolution/statistic/units, actual retrieval time, county geometry, `native_cells` and initialization-grouped `runs`. Each native cell retains ID, original WKT and GeoJSON geometry. IDs are SHA-256 of source WKT. Hourly rows reference the cell ID in `property_id`; `rainfall_1h_mm` is null or a nonnegative finite number. Duplicate cell/hour/run rows invalidate the snapshot. Current snapshots additionally carry `init_time`, `valid_from` and `valid_to`; historical ones carry the Central-time replay bounds.
+
+The importer selects native cells by county intersection; cells can extend beyond the county. The runtime associates the six fictional points locally using source polygon coverage and rejects ambiguous overlapping assignments. It exposes native rainfall as additive `weather_cells` GeoJSON on property collections, with per-cell availability and six-hour mm. Score records remain six fictional sites; county parcels stay unscored. H3 grids do not substitute for native forecast polygons. Existing schemas 1/2 remain supported for the configured county. Miami-Dade FIPS 12086 files are rejected.

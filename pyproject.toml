@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "quasar-flood"
 version = "0.1.0"
-description = "Miami-Dade flood risk intelligence datathon starter"
+description = "Okaloosa flood risk intelligence datathon starter"
 requires-python = ">=3.11"
 dependencies = []
 

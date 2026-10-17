@@ -2,7 +2,7 @@
 
 This folder is for the teammate using **Jupyter Notebook**. Everyone else can keep using regular Python, their editor and the application. Jupyter is not an application runtime dependency and is not installed in the IBM Z container.
 
-Start with [01_shared_code_starter.ipynb](01_shared_code_starter.ipynb). Its default run is offline: synthetic Miami-Dade fixtures, shared scenario reports, a small score chart, an input experiment and unknown-data behavior. It imports `quasar.analysis`, `quasar.pipeline` and `quasar.scoring` rather than carrying another copy of the scoring logic. An optional, disabled cell can inspect an already imported WeatherNext snapshot. Nothing in the starter queries BigQuery, calls Mapbox, sends notifications or accesses IBM Z.
+Start with [01_shared_code_starter.ipynb](01_shared_code_starter.ipynb). Its default run is offline: synthetic Okaloosa fixtures, shared scenario reports, a small score chart, an input experiment and unknown-data behavior. It imports `quasar.analysis`, `quasar.pipeline` and `quasar.scoring` rather than carrying another copy of the scoring logic. An optional, disabled cell can inspect an already imported WeatherNext snapshot. Nothing in the starter queries BigQuery, calls Mapbox, sends notifications or accesses IBM Z.
 
 ## For the teammate using Jupyter Notebook
 

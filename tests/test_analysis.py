@@ -9,7 +9,7 @@ class AnalysisTests(unittest.TestCase):
     def test_report_matches_application_scores_and_preserves_provenance(self):
         data = collection("peak")
         report = scenario_report("peak")
-        self.assertEqual(report["county_fips"], "12086")
+        self.assertEqual(report["county_fips"], "12091")
         self.assertEqual(report["mode"], data["mode"])
         self.assertEqual(report["provenance"], data["provenance"])
         scores = {f["id"]: f["properties"]["risk"]["score"] for f in data["features"]}

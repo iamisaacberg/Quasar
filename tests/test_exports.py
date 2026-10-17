@@ -64,13 +64,13 @@ class ExportTests(unittest.TestCase):
             self.assertTrue(all(row['score'] == '' for row in csv.DictReader(io.StringIO(body.decode()))))
 
     def test_csv_quotes_text_and_preserves_numeric_null_and_negatives(self):
-        payload = csv_bytes([{'label': 'Comma, quote " and\nnewline', 'score': None, 'longitude': -80.1},
-                             {'label': '=HYPERLINK("example")', 'score': 0, 'longitude': -80.2}],
+        payload = csv_bytes([{'label': 'Comma, quote " and\nnewline', 'score': None, 'longitude': -86.4},
+                             {'label': '=HYPERLINK("example")', 'score': 0, 'longitude': -86.5}],
                             ('label', 'score', 'longitude'))
         rows = list(csv.DictReader(io.StringIO(payload.decode())))
         self.assertEqual(rows[0]['label'], 'Comma, quote " and\nnewline')
         self.assertEqual(rows[0]['score'], '')
-        self.assertEqual(rows[0]['longitude'], '-80.1')
+        self.assertEqual(rows[0]['longitude'], '-86.4')
         self.assertEqual(rows[1]['score'], '0')
         self.assertTrue(rows[1]['label'].startswith("'="))
 

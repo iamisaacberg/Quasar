@@ -2,7 +2,7 @@
 
 ## Runtime structure
 
-One Python process serves a fixed set of static assets and JSON/download endpoints. It uses `ThreadingHTTPServer` and standard-library modules, with no third-party Python runtime dependencies. There is no application database, background queue, scheduler, or message provider.
+One Python process serves a fixed set of static assets and JSON/download endpoints. It uses `ThreadingHTTPServer` and standard-library modules, with no third-party Python runtime dependencies. An optional read-only SQLite store holds county parcel geometry and H3 memberships. There is no scoring database, background queue, scheduler, or message provider.
 
 ```text
 Committed fictional sites + synthetic windows
@@ -144,7 +144,7 @@ Restrictions apply at departure time. The model does not predict changing condit
 
 ## Browser map and H3
 
-React provides the shell and dashboard markup; the existing JavaScript controller loads data and manages Mapbox. `spatial.js` assigns site coordinates to H3 resolution 7 and returns a copied point collection plus occupied-cell polygons.
+React provides the shell and dashboard markup; the existing JavaScript controller loads data and manages Mapbox. `spatial.js` assigns site coordinates to H3 resolution 7 and returns a copied point collection plus occupied-cell summaries. The county browsing layer fills every cell intersecting the authoritative Census boundary at zoom-dependent resolutions 4–7. Coarse cells zoom to the next level; R7 opens the adapted TrialSmiles cell panel and loads all intersecting county-validated parcel polygons in pages. A parcel opens its detail panel; close/back preserve the cell context. Real parcels remain unscored, and the rainfall browsing grid stays neutral. See the county/parcel API contract in `data-contract.md`.
 
 Cell properties include site count, scored count, unknown count, maximum score, and mean score. Unknowns are excluded from numeric statistics. Maximum score determines the displayed band, so a mean does not hide a high-scoring sample. An all-unknown cell has null statistics and an unknown band.
 
@@ -188,7 +188,7 @@ The dashboard's official-alert endpoint returns `not_connected` and an empty lis
 | GET `/api/official-alerts` | None | Explicit disconnected status |
 | POST `/api/notifications/preview` | JSON with site IDs, opt-in, channel, scenario | In-memory simulation |
 
-GET requests reject duplicate query parameters and any supplied `county_fips` other than `12086`. Unknown routes return 404. Validated value errors return JSON 400 responses. POST bodies must be JSON objects with content type `application/json` and length 1–16,384 bytes; wrong type returns 415 and invalid length returns 413. Unsupported methods are not a general API extension point.
+GET requests reject duplicate query parameters and any supplied `county_fips` other than `12091`. Unknown routes return 404. Validated value errors return JSON 400 responses. POST bodies must be JSON objects with content type `application/json` and length 1–16,384 bytes; wrong type returns 415 and invalid length returns 413. Unsupported methods are not a general API extension point.
 
 JSON responses and downloads use `Cache-Control: no-store`; JSON serialization rejects NaN. Static assets are allowlisted, so arbitrary repository files and `.env` are not served. There is no versioned public API guarantee or comprehensive production exception/observability layer.
 

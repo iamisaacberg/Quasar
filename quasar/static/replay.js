@@ -1,9 +1,9 @@
 /* Shared replay state, accessible controls and chart. No cloud requests. */
 (function (root) {
   "use strict";
-  const START = Date.parse("2026-10-09T04:00:00Z"), LAST = 24;
+  const START = Date.parse("2026-10-09T05:00:00Z"), LAST = 24;
   const hour = (index) => new Date(START + Math.max(0, Math.min(LAST, index)) * 3600000).toISOString().replace(".000Z", "Z");
-  const localTime = (value) => new Date(value).toLocaleString("en-US", {timeZone:"America/New_York", month:"short", day:"numeric", hour:"numeric", timeZoneName:"short"});
+  const localTime = (value) => new Date(value).toLocaleString("en-US", {timeZone:"America/Chicago", month:"short", day:"numeric", hour:"numeric", timeZoneName:"short"});
   function segments(points) {
     const paths = []; let current = [];
     for (let i=0; i<points.length; i++) {

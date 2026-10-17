@@ -1,7 +1,10 @@
 # Isaias 2026 replay and evacuation exercise
 
-Open **Isaias 2026** in the sidebar (or `/#isaias-replay`). The replay spans
-October 9 04:00 UTC through October 10 04:00 UTC (October 9 in Miami time), displayed in Miami time. The
+Open **Map overview**, then choose **Isaias simulation** in the map toolbar
+(or use the legacy `/#isaias-replay` link). Playback, site inspection, trends and
+routing share the map side panel; **Exit Isaias simulation** returns to the
+previous data source. The replay spans
+October 9 04:00 UTC through October 10 04:00 UTC (October 9 in Central time), displayed in Central time. The
 hourly score always describes the **following six forecast hours**. It uses the
 existing illustrative scoring function, not a trained or validated flood model.
 
@@ -17,7 +20,7 @@ python3 scripts/prepare_isaias.py
 `--only advisories` and `--only roads` prepare each source separately. Raw
 responses stay under ignored `data/raw/isaias/`; normalized files stay under
 ignored `data/processed/`. Current source road geometry is not historical proof.
-The road graph uses a subset of Miami-Dade's street-centerline service, checked
+The road graph uses a subset of Okaloosa's street-centerline service, checked
 against the Census county polygon. All full line segments, including simulated
 access connectors, must stay inside that polygon. Source identifiers, checksums,
 CRS, units, retrieval times, terms and processing notes accompany the outputs.
@@ -74,8 +77,7 @@ terrain, FEMA, waterway and gauge factors remain fictional. The missing-terrain
 site stays unscored. Chart gaps and unavailable hourly changes preserve nulls.
 
 NHC advisory context uses original issue timestamps and only shows advisories
-issued by the selected replay hour. A Miami-based NHC advisory is not evidence of
-a Miami-Dade landfall or local inundation. No archived official local warning feed
+issued by the selected replay hour. The NHC office location does not determine storm impact; advisory context alone does not establish local observed inundation. No archived official local warning feed
 or observed-outcome validation has been added.
 
 ## Routing and presenter walkthrough
@@ -123,32 +125,6 @@ duplicates, historical initialization/publication selection, county holes and
 concavities, routing restrictions/ties, API validation, playback/reset and late
 responses. They are not historical model validation. Isaac reviews visuals.
 
-## Historical import checkpoint (October 17, 2026)
+## Okaloosa transition
 
-The demo covers **October 9 in Miami time**, midnight to midnight: 24 hours with
-25 selectable endpoints. This is the storm's peak-intensity and landfall day,
-not a verified worst Miami-Dade flood day. Its hourly scores look six hours ahead,
-so forecast validity extends beyond the displayed day.
-
-The existing authenticated Cloud Shell completed the import after the user
-approved using the free Sandbox allowance. The dry-run estimate was
-383,408,640,000 bytes. Execution used an explicit 384,000,000,000-byte ceiling;
-the completed job reported 383,408,668,672 bytes against query quota, with billing
-disabled and no billing account attached. The 1 GB dry-run default remains intact
-for future commands. This successful larger import is not an automatic refresh.
-
-Five six-hourly initializations (October 9 00:00 UTC through October 10 00:00 UTC)
-returned 540 hourly site rows, retaining native cells and source checksums. All
-25 replay timestamps have complete six-hour rainfall windows at all six sites.
-The site with missing terrain still has an unknown score. Publication timing
-remains unverified. Raw rows, query statistics and the normalized archive are
-stored in ignored data directories. The October 17 forecast snapshot is separate.
-
-Reproduce this reviewed import only after reviewing a fresh dry-run estimate:
-
-```sh
-python3 -m quasar.adapters.historical \
-  --project quasar-ibm-z-datathon \
-  --table quasar-ibm-z-datathon.weathernext_3.weathernext_3_0_0_0p1deg \
-  --location US --maximum-bytes-billed 384000000000 --execute
-```
+Replay covers October 9 in America/Chicago: 2026-10-09T05:00:00Z through 2026-10-10T05:00:00Z, inclusive. Forecast validity extends six hours past the final endpoint. Use the county importer in [integrations.md](integrations.md); original Miami-Dade point archives are incompatible. Reacquire roads with `scripts/acquire_supporting_data.py` before preparing the exercise graph. NHC advisory issue timestamps and public source URLs remain unchanged.

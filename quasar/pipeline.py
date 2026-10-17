@@ -70,5 +70,6 @@ def collection(scenario_id: str = "baseline", *, at=None, preset="archived", mod
             "county_name": COUNTY_NAME, "mode": "mixed_forecast_demo" if forecast else "synthetic_demo",
             "scenario": scenario, "provenance": source["provenance"],
             "notice": "WeatherNext 3 rainfall with fictional property, FEMA, terrain and gauge inputs. Unvalidated mixed demonstration; not an official warning." if forecast else NOTICE,
-            "forecast": {k: v for k, v in forecast.items() if k != "records"} if forecast else None,
+            "forecast": {k: v for k, v in forecast.items() if k not in ("records", "county_cells")} if forecast else None,
+            "weather_cells": forecast.get("county_cells") if forecast else None,
             "features": features}
