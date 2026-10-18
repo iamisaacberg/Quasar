@@ -267,9 +267,10 @@ class Handler(BaseHTTPRequestHandler):
                                                       query.get("format", ["csv"])[0])
                 return self.send(200, body, content_type, filename=filename)
             if url.path == "/api/official-alerts":
-                return self.send(200, {"status": "not_connected", "alerts": [],
-                                       "message": "Official NWS alerts are not loaded. This is not an all-clear.",
-                                       "source_url": "https://www.weather.gov/mob/"})
+                from .adapters.county_alerts import official_alerts
+                if set(query) - {"source", "county_fips"}:
+                    raise ValueError("Official alerts support source=current or archive")
+                return self.send(200, official_alerts(query.get("source", ["archive"])[0]))
             self.send(HTTPStatus.NOT_FOUND, {"error": "Route not found"})
         except SourceUnavailable as exc:
             self.send(HTTPStatus.BAD_GATEWAY, {"status": "unavailable", "error": str(exc)})

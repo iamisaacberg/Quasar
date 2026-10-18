@@ -46,6 +46,17 @@ test('search debounces at three characters, filters county geometry, and support
   assert.match(app.get('map-search-status').textContent,/scores remain unknown/);
   app.get('map-search-clear').onclick();assert.equal(app.selected[1],null);assert.equal(app.get('map-search').value,'');
 });
+test('a pasted H3 cell ID is selected locally without a geocoder request',()=>{
+  const get=elements(),selected=[];let requests=0;
+  createSearch({get,element:(_tag,text)=>Object.assign(new Element(),{textContent:text}),token:'pk.test',geometry,
+    isCellId:value=>value==='8928308280fffff',request:async()=>{requests++;throw new Error('should not geocode an H3 ID');},select:feature=>selected.push(feature)});
+  get('map-search').value='8928308280FFFFF';get('map-search').oninput();
+  assert.equal(get('map-search-results').children.length,1);
+  assert.equal(get('map-search-results').children[0].children[0].textContent,'8928308280fffff');
+  get('map-search').onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(requests,0);assert.equal(selected[0].properties.h3_index,'8928308280fffff');
+  assert.match(get('map-search-status').textContent,/scores remain unknown/);
+});
 test('cancelled and late geocodes cannot reopen old results; provider errors remain explicit',async()=>{
   const pending=[];
   const app=search((url,options)=>new Promise(resolve=>pending.push({resolve,signal:options.signal})));

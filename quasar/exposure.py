@@ -91,11 +91,18 @@ def model_context(data):
             "forecast_provenance": forecast(data.get("forecast_provenance"))}
 
 
-@lru_cache(maxsize=2)
-def _artifact(path, size, modified):
+@lru_cache(maxsize=1)
+def _artifact(path, size, modified, revision=None, expected_sha256=None):
     if size > MAX_BYTES:
         raise ValueError("Exposure artifact exceeds its size limit")
-    data = json.loads(Path(path).read_bytes())
+    from .modeling import digest, read_json
+    from .exposure_catalog import version
+    before = version(path)
+    if expected_sha256 and digest(path) != expected_sha256:
+        raise ValueError("Exposure artifact checksum mismatch")
+    data = read_json(path, MAX_BYTES)
+    if version(path) != before or (revision and before != revision):
+        raise ValueError("Exposure artifact changed during loading")
     if (not isinstance(data, dict) or data.get("schema_version") != 1
             or data.get("county_fips") != COUNTY_FIPS
             or not all(isinstance(data.get(key), str) and data[key] for key in
@@ -123,7 +130,7 @@ def _artifact(path, size, modified):
             if context and score is not None and ("model_details" not in records[parcel_id]
                     or context["forecast_provenance"]["status"] != "ready"):
                 raise ValueError("Model scores require diagnostics and ready source data")
-        windows[start, end] = {**window, "records": records}
+        windows[start, end] = {**{k: v for k, v in window.items() if k != "parcels"}, "records": records}
     return {**data, "windows": windows}
 
 
@@ -133,8 +140,9 @@ def _unavailable(status, message):
 
 
 @lru_cache(maxsize=8)
-def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution):
-    data = _artifact(artifact_path, size, modified)
+def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution,
+               revision=None, expected_sha256=None):
+    data = _artifact(artifact_path, size, modified, revision, expected_sha256)
     window = data["windows"].get((start, end))
     if window is None:
         return None
@@ -160,8 +168,6 @@ def _aggregate(database, db_size, db_modified, artifact_path, size, modified, st
             "computed_at": window["computed_at"], "scale_version": SCALE["version"],
             "aggregation": "parcel_p90_linear", "resolution": resolution,
             "aggregation_architecture": platform.machine(),
-            # Cache summaries only; retaining full records here would keep eight
-            # county inventories alive as the user scrubs through replay hours.
             "cells": {cell: summarize(scores) for cell, scores in groups.items()}}
 
 
@@ -183,6 +189,8 @@ def exposure(query):
         return _remote(query)
     prepared = os.environ.get("QUASAR_EXPOSURE_DATABASE")
     if prepared:
+        if os.environ.get("QUASAR_EXPOSURE_CATALOG"):
+            return _unavailable("invalid", "Configure either an exposure catalog or a prepared database, not both.")
         try:
             from .exposure_store import read
             result, records = read(prepared, os.environ.get("QUASAR_PARCEL_DATABASE", ""), start, end, resolution, ids)
@@ -190,33 +198,48 @@ def exposure(query):
         except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
             return _unavailable("invalid", "Prepared exposure database is unavailable or invalid; scores remain unknown.")
     path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
+    catalog = os.environ.get("QUASAR_EXPOSURE_CATALOG")
     directory = os.environ.get("QUASAR_EXPOSURE_DIRECTORY")
-    if not (path or directory) or not database:
+    if not (path or directory or catalog) or not database:
         missing = []
-        if not (path or directory):
+        if not (path or directory or catalog):
             missing.append("model assessment source")
         if not database:
             missing.append("parcel inventory")
         return _unavailable("not_configured", "Exposure service is not configured: missing "
                             + " and ".join(missing) + ". Prepared parcel inputs do not contain model results.")
-    if path and directory:
+    if not catalog and path and directory:
         return _unavailable("invalid", "Configure only one exposure source: a file or a directory.")
     try:
-        if directory:
-            # Each model artifact has its own forecast provenance and 128 MiB limit.
-            # Resolve from validated UTC time, never a user-supplied path or nearest hour.
+        from .exposure_catalog import select, verify, version
+        expected = None
+        selected = None
+        if catalog:
+            root = os.environ.get("QUASAR_EXPOSURE_ARTIFACT_ROOT")
+            if not root:
+                raise ValueError("Exposure catalog requires an explicit artifact root")
+            selected = select(catalog, root, mode, start, end)
+            if selected is None:
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+            _, entry, path = selected
+            expected = entry["sha256"]
+        elif directory:
             if start.minute or start.second or start.microsecond:
                 return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
             path = str(Path(directory) / (start.strftime("%Y%m%dT%H%M%SZ") + ".json"))
             if not Path(path).exists():
                 return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+        path = str(Path(path).resolve())
+        revision = version(path)
         file_stat, db_stat = Path(path).stat(), Path(database).stat()
+        data = _artifact(path, file_stat.st_size, file_stat.st_mtime_ns, revision, expected)
+        if selected:
+            verify(selected[0], selected[1], data, start, end)
         result = _aggregate(database, db_stat.st_size, db_stat.st_mtime_ns, path, file_stat.st_size,
-                            file_stat.st_mtime_ns, start, end, resolution)
+                            file_stat.st_mtime_ns, start, end, resolution, revision, expected)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
-        records = (_artifact(path, file_stat.st_size, file_stat.st_mtime_ns)["windows"][start, end]["records"]
-                   if ids else {})
+        records = data["windows"][start, end]["records"] if ids else {}
         return _finish(result, records, query, start, end, ids, mode)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
         return _unavailable("invalid", "Parcel exposure artifact is unavailable or invalid; scores remain unknown.")

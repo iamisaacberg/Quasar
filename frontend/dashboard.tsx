@@ -62,13 +62,18 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
               <div className="map-layout">
                 <div className="map-topbar map-float">
                   <div className="map-search" role="search">
-                    <div className="map-search-input"><Search aria-hidden="true" /><input id="map-search" type="text" disabled placeholder="Search Okaloosa addresses and places…" aria-label="Search Okaloosa County" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="map-search-results" aria-describedby="map-search-status" autoComplete="off" /><button id="map-search-clear" type="button" disabled aria-label="Clear search"><X aria-hidden="true" /></button></div>
+                    <div className="map-search-input"><Search aria-hidden="true" /><input id="map-search" type="text" disabled placeholder="Search places or paste an H3 cell ID…" aria-label="Search Okaloosa places or H3 cell IDs" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="map-search-results" aria-describedby="map-search-status" autoComplete="off" /><button id="map-search-clear" type="button" disabled aria-label="Clear search"><X aria-hidden="true" /></button></div>
                     <ul id="map-search-results" role="listbox" aria-label="County search results" hidden />
                     <p id="map-search-status" role="status">Search requires a configured map and an available county boundary.</p>
                   </div>
                   <div className="map-state"><span className="demo-badge" id="mode-badge">ISAIAS · ARCHIVED FORECAST</span><span id="map-display-label">Loading map data…</span></div>
                   <p id="map-status" className="map-message" role="status" />
                 </div>
+                <section className="map-replay-trend map-float" aria-label="Archived rainfall replay chart">
+                  <div className="archive-playback-heading"><strong id="archive-trend-label">Isaias · October 9, 2026</strong><span className="archive-reading"><strong id="archive-peak">—</strong><span>mm / 6h <small>maximum across native cells</small></span></span></div>
+                  <div id="archive-trend" className="archive-trend" role="group" aria-label="Hourly maximum forecast rainfall; select an hour" />
+                  <div className="archive-trend-footer"><p id="archive-trend-range" /><input id="replay-hour" type="range" min="0" max="0" step="1" defaultValue="0" disabled aria-label="Isaias replay hour" /></div>
+                </section>
                 <div className="map-bottom-bar">
                   <div className="map-tool-dock map-float">
                     <div className="map-zoom"><button id="map-zoom-in" type="button" aria-label="Zoom in"><Plus /></button><button id="map-zoom-out" type="button" aria-label="Zoom out"><Minus /></button></div>
@@ -79,11 +84,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                       </section>
                       <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />H3 cell outlines</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
                       <details className="archive-details"><summary>Archive details</summary>
-                        <div className="archive-playback-heading"><strong id="archive-trend-label">Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
-                        <div className="archive-reading"><span id="archive-peak">—</span><span>mm / 6h <small>maximum across native cells</small></span></div>
-                        <div id="archive-trend" className="archive-trend" role="group" aria-label="Hourly maximum forecast rainfall; select an hour" />
-                        <p id="archive-trend-range" />
-                        <input id="replay-hour" type="range" min="0" max="0" step="1" defaultValue="0" disabled aria-label="Isaias replay hour" />
+                        <div className="archive-playback-heading"><strong>Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
                       </details>
                     </div></details>
                   </div>

@@ -251,6 +251,12 @@ test('hour changes update feature state without replacing geometry and revisits 
   assert.equal(app.map.geometryUpdates.parcels,geometry.parcels);
   assert.equal(app.map.geometryUpdates.hotspots,geometry.hotspots);
   assert.equal(app.requests.filter(url=>url.startsWith('/api/exposure?')).length,requests);
+  app.get('selection-content').children[1].onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,1);
+  app.get('selection-back').onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,0);
+  app.get('selection-content').children[1].onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,1);
 });
 
 test('3,165 parcels load completely, render 50 rows, and restore across visits without geometry requests',async()=>{

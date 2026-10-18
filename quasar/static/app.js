@@ -26,6 +26,10 @@ function paintSource(name,collection,key,values) {
     map.setFeatureState({source:name,id:feature.id},state);previous.set(feature.id,signature);
   }
 }
+function clearSource(name){
+  sourceKeys.delete(name);sourceStates.delete(name);
+  map.removeFeatureState?.({source:name});map.getSource(name).setData(emptyCollection());
+}
 function opacity(field,value){return stateExpression(["case",["==",["get",field],null],0,value],field);}
 
 let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, exposureExpiryTimer;
@@ -416,7 +420,7 @@ async function loadParcelExposure(selectedOnly=false) {
     const coordinates=feature.geometry.type==="Polygon" ? feature.geometry.coordinates : feature.geometry.coordinates.flat();
     return coordinates.some(ring=>ring.some(point=>bounds.contains(point)));
   };
-  const ids=parcelEntry.features.filter(feature=>(!selectedOnly || feature.id===selectedParcel) && !assessmentSeen.has(feature.id))
+  const ids=parcelEntry.features.filter(feature=>(!selectedOnly || feature.id===selectedParcel) && (selectedOnly ? !parcelAssessments.has(feature.id) : !assessmentSeen.has(feature.id)))
     .map(feature=>({id:feature.id,priority:feature.id===selectedParcel?2:visible(feature)?1:0}))
     .sort((a,b)=>b.priority-a.priority).map(feature=>feature.id);
   if(!ids.length)return;
@@ -530,7 +534,7 @@ function closeSelection() {
   $("map-selection-panel").hidden = true;
   if(restoreFocus)$("map-overview").focus();
   if (mapLoaded) {
-    for (const id of ["parcels","selected-cell","selected-parcel"]) map.getSource(id).setData(emptyCollection());
+    for (const id of ["parcels","selected-cell","selected-parcel"]) clearSource(id);
   }
 }
 
@@ -662,6 +666,7 @@ function renderCellPanel() {
 
 function inspectParcel(feature) {
   selectedParcel=feature.id; parcelContext=null;
+  void loadParcelExposure(true);
   $("selection-back").hidden=false; $("cell-zoom").hidden=true;
   $("parcel-search-label").hidden=$("parcel-pagination").hidden=true;
   $("selection-badge").textContent="County parcel · unscored";
@@ -723,7 +728,7 @@ function publishParcels(entry,force=false) {
   // Do not join a shape retained from the old inventory to replacement inputs.
   if(inventoryChanged && selectedParcel!==null && !selected) {
     selectedParcel=null;
-    map.getSource("selected-parcel").setData(emptyCollection());
+    clearSource("selected-parcel");
     renderCellPanel();
   }
   if(selectedParcel!==null) renderExposureInspection();
@@ -993,12 +998,12 @@ async function start() {
   $("selection-close").onclick = closeSelection;
   $("selection-back").onclick = () => {
     selectedParcel = null;
-    if (mapLoaded) map.getSource("selected-parcel").setData(emptyCollection());
+    if (mapLoaded) clearSource("selected-parcel");
     renderCellPanel();
     void loadInspection("cell",selectedCell);
   };
   $("parcel-retry").onclick = () => {
-    selectedParcel=null; map.getSource("selected-parcel").setData(emptyCollection());
+    selectedParcel=null; clearSource("selected-parcel");
     renderCellPanel(); void loadInspection("cell",selectedCell); return loadParcels();
   };
   $("cell-zoom").onclick=()=>{const [lat,lon]=h3.cellToLatLng(selectedCell); map.flyTo({center:[lon,lat],zoom:QuasarSpatial.childZoom(selectedResolution),duration:650});};
@@ -1010,7 +1015,7 @@ async function start() {
     await parcelCache.remove(cell);
     if(selectedCell!==cell) return;
     selectedParcel=null; parcelEntry=parcelData=cellContext=parcelContext=null;
-    map.getSource("selected-parcel").setData(emptyCollection()); map.getSource("parcels").setData(emptyCollection());
+    clearSource("selected-parcel"); clearSource("parcels");
     renderCellPanel(); await loadParcels(true);
     if(selectedCell===cell) void loadInspection("cell",cell);
   };
@@ -1039,9 +1044,25 @@ async function start() {
       $("map-status").textContent = "County boundary unavailable. H3 rainfall cannot be drawn; native forecasts remain available in Data. Reload to retry.";
     }
   }
-  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,select:feature=>{
+  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,
+    isCellId:value=>h3.isValidCell(value),select:feature=>{
     searchMarker?.remove();searchMarker=null;
     if(!feature || !map)return;
+    if(feature.properties?.h3_index) {
+      const cell=feature.properties.h3_index;
+      const resolution=h3.getResolution(cell);
+      if(resolution<4 || resolution>7) {
+        $("map-search-status").textContent="Search supports Okaloosa H3 cells at resolutions 4 through 7.";return;
+      }
+      const cellGeometry={type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]};
+      if(!county || !QuasarSpatial.clipGeometry(cellGeometry,county.features[0].geometry)) {
+        $("map-search-status").textContent="That hex cell does not overlap Okaloosa County.";return;
+      }
+      const [lat,lon]=h3.cellToLatLng(cell);
+      void inspectCell(cell,resolution);
+      map.flyTo({center:[lon,lat],zoom:Math.max(map.getZoom(),resolution===7?13.5:QuasarSpatial.childZoom(resolution)),padding:{top:90,bottom:150,left:40,right:40},duration:650});
+      return;
+    }
     closeSelection();
     const coordinates=feature.geometry.coordinates;
     searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);

@@ -26,7 +26,8 @@ database alongside `QUASAR_PARCEL_DATABASE`. Existing API shapes, authentication
 100-ID limits, freshness and exact-window checks remain in force. A configured
 invalid database returns unavailable/invalid results; it never falls back to an
 older file. Without this setting, the existing file/directory path remains valid.
-Vercel continues proxying to the authenticated host. Installing artifacts,
+A catalog and prepared database cannot be configured together; this prevents
+bypassing the catalog identity checks. Vercel continues proxying to the authenticated host. Installing artifacts,
 changing configuration or restarting that host requires separate authorization.
 
 ## Browser and HTTP behavior
@@ -34,8 +35,9 @@ changing configuration or restarting that host requires separate authorization.
 - Session request caching deduplicates reads, expires after 15 seconds or earlier
   source expiry, and does not cache errors. Abandoning one view does not cancel
   another view's shared request. Explicit source rechecks invalidate cached reads.
+  Exposure requests bypass this TTL and use the exposure frame cache.
 - Exposure results are separate from the displayed hour. Frame storage is bounded
-  to 20 MiB, retains parcel assessments for three hours, and retains at most 10 MiB
+  to 20 MiB, retains parcel assessments for the three most recently saved frames, and retains at most 10 MiB
   of active parcel assessments. Unknown values remain transparent when evicted.
   Up to three parcel-assessment batches run concurrently. Selected/visible parcels
   lead the queue; playback waits for summaries and the selected parcel while other

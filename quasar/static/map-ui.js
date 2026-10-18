@@ -23,7 +23,7 @@
     const points=geometry.coordinates.flat(geometry.type==="MultiPolygon" ? 2 : 1);
     return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
   }
-  function createSearch({get, element, token, geometry, select, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
+  function createSearch({get, element, token, geometry, select, isCellId=()=>false, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
     const input=get("map-search"), list=get("map-search-results"), status=get("map-search-status");
     let results=[], active=-1, version=0, controller, timer;
     const message=text=>{status.textContent=text;};
@@ -32,9 +32,10 @@
       input.setAttribute("aria-expanded",String(results.length>0));
       input.removeAttribute("aria-activedescendant");
       results.forEach((feature,i)=>{
+        const label=feature.properties?.h3_index || feature.properties?.full_address || feature.properties?.name || "Location";
         const option=element("li"); option.id=`map-search-option-${i}`;option.setAttribute("role","option");
         option.setAttribute("aria-selected",String(i===active));
-        const button=element("button",feature.properties?.full_address || feature.properties?.name || "Location");
+        const button=element("button",label);
         button.type="button";button.tabIndex=-1;button.onclick=()=>choose(i);option.append(button);list.append(option);
         if(i===active)input.setAttribute("aria-activedescendant",option.id);
       });
@@ -42,7 +43,7 @@
     function invalidate() {version++;controller?.abort();cancel(timer);}
     function choose(index) {
       const feature=results[index]; if(!feature)return;
-      invalidate(); input.value=feature.properties?.full_address || feature.properties?.name || "Location";
+      invalidate(); input.value=feature.properties?.h3_index || feature.properties?.full_address || feature.properties?.name || "Location";
       results=[];active=-1;draw();select(feature);message("Location selected. Parcel and flood scores remain unknown.");
       input.focus();
     }
@@ -52,6 +53,11 @@
     input.oninput=()=>{
       invalidate(); results=[];active=-1;draw();
       const query=input.value.trim(), ticket=version;
+      const cellId=query.toLowerCase();
+      if(isCellId(cellId)) {
+        results=[{type:"Feature",geometry:null,properties:{h3_index:cellId}}];
+        active=0;draw();message("Hex cell found. Press Enter to inspect it.");return;
+      }
       if(query.length<3){message("Enter at least three characters.");return;}
       message("Searching Okaloosa County…");
       timer=schedule(async()=>{

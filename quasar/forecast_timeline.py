@@ -20,7 +20,7 @@ def timeline(*, source="archive", now=None, reader=None):
     # Always consult the source first: an expired bridge cache or failed read
     # must never be masked by a derived forecast cache. Explicit research clocks
     # and injected readers stay uncached, making mutations/freshness testable.
-    if reader is not None or now is not None or source not in ("archive", "current"):
+    if (reader is not None and reader is not read_snapshot) or now is not None or source not in ("archive", "current"):
         return _timeline(source=source, now=now, reader=reader)
     try:
         data = (reader or read_snapshot)("isaias-2026" if source == "archive" else "weathernext")

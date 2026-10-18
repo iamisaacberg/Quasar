@@ -1,5 +1,15 @@
 # Quasar: complete gap-closure plan for the incoming developer
 
+> Implementation checkpoint: the [demonstration package](datathon-submission/README.md)
+> and updated [workboard](DATATHON-WORKBOARD.md) record the code/evidence now available.
+> Exact-window catalog/batch production, transfer/parity/model-evidence tools and
+> separate current county-alert ingestion are implemented locally. Proposed-file
+> wording below is retained as the original plan, not current implementation status.
+> [Fresh verification](datathon-submission/verified-run.md) now records the runtime
+> transfer, authoritative containment, LinuxONE inference/parity, 25 actual windows
+> and bounded live API checks. Original research artifacts, human review and deeper
+> experiments remain open. Isaac excluded administrative/submission tasks.
+
 **Start here if you are taking over development.** This plan turns the [rubric audit](DATATHON-DEV-HANDOFF.md) into executable work. It covers the submission requirements, the working demo, the engineering gaps and the research needed for stronger claims. The companion [workboard](DATATHON-WORKBOARD.md) is the place to assign owners and record completion.
 
 Prepared October 17, 2026, against source **`665b3e2`**. Scope is **Okaloosa County, Florida, FIPS `12091`**. Status is a repository checkpoint, not a fresh verification of the running server. This document proposes work; it does not mean that work has been performed or authorize shared infrastructure changes.

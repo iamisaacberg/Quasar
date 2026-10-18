@@ -55,8 +55,9 @@ one file would exceed the serving limit. Do not retrain to activate existing wei
 
 Playback advances one hour every 250 ms when inputs are ready. Exposure playback
 buffers only the next hour's summaries in bounded session memory, without
-displaying future values. It waits for the displayed hour's summaries and loaded parcel
-assessments before advancing again. While those requests are pending, the selected
+displaying future values. It waits for the displayed hour's summaries and selected parcel
+assessment before advancing again; other parcels hydrate in the background and
+remain unknown until matching results arrive. While those requests are pending, the selected
 hour shows loading and unknown scores; Pause remains available. An unavailable
 response pauses playback with its error rather than skipping through later hours.
 Recheck source retries the selected hour without discarding cached parcel geometry.
@@ -162,3 +163,22 @@ model explanations remain separate. Invalid diagnostics fail closed. Parcel
 inspection labels the mapping proxy, visualization rule, instability and source
 times explicitly. None of these values establish flood depth, probability,
 confidence intervals or safety.
+
+## Multiple exact-window artifacts
+
+The optional server-only catalog and artifact root select immutable schema-1
+single-window files without changing the exposure API. Catalog beats the legacy
+file/directory settings; failures/missing windows never substitute prior results.
+All selected files must match the catalog county, inventory, model hash, forecast
+hash, mode and exact six-hour interval. Absolute/traversing/escaping-symlink paths,
+duplicate keys, invalid hashes and corrupt files fail closed. Source provenance
+stays inside each artifact, rather than combining different windows under one
+shared top-level record. One decoded artifact is retained; cached H3 summaries
+contain counts/statistics, not additional full parcel maps.
+
+The offline `assess-replay` command lists the actual 25 saved archive windows and
+requires `--execute` for production into a new release directory. Its coverage
+report distinguishes produced windows and genuine source gaps; a producer error
+prevents catalog publication. Code/fixture acceptance does not establish real
+all-hour coverage, target-host resources or activation. See the [catalog contract](data-contract.md#exact-window-exposure-catalog-server-only-version-1) and
+[operations/rollback](datathon-submission/operations.md).

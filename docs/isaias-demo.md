@@ -10,7 +10,8 @@ not observed rainfall, proof of local flooding, or a trained flood model.
    county-boundary service. The map colors H3 cells clipped to the authoritative
    county boundary. WeatherNext native polygons remain the underlying source;
    their rectangular outlines are not drawn. The H3 display requires the county boundary.
-2. Use Play, the hourly slider, previous/next, or a chart bar. The 25 positions
+2. Use Play, the hourly slider, previous/next, or a bar in the full-width replay
+   chart on the map. The 25 positions
    run from October 9 midnight through October 10 midnight in America/Chicago
    (`2026-10-09T05:00:00Z` through `2026-10-10T05:00:00Z`). Each position shows
    the **following six forecast hours**. The replay opens at **4 PM Central on

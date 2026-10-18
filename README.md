@@ -8,6 +8,12 @@ Quasar follows the team's Flood Emergency Alert System proposal, narrowed to **O
 
 Start with the [documentation index](docs/README.md) for the full reading guide, existing contracts, and setup references.
 
+The [demonstration/evidence package](docs/datathon-submission/README.md) contains
+the current architecture, model summary, attribution, replay/verification runbook,
+manual acceptance checklist and remaining research protocols. The
+[workboard](docs/DATATHON-WORKBOARD.md) separates implemented software from missing
+real-artifact, LinuxONE and human evidence; administrative/submission work is excluded. See the [verified execution checkpoint](docs/datathon-submission/verified-run.md) for fresh county, LinuxONE, parity and API evidence.
+
 - [App premise and product boundaries](docs/app-premise.md): the problem, intended audiences, current workflows, and limits of the demonstration.
 - [Data guide](docs/data-guide.md): fictional and imported inputs, provenance, geographic scales, freshness, missing data, and BI interpretation.
 - [Local parcel input preparation](docs/parcel-inputs.md): separate research environment, terrain coverage and unscored FEMA/waterway joins.
@@ -65,7 +71,10 @@ Exposure colors are not flood probability or depth, and green does not establish
 Fictional sites, synthetic scenarios, what-if additions, notification previews and
 simulated routes are absent from the application. Their old HTTP endpoints return
 410. Offline research modules and clearly labeled test fixtures remain in source.
-The official NWS feed remains explicitly disconnected; this is not an all-clear.
+The archive's official NWS feed remains explicitly disconnected; this is not an all-clear.
+An optional explicit county NWS importer and separate current-alert API read a
+short-lived saved snapshot, with no network fetch during serving and no current
+alerts on the replay. A live importer connection was verified separately; no current-alert UI/refresh was activated.
 
 See [loading performance](docs/loading-performance.md) for offline exposure serving
 preparation, bounded browser caches and synthetic benchmarks.
@@ -97,3 +106,10 @@ model and a local archived-rainfall assessment. Training artifacts stay under
 ignored `data/processed/`; cloning this repo does not include them. The
 [LinuxONE activation](docs/real-data-rollout.md#exposure-activation) records the
 separately verified serving artifact and host benchmarks.
+`python3 -m quasar.modeling assess-replay` plans all 25 saved archive positions
+without writes; `--execute` produces separate immutable per-window artifacts and
+a bounded exact-window catalog. Missing source hours remain gaps. Optional
+`verify-bundle`, `verify-model-evidence` and `compare-assessments` commands check
+existing transferred evidence without retraining. See the
+[operations runbook](docs/datathon-submission/operations.md). Ignored county/model
+artifacts are still required; catalog code alone does not establish real coverage.
