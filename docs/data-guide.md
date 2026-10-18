@@ -1,5 +1,12 @@
 # Data guide: inputs, provenance, and quality
 
+> Current application behavior is defined by [data-contract.md](data-contract.md).
+> Synthetic scoring, fictional sites, what-if controls and simulated routing
+> described below are retained offline research context; their application
+> endpoints are retired. The app uses native county forecasts and prepared
+> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+
+
 ## Scope and evidence
 
 Quasar uses six hand-authored fictional points in Okaloosa County. They are exercise sites, not real homes, cadastral parcels, or building footprints. All operational dates below are configuration or recorded project checkpoints unless explicitly described otherwise.

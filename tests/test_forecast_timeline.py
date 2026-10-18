@@ -25,23 +25,14 @@ class ForecastTimelineTests(unittest.TestCase):
         self.assertEqual(result['frames'][-1]['at'], iso(INIT+timedelta(hours=12)))
         for frame in result['frames']:
             data = frame['collection']
-            self.assertEqual(data['mode'], 'mixed_forecast_demo')
+            self.assertEqual(data['mode'], 'county_forecast')
             self.assertEqual(data['weather_cells']['features'][0]['properties']['rainfall_6h_mm'], 12)
             self.assertEqual(data['forecast']['init_time'], iso(INIT))
             self.assertEqual(data['forecast']['retrieved_at'], iso(NOW))
             self.assertEqual(data['forecast']['native_resolution'], '0.1 degree')
             self.assertEqual(data['scenario']['valid_from'], frame['at'])
-            missing = next(f for f in data['features'] if f['properties']['risk']['missing'])
-            self.assertIsNone(missing['properties']['risk']['score'])
-
-    def test_default_frame_matches_existing_properties_without_changing_default_window(self):
-        data = current()
-        result = self.frames(data)
-        with patch('quasar.adapters.weathernext.read_snapshot', return_value=data):
-            forecast = load_forecast(now=NOW)
-        with patch('quasar.pipeline.load_forecast', return_value=forecast):
-            original = collection('weathernext')
-        self.assertEqual(result['frames'][result['default_index']]['collection'], original)
+            self.assertEqual(data['features'], [])
+            self.assertNotIn('demo-00', str(data))
 
     def test_hourly_windows_roll_once_and_shorter_horizons_are_derived(self):
         data = current()
@@ -96,10 +87,30 @@ class ForecastTimelineTests(unittest.TestCase):
         with patch('quasar.forecast_timeline.read_snapshot',side_effect=BridgeUnavailable):
             self.assertEqual(timeline(now=NOW)['status'],'unavailable')
 
-    def test_legacy_six_hour_import_remains_a_single_frame(self):
+    def test_legacy_six_hour_import_is_unavailable_without_fixture_fallback(self):
         from test_weathernext import example, NOW as legacy_now
         with patch('quasar.forecast_timeline.read_snapshot', return_value=example()):
             result = timeline(now=legacy_now)
-        self.assertEqual(len(result['frames']), 1)
-        self.assertEqual(result['status'], 'ready')
-        self.assertIsNone(result['frames'][0]['collection']['weather_cells'])
+        self.assertEqual(result['frames'], [])
+        self.assertEqual(result['status'], 'unavailable')
+
+    def test_archive_uses_native_cells_and_cannot_call_fixture_scoring(self):
+        from test_county_weather import rows, TABLE, GEOMETRY
+        from quasar.adapters.county_weather import normalize
+        from quasar.replay import START
+        data = normalize(rows(START.replace(hour=0)), TABLE, GEOMETRY, historical=True, now=NOW)
+        with patch('quasar.forecast_timeline.read_snapshot', return_value=data), patch('quasar.pipeline.collection', side_effect=AssertionError('Fixture pipeline forbidden')):
+            result = timeline(source='archive', now=NOW)
+        self.assertEqual(len(result['frames']), 25)
+        self.assertEqual(result['frames'][0]['collection']['mode'], 'county_archive')
+        first = result['frames'][0]['collection']['weather_cells']['features'][0]
+        self.assertEqual(first['properties']['rainfall_6h_mm'], 12)
+        self.assertNotIn('synthetic_increment_mm_per_hour', first['properties'])
+        self.assertNotIn('demo-00', str(result))
+        self.assertNotIn('expires_at', result)
+
+    def test_source_rejects_what_if_and_wrong_snapshot_kind(self):
+        with self.assertRaises(ValueError):
+            timeline(source='what_if')
+        with patch('quasar.forecast_timeline.read_snapshot', return_value=current()):
+            self.assertEqual(timeline(source='archive', now=NOW)['status'], 'invalid')

@@ -182,16 +182,12 @@ class ReplayApiTests(unittest.TestCase):
             conn.request('POST' if payload is not None else 'GET',path,json.dumps(payload) if payload is not None else None,{'Content-Type':'application/json'})
             r=conn.getresponse();return r.status,json.loads(r.read())
         finally:conn.close()
-    def test_consistent_selection_across_interfaces(self):
-        with patch('quasar.routing.load_graph',return_value=graph()),patch('quasar.replay.load_archive',return_value={'status':'loaded',**archive()}):
-            params='at=2026-10-09T05:00:00Z&preset=plus-5&mode=what_if'
-            a=self.request('/api/properties?scenario=isaias-2026&'+params)
-            b=self.request('/api/timeline?site=demo-001&'+params)
-            c=self.request('/api/routes?site=demo-001&'+params)
-            self.assertEqual([a[0],b[0],c[0]],[200,200,200]);self.assertEqual(a[1]['replay']['at'],b[1]['at']);self.assertEqual(b[1]['at'],c[1]['at'])
-            self.assertEqual(self.request('/api/routes',{'site':'demo-001','mode':'what_if','roads':{'direct':'closed'}})[0],200)
-    def test_invalid_requests_are_json_errors(self):
-        for url in ['/api/timeline?site=bad','/api/routes?site=demo-001&at=bad','/api/properties?scenario=baseline&mode=what_if','/api/timeline?site=demo-001&site=demo-002']:
-            with self.subTest(url=url):self.assertEqual(self.request(url)[0],400)
-        for payload in [{},{'site':[]},{'site':'demo-001','preset':[]},{'site':'demo-001','unexpected':True},{'site':'demo-001','roads':{'bad':'closed'}}]:
-            with self.subTest(payload=payload):self.assertEqual(self.request('/api/routes',payload)[0],400)
+    def test_research_simulations_are_not_served_by_the_application(self):
+        for path in ('/api/properties?scenario=isaias-2026&mode=what_if', '/api/timeline?site=demo-001', '/api/routes?site=demo-001'):
+            status, body = self.request(path)
+            self.assertEqual(status, 410)
+            self.assertEqual(body['status'], 'unavailable')
+        self.assertEqual(self.request('/api/routes', {'site':'demo-001','mode':'what_if'})[0], 410)
+
+    def test_duplicate_query_still_fails_validation_before_retired_routes(self):
+        self.assertEqual(self.request('/api/timeline?site=demo-001&site=demo-002')[0], 400)

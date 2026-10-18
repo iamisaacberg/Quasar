@@ -9,6 +9,7 @@ import {
   Database,
   FileChartColumn,
   ShieldCheck,
+  Waves,
 } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -116,14 +117,15 @@ const sidebarData: SidebarData = {
       { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
     ] },
     { title: "Resources", items: [
-      { label: "Exercise guide", icon: HelpCircle, href: "#exercise-guide", children: [
+      { label: "Map guide", icon: HelpCircle, href: "#exercise-guide", children: [
         { label: "Reading the map", icon: Map, href: "#exercise-guide" },
+        { label: "Understanding the inputs", icon: Waves, href: "#exercise-guide" },
       ] },
       { label: "Official NWS guidance", icon: ShieldCheck, href: "https://www.weather.gov/mob/" },
     ] },
   ],
   footerGroup: { title: "Support", items: [] },
-  user: { name: "Okaloosa County", email: "Datathon exercise", avatar: quasarLogo },
+  user: { name: "Okaloosa County", email: "County source data", avatar: quasarLogo },
 };
 
 const SidebarLogo = ({ logo }: { logo: SidebarData["logo"] }) => {

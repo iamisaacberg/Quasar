@@ -170,7 +170,7 @@ class ProtectedHttpsTests(unittest.TestCase):
         )
         self.assertEqual(status, 303)
         cookie = headers["Set-Cookie"].split(";", 1)[0]
-        for path in ["/", "/ui/app-shell.js", "/api/config", "/api/properties?scenario=peak"]:
+        for path in ["/", "/ui/app-shell.js", "/api/config", "/api/reports"]:
             with self.subTest(path=path):
                 status, body, _ = self.request(path, headers={"Cookie": cookie})
                 self.assertEqual(status, 200)
@@ -179,7 +179,7 @@ class ProtectedHttpsTests(unittest.TestCase):
 
     def test_post_cannot_bypass_gate(self):
         body = json.dumps({"opt_in": True, "property_ids": ["demo-001"], "scenario": "peak"})
-        with patch("quasar.server.preview") as preview:
+        with patch("quasar.notifications.preview") as preview:
             status, _, _ = self.request("/api/notifications/preview", method="POST", body=body)
             self.assertEqual(status, 401)
             preview.assert_not_called()
@@ -189,8 +189,8 @@ class ProtectedHttpsTests(unittest.TestCase):
         cookie = headers["Set-Cookie"].split(";", 1)[0]
         status, result, _ = self.request("/api/notifications/preview", method="POST", body=body,
                                          headers={"Cookie": cookie})
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(result)["sent_count"], 0)
+        self.assertEqual(status, 410)
+        self.assertEqual(json.loads(result)["status"], "unavailable")
 
     def test_head_and_unimplemented_methods_cannot_bypass_gate(self):
         for method in ["HEAD", "OPTIONS", "PUT"]:

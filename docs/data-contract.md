@@ -1,177 +1,72 @@
-# Data contract, version 2
-
-The additive [experimental exposure display contract](exposure-display.md) defines
-explicit parcel assessment artifacts, complete-inventory server-side P90 summaries,
-coverage, factor explanations and the fixed map scale. Geometry-only risk fields
-remain null/unknown; exposure assessments are separate and optional.
+# Application data contract
 
 Optional promoted mapping-proxy model metadata, forecast provenance and signed
 raw-model diagnostics extend schema-1 assessments additively; see
-[the exact exposure additions](exposure-display.md#optional-modeling-fields-schema-1-additive)
+[the exposure additions](exposure-display.md#optional-modeling-fields-schema-1-additive)
 and [offline modeling](modeling.md). Legacy assessment factors and unknown semantics
-remain unchanged. Signed raw-model attribution never enters nonnegative index factors.
+remain unchanged; signed attribution is separate from nonnegative index factors.
 
-## Pilot boundary
+Only Okaloosa County FIPS `12091` is supported. Source initialization, validity,
+retrieval time, native resolution and units remain part of every forecast view.
+Unknown is distinct from zero. All application data comes from county sources;
+o public endpoint substitutes fictional sites or invented inputs.
 
-Okaloosa County is fixed to FIPS `12091`, timezone `America/Chicago`. API coordinates are WGS84 (EPSG:4326), `[longitude, latitude]`. The fixture loader checks county tags and coordinate validity. **It does not yet perform a county polygon intersection** and must not be used as an external-data import path without that check.
+## Native forecast map and playback
 
-Fixtures contain six invented points. They are not parcels or building footprints. They are deliberately small enough for every teammate to read.
+`GET /api/weather/timeline?source=current|archive` reads one configured schema-3
+county snapshot. Defaults to `current`. Other selectors, presets and what-if
+parameters are rejected. Missing, invalid, disconnected and legacy site-only
+imports return explicit status, a message and no frames.
 
-## Property adapter record
+The response contains `county_fips`, `source`, `timezone`, `units` (`mm / 6h`),
+`status`, `default_index`, source metadata and `frames`. Each frame contains `at`
+and `collection`. The collection has no site features (`features: []`), mode
+`county_forecast` or `county_archive`, a scenario validity window, `forecast`
+metadata, and native polygon GeoJSON in `weather_cells`. It contains no fixture
+scores, terrain, gauge margins or synthetic rainfall increments.
 
-| Field | Type | Meaning |
-| --- | --- | --- |
-| `id` | string | Stable adapter identifier; demo IDs start `demo-` |
-| `label` | string | Display label; do not use real owner names |
-| `county_fips` | string | Must be `12091` |
-| `longitude`, `latitude` | number | WGS84 point |
-| `elevation_m` | number or null | Terrain elevation; real integration must specify vertical datum |
-| `fema_zone` | string or null | Illustrative normalized FEMA code; unknown codes remain unknown |
-| `waterway_distance_m` | non-negative number or null | Distance to a meaningfully connected waterway |
+Current imports yield one forward six-hour frame per retained hourly start.
+Eighteen retained hours yield 13 frames. Expiry is the earliest original validity
+end, initialization plus 12 hours, or retrieval plus two hours. Real-time expiry
+applies to every frame, including later slider positions. Stale frames retain
+geometry/metadata with null rainfall. Missing/null hours remain incomplete;
+duplicate, negative and invalid inputs fail validation. Valid zero stays zero.
 
-## Scenario record
+Archive imports yield 25 positions from October 9 midnight through October 10
+midnight Central. They use archived forecasts available at each reconstruction
+clock, retaining per-cell initialization and publication constraints where known.
+They are not historical rainfall observations and never use what-if additions.
 
-`id`, `label`, `valid_from`, `valid_to`, `rainfall_6h_mm`, and `gauge_margin_m`.
+`GET /api/data/weather` projects this shared current pipeline into native-cell
+rows for the Data tab, without geometry or scoring. Frames contain `at`,
+`valid_to`, and rows with `native_cell_id`, `rainfall_6h_mm`, `available_hours`
+and `status`. Existing county/inventory checks remain in force.
 
-Times are ISO 8601 UTC with `Z`; UI formats them in Central time (America/Chicago). Each fixture window uses one countywide rainfall and gauge value as an explicit simplification. The rainfall value represents total mm for that six-hour window. Gauge margin is `flood_stage_m - observed_stage_m`, using matching datum and units; negative means above the illustrative stage threshold.
+## Reports and downloads
 
-## Scored GeoJSON
+`GET /api/reports?source=current|archive&frame=N` returns source metadata, status,
+selected frame index, source collection and native-cell rows. Frame defaults to
+the imported default. No available source yields no rows or collection.
+`GET /api/exports` accepts the same selectors plus `format=csv|geojson|zip`.
+CSV retains source/validity metadata and units; unknown rain is blank. GeoJSON
+retains native cell geometry. ZIP contains both formats and provenance JSON.
+All formats are based on one loaded snapshot. Unsupported selectors fail with
+400; unavailable sources cannot produce a replacement download.
 
-`GET /api/properties?scenario=peak` returns a FeatureCollection with `county_fips`, `mode`, `scenario`, `provenance`, `notice` and `features`. Each Point feature has stable `id`, label, county and `risk`:
+## Retired application endpoints
 
-```json
-{
-  "score": null,
-  "band": "unknown",
-  "factors": [],
-  "missing": ["elevation_m"],
-  "model_version": "illustrative-baseline-v1",
-  "data_status": "incomplete"
-}
-```
+`/api/scenarios`, `/api/properties`, `/api/timeline`, `/api/routes`,
+`/api/replay/context`, and POST `/api/notifications/preview` return 410.
+Offline research adapters and synthetic test fixtures are separate from the
+application contract. `/health` and `/api/config` identify `county_sources`.
+Health status alone does not establish data readiness.
 
-Complete risk outputs contain five factors: `name`, original `value`, `weight`, and weighted score-point `contribution`. Scores are relative demo values, not calibrated probabilities. Preserve nulls in API and UI.
+## Authenticated LinuxONE reads
 
-## WeatherNext scenario
-
-`GET /api/properties?scenario=weathernext` is available only when a structurally valid imported snapshot is configured. The response mode is `mixed_forecast_demo`. The collection's `forecast` metadata includes connection/freshness status, exact source table, initialization, retrieval time, validity window, native resolution and statistic. Each point adds `forecast.status`, `rainfall_6h_mm`, `available_hours` and `native_cells_wkt`. Its non-rainfall inputs remain synthetic. Non-null scores report `data_status: mixed_demo`; missing/stale rainfall remains an unknown score.
-
-The snapshot schema uses `schema_version: 1`, `model: WeatherNext 3`, `county_fips: 12091`, `native_resolution: 0.1 degree`, `statistic: ensemble_mean`, `units: mm_per_hour`, `source_table`, `init_time`, `retrieved_at`, `valid_from`, `valid_to` and `rows`. Rows contain `property_id`, `forecast_time`, `rainfall_1h_mm` and `native_cell_wkt`. The importer converts source meters to mm exactly once in SQL. It sums six hourly **means**, not marginal percentile values.
-
-Hourly timestamps denote the end of each accumulation interval. The six timestamps must be start+1h through start+6h from one initialization. Missing/null steps produce unknown totals; duplicates or out-of-window steps invalidate the import. Each point ID must be in the curated fixture catalog. This is not an import route for arbitrary coordinates or external parcels.
-
-## Browser H3 contract
-
-`QuasarSpatial.aggregate` adds `h3_index`, `property_id`, `risk_band` and `risk_score` to a copy of each site feature. It returns occupied-cell GeoJSON with resolution 7, site/scored/unknown counts, maximum/mean score and a display band. The backend point contract remains independent of H3. All polygons use closed longitude/latitude rings. Unknowns are never zero-filled. Cell shapes may extend beyond the county; they do not establish geographic containment or forecast precision.
-
-## Contract for future real adapters
-
-Do not silently replace fixtures. Add an explicit data mode and source status. Every real adapter must retain source URL/record ID, retrieval time, observation/issue/valid times where relevant, CRS, vertical datum, units, license and transformation steps. Add authoritative county geometry validation, source-age limits, missing/stale states, and tests for outside-county records. Store only normalized county-filtered features in the scoring pipeline. Do not turn a centroid association into a claim of building-level inundation.
-
-## LinuxONE snapshot bridge
-
-The optional IBM-to-Vercel bridge serves only the named normalized snapshots in
-[the bridge guide](data-bridge.md). The LinuxONE endpoint requires a bearer token
-and an operator-provided HTTPS reverse proxy. Vercel reads snapshots only from
-server-side Python code; the token is never returned to the browser. The bridge
-preserves each file's source metadata and timestamps, then existing adapter
-validation applies the normal county, schema, freshness, and missing-input rules.
-An upstream failure is `unavailable`, and does not select synthetic rainfall.
-Raw downloads, credentials, and property datasets are outside this contract.
-
-## Isaias 2026 hourly replay (additive contract)
-
-Scenario `isaias-2026` spans 2026-10-09T05:00:00Z through
-2026-10-10T05:00:00Z inclusive (25 whole-hour departure times). `at` selects
-the departure time; `preset` is `archived`, `plus-5`, or `plus-10`; `mode` is
-`archive` or `what_if`. Non-archived presets and road/destination overrides
-require what-if mode. UTC is canonical; display timezone is America/Chicago.
-Each score uses rainfall intervals ending at at+1h through at+6h from the
-latest eligible initialization (not newer than the replay time, at most 12h old).
-If supplied, published_at must also be no later than at. Missing publication
-times are explicitly initialization-based reconstructions, not as-issued proof.
-Archived imports retain real retrieval time, but freshness is evaluated against
-the replay clock, never today's date. Current WeatherNext v1 freshness is unchanged.
-
-`GET /api/scenarios` adds replay metadata and source status. Existing scenarios
-remain unchanged. `GET /api/properties?scenario=isaias-2026&at=...&preset=archived&mode=archive`
-returns the existing scored GeoJSON with `replay` metadata, factor-level
-provenance and a six-hour forward validity window. Static site and gauge inputs
-remain fictional; incomplete/invalid forecast data is never zero-filled.
-
-`GET /api/timeline?site=demo-001&at=...&preset=archived&mode=archive` returns all
-25 hourly risk objects, their rainfall provenance and nullable change from the
-preceding score. Nulls are chart gaps. `POST /api/routes` accepts a JSON object
-with `site`, `at`, `preset`, `mode`, and optional `roads` / `destinations` maps.
-Road states: `open`, `closed`, `unknown`; destination values: booleans. Overrides
-are restricted to known IDs (max 100 road and 3 destination overrides; 16KB body).
-The equivalent GET endpoint supports selection without overrides. Both return
-county, mode, preset, at, source provenance, graph layers, selected route and
-unrestricted comparison; statuses distinguish unavailable data from no route.
-
-Historical WeatherNext files use schema_version 2 and kind `historical_forecasts`,
-with county/model/grid/statistic/units/table/retrieval metadata and `runs`.
-Each run contains init_time, optional published_at, and hourly rows with
-property_id, forecast_time, rainfall_1h_mm, native_cell_wkt. All rows must be
-curated points, finite nonnegative mm or null, and strictly after initialization.
-Duplicates invalidate that run, producing unknown rainfall rather than falling
-back to an older run. Source files, checksums and import commands remain local.
-
-Road graph geometry is county-contained EPSG:4326, sourced from Okaloosa street
-centerlines. Topology, two-way traversal, 30km/h speeds, access connectors,
-restrictions and all three destinations are exercise assumptions, not navigation
-or shelter-opening evidence. Whole segments are checked against county rings,
-including holes and concavities. No H3 or property score determines passability.
-
-## Reports and BI exports (additive contract)
-
-`GET /api/reports?scenario=baseline|heavy-rain|peak|weathernext` returns the shared
-analysis report with `generated_at`, scenario, summary, provenance, forecast
-metadata and `rows`. Each row includes coordinates, site/scenario keys, relative
-score, band, missing input names and available factor contributions. It also
-repeats county, mode, input status, window validity, model version, generation
-and forecast initialization/import times, source table, statistic and native
-resolution. Rainfall is mm per six hours; coordinates are EPSG:4326. The original
-property API and scoring are unchanged. Unknown scores have no factor rows.
-
-`scenario=compare` returns only the three synthetic windows, a `scenarios` array
-of scenario/summary pairs, and 18 rows (six fictional sites per window). It has
-no single scenario/summary. All rows share one generation timestamp. The Python
-`compare_scenarios()` helper continues returning a list for notebook callers.
-
-`GET /api/exports?scenario=...&format=csv|geojson|zip` defaults to baseline CSV.
-Responses use attachment filenames `quasar-SCENARIO.EXT`, `Cache-Control: no-store`
-and the matching CSV, GeoJSON or ZIP MIME type. Invalid county, scenario and
-format return JSON errors, not successful attachments. The exports invoke only
-local shared analysis; they never query BigQuery, load notebook code or expose
-configuration credentials. A missing/invalid WeatherNext snapshot is an error;
-a structurally valid stale/incomplete snapshot retains unknown rainfall/scores.
-
-CSV has one row per `(property_id, scenario)`. Numeric nulls are empty cells;
-`missing` is semicolon-separated. Text uses CSV quoting and potentially executable
-spreadsheet text is prefixed with an apostrophe; negative numeric coordinates
-remain numeric. GeoJSON has the same flat fields with JSON nulls and a missing
-array. Feature IDs are `property_id:scenario`, so compare features remain unique.
-Compare maps repeat point coordinates; filter scenario before mapping.
-
-ZIP includes `sites.csv`, `factors.csv`, `sites.geojson`, `metadata.json` and
-`README.txt`. Factors relate on BOTH property_id and scenario, with one row per
-available scoring factor. An inner join drops unknown sites, and a flattened
-factor join repeats site counts: prefer a relationship or left join with distinct
-site/window counts. Metadata lists columns and meanings, units, CRS, timezones,
-source terms, transformation notes, scenario summaries and forecast provenance.
-All bundle files derive from the same report snapshot. Keep nulls distinct from
-zero; score averages exclude unknown sites and an all-unknown average is null.
-
-App reports default to baseline and provide scenario overview, synthetic-window
-comparison, and site explanation. Site selection affects only the explanation;
-downloads contain all sites in the selected window or comparison. Every report
-and export carries synthetic/mixed status and limitations. Printable reports
-retain charts, tables, validity/generation/source timestamps and official-guidance
-notes; they link to the interactive map rather than capturing a basemap. Print
-uses the browser's Print / Save as PDF. BI tools refresh by manual file replacement;
-no hosted embedding, automated refresh or native workbook generation is included.
-
+Vercel reads allowlisted snapshots at `/bridge/v1/snapshots/*` with the private
+bridge token and parcel APIs with `X-Quasar-Parcel-Token`. Secrets stay server-side.
+Errors never cause fallback to a different dataset. See `real-data-rollout.md`
+for service/proxy activation and artifact checks.
 
 ## County grid and parcel browsing
 
@@ -255,63 +150,9 @@ coverage/unknown states.
 
 County snapshots have `schema_version: 3`, county FIPS `12091`, kind `current_county_forecasts` or `historical_county_forecasts`, source table/model, native resolution/statistic/units, actual retrieval time, county geometry, `native_cells` and initialization-grouped `runs`. Each native cell retains ID, original WKT and GeoJSON geometry. IDs are SHA-256 of source WKT. Hourly rows reference the cell ID in `property_id`; `rainfall_1h_mm` is null or a nonnegative finite number. Duplicate cell/hour/run rows invalidate the snapshot. Current snapshots additionally carry `init_time`, `valid_from` and `valid_to`; historical ones carry the Central-time replay bounds.
 
-The importer selects native cells by county intersection; cells can extend beyond the county. The runtime associates the six fictional points locally using source polygon coverage and rejects ambiguous overlapping assignments. It exposes native rainfall as additive `weather_cells` GeoJSON on property collections, with per-cell availability and six-hour mm. Score records remain six fictional sites; county parcels stay unscored. H3 grids do not substitute for native forecast polygons. Existing schemas 1/2 remain supported for the configured county. Miami-Dade FIPS 12086 files are rejected.
-
-## Retained current-forecast playback (additive)
-
-### Source-only Data tab
-
-`GET /api/data/weather` reads the configured schema-3 current county snapshot
-without assigning rainfall to fictional sites or computing scores. It returns
-`county_fips`, `timezone`, `units` (`mm / 6h`), `generated_at`, `status`,
-`default_index` and `frames`. Each frame has `at`, `valid_to` and `rows`, with
-`native_cell_id`, `rainfall_6h_mm`, `available_hours` and per-cell `status`.
-Successful imports retain `init_time`, `retrieved_at`, `source_table`,
-`native_resolution`, `statistic` and `expires_at`. Freshness and retained-window
-rules match map playback, including the original snapshot expiry. Null/missing
-hours stay unavailable; valid zero stays zero. Missing imports, bridge errors,
-invalid data and legacy six-site imports produce explicit states with no frames.
-No cloud query, property join or scoring is performed.
-
-The existing parcel manifest adds optional `parcel_count` for indexed inventories.
-It must be a nonnegative integer or null. Older remote manifests may omit it;
-the UI displays unknown rather than zero. Live GIS browsing has no countywide
-verified count. Counts reflect county-validated parcel geometry, not homes or
-flood-risk coverage. Existing authentication and county checks still apply.
-
-The Data tab CSV contains all native cells in the selected window, independently
-of search/status filters, with source/validity metadata and explicit units.
-Unknown rainfall is blank. Charts count input availability; mean rainfall is an
-unweighted mean of available native cells, not an area-weighted county estimate.
-Fictional scenario reports and their existing exports retain their own labels.
-
-### Map playback
-
-`GET /api/weather/timeline` reads one configured WeatherNext snapshot. It never
-queries BigQuery or starts an import. The response has `county_fips`, `timezone`,
-`units` (`mm / 6h`), `status`, `default_index`, and `frames`. Each frame has `at`
-(UTC whole-hour window start) and `collection` with the existing scored map
-FeatureCollection structure, including native `weather_cells`. The default
-properties/report endpoints retain their original six-hour window and behavior.
-
-Schema-3 current county imports provide one frame per hourly start from the
-initialization through the last retained hour minus six hours. Thus 18 retained
-hours yield 13 starts. Interior missing/null hours produce unavailable values;
-duplicates or invalid rows invalidate the timeline. Legacy six-hour imports
-provide a single frame. A missing snapshot returns `not_configured`; bridge
-failure returns `unavailable`; invalid input returns `invalid`. Those responses
-have no frames and a message. `ready`, `incomplete`, and `stale` snapshots retain
-per-frame/per-cell states rather than treating missing rainfall as zero.
-
-County responses also preserve `init_time`, `retrieved_at`, `source_table`,
-`native_resolution`, `statistic`, `expires_at`, and a notice. `default_index`
-selects the imported window start. `expires_at` is the earliest original window
-expiry, initialization plus 12 hours, or retrieval plus two hours. Every request
-uses real time for freshness, independent of the selected frame. Once the original
-snapshot is stale, all frames remain stale/unscored even if their validity extends
-into the future. Playback requests refresh this local endpoint; source metadata
-and all frames in each response come from the same loaded snapshot.
-
-Search geocodes are temporary map locations, validated against the authoritative
-county polygon. They do not enter property datasets, scores, exports or storage.
-The browser sends queries directly to Mapbox using only the public `pk.` token.
+The importer selects native cells by authoritative county intersection; cells can
+extend beyond the boundary. Application views consume native-cell rainfall only,
+without associating fictional sites. County parcels remain unscored unless a
+separate matching exposure assessment exists. H3 does not replace native forecast
+polygons. Application forecast endpoints require schema 3; schemas 1/2 remain
+available only in offline research adapters. FIPS 12086 inputs are rejected.

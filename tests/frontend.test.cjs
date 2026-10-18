@@ -1,4 +1,4 @@
-// Exercise UI data flow without opening a browser or inspecting rendered visuals.
+// Source-only UI data flow without opening a browser or inspecting rendered visuals.
 const {test} = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -24,15 +24,13 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   class Clock extends Date {static now(){return clock;}}
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   get("map").parentElement = get("map-viewport");
-  const data = {type:"FeatureCollection", mode:mixed ? "mixed_forecast_demo" : "synthetic_demo", notice:"demo notice",
-    scenario:{id:mixed ? "weathernext" : "baseline",rainfall_6h_mm:15,valid_from:"2026-10-17T12:00:00Z",valid_to:"2026-10-17T18:00:00Z"},
-    forecast:mixed ? {status:forecastStatus,init_time:"2026-10-17T12:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"} : null,
-    features:[{type:"Feature",id:"demo-001",geometry:{type:"Point",coordinates:[-86.485,30.55]},
-      properties:{id:"demo-001",label:"Fictional site",risk:{score:riskScore,band:"elevated",factors:[],missing:[]},
-        ...(mixed ? {forecast:{status:forecastStatus,available_hours:6,rainfall_6h_mm:rainfall}} : {})}}]};
-  if (countyWeather) data.weather_cells = {type:"FeatureCollection",retrieved_at:"2026-10-17T12:30:00Z",features:[
-    {type:"Feature",id:"native-test-cell",geometry:{type:"Polygon",coordinates:[[[-86.6,30.5],[-86.5,30.5],[-86.5,30.6],[-86.6,30.5]]]},properties:{status:forecastStatus,rainfall_6h_mm:forecastStatus==="ready" ? rainfall : null}}
-  ]};
+  get("map-layer").value="rainfall";
+  const data = {type:"FeatureCollection", county_fips:"12091", mode:"county_forecast", notice:"Native forecast test fixture",
+    scenario:{id:"weathernext",valid_from:"2026-10-17T12:00:00Z",valid_to:"2026-10-17T18:00:00Z"},
+    forecast:{status:forecastStatus,init_time:"2026-10-17T12:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
+    weather_cells:{type:"FeatureCollection",retrieved_at:"2026-10-17T12:30:00Z",features:[
+      {type:"Feature",id:"native-test-cell",geometry:{type:"Polygon",coordinates:[[[-86.6,30.5],[-86.5,30.5],[-86.5,30.6],[-86.6,30.5]]]},properties:{status:forecastStatus,rainfall_6h_mm:forecastStatus==="ready" ? rainfall : null}}
+    ]}};
   let map, resizeCallback, resizeCount=0, observed;
   const events=[], requests=[];
   class FakeMap {
@@ -86,7 +84,11 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
         const ids=parcelCount===101 ? [offset+1] : Array.from({length:Math.min(100,parcelCount-offset)},(_,i)=>offset+i+1);
         return {ok:true,json:async()=>pageTransform({type:"FeatureCollection",status:"ready",county_fips:"12091",inventory_id:"snapshot",dataset_version:"snapshot:index",features:ids.map(id=>({type:"Feature",id,geometry:{type:"Polygon",coordinates:[[[-86.49,30.55],[-86.489,30.55],[-86.489,30.551],[-86.49,30.55]]]},properties:{parcel_id:id,county_fips:"12091",risk_score:null,risk_band:"unknown"}})),source_total:parcelCount,checked_count:Math.min(offset+100,parcelCount),excluded_count:0,next_offset:offset+100>=parcelCount?null:offset+100,retrieved_at:"2026-10-17T12:00:00Z",source_url:"https://example.test/parcels",crs:"EPSG:4326"})};
       }
-      if (scenarioFailure && url.includes("scenario=bad")) return {ok:false,json:async()=>({error:"bad scenario"})};
+      if (url.startsWith("/api/weather/timeline?")) {
+        if(scenarioFailure && url.includes("source=archive"))return {ok:false,json:async()=>({error:"forecast offline"})};
+        return {ok:true,json:async()=>url.includes("source=archive") ? {county_fips:"12091",source:"archive",status:"not_configured",frames:[],default_index:0,message:"Archive not imported"} :
+          {county_fips:"12091",source:"current",status:forecastStatus,frames:[{at:data.scenario.valid_from,collection:data}],default_index:0}};
+      }
       const body = url==="/api/county" ? {county_fips:"12091",type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[[[-86.6,30.4],[-86.4,30.4],[-86.4,30.6],[-86.6,30.6],[-86.6,30.4]]]}}]} : url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/satellite-streets-v12"}} :
         url==="/api/scenarios" ? {scenarios:[{id:"baseline",label:"Exercise hour 0"},...(mixed ? [{id:"weathernext",label:"WeatherNext 3 + fictional inputs"}] : [])]} :
         url==="/api/weather/status" ? {status:"not_configured",message:"import not connected"} :
@@ -105,108 +107,60 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   };
 }
 
-test("without a Mapbox token the site exercise is not rendered", async () => {
-  const {get,map} = await boot();
-  assert.equal(map,undefined);
-  assert.equal(get("sites").children.length,0);
-  assert.equal(get("detail").children.length,0);
-  assert.match(get("map-status").textContent,/MAPBOX_PUBLIC_TOKEN/);
+test("missing map credentials leave source status usable without exercise requests",async()=>{
+  const {get,map,requests}=await boot();
+  assert.equal(map,undefined);assert.match(get("map-status").textContent,/MAPBOX_PUBLIC_TOKEN/);
+  assert.equal(get("mode-badge").textContent,"COUNTY SOURCES");
+  assert.ok(requests.every(url=>!/^\/api\/(properties|scenarios|routes|timeline|notifications|replay)/.test(url)));
 });
 
-test("Mapbox omits fictional site markers and retains county parcel coverage", async () => {
-  const {map,get} = await boot({configured:true});
-  map.handlers["load:"]();
-  assert.equal(Object.hasOwn(map.sources,"sites"),false);
-  assert.equal(Object.hasOwn(map.layers,"site-points"),false);
-  assert.equal(map.sources.hotspots.data.features[0].geometry.type,"Polygon");
-  assert.equal(map.layers["parcel-fill"].type,"fill");
-  get("hex-toggle").checked=false;
-  get("hex-toggle").onchange();
+test("native forecast polygons and county outlines initialize when map loads after data",async()=>{
+  const {map,get}=await boot({configured:true});map.handlers["load:"]();
+  assert.equal(map.sources["native-rainfall"].data.features.length,1);
+  assert.equal(map.sources.sites,undefined);assert.equal(map.sources["replay-network"],undefined);
+  assert.ok(map.sources.hotspots.data.features.length>0);
+  assert.equal(get("map-layer").value,"rainfall");
+  assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"],0);
+  get("hex-toggle").checked=false;get("hex-toggle").onchange();
   assert.equal(map.layers["hotspot-fill"].visibility,"none");
 });
 
-test("mixed WeatherNext mode stays labeled and cannot expose synthetic notification controls", async () => {
-  const {get} = await boot({mixed:true});
-  assert.equal(get("mode-badge").textContent,"MIXED DEMO");
-  assert.equal(get("detail").children.some((child)=>child.tag==="button"),false);
-  assert.match(get("weather-status").textContent,/0.1 degree/);
+test("source failure clears prior rainfall without restoring synthetic data",async()=>{
+  const {map,get}=await boot({configured:true,scenarioFailure:true});map.handlers["load:"]();
+  get("scenario").value="isaias-2026";await get("scenario").onchange();
+  assert.equal(map.sources["native-rainfall"].data.features.length,0);
+  assert.match(get("error").textContent,/forecast offline/);
+  assert.equal(get("scenario").value,"isaias-2026");
 });
 
-test("failed scenario fetch restores selector to the displayed scenario", async () => {
-  const {get} = await boot({scenarioFailure:true});
-  get("scenario").value="bad";
-  await get("scenario").onchange();
-  assert.equal(get("scenario").value,"baseline");
-  assert.match(get("error").textContent,/bad scenario/);
+test("React can mount before the controller and starts are idempotent",async()=>{
+  const app=await boot({mounted:false});assert.deepEqual(app.events,["quasar:ready"]);
+  await app.mount();await app.start();assert.equal(app.get("scenario").children.length,2);
 });
 
-
-test("React shell can mount before starting the controller without restoring site controls", async () => {
-  const app = await boot({mounted:false});
-  assert.deepEqual(app.events,["quasar:ready"]);
-  assert.equal(app.get("sites").children.length,0);
-  await app.mount();
-  assert.equal(app.get("sites").children.length,0);
-  assert.equal(app.get("detail").children.length,0);
-  await app.start();
-  assert.equal(app.get("scenario").children.length,1);
-  assert.equal(app.get("sites").children.length,0);
+test("sidebar width changes resize Mapbox while preserving native sources",async()=>{
+  const app=await boot({configured:true});app.map.handlers["load:"]();app.resize();
+  assert.equal(app.observed,app.get("map-viewport"));assert.equal(app.resizeCount,1);
+  assert.equal(app.map.sources["native-rainfall"].data.features.length,1);
 });
 
-test("changing the shell content width resizes Mapbox without replacing its sources", async () => {
-  const app = await boot({configured:true});
-  app.map.handlers["load:"]();
-  assert.equal(app.observed,app.get("map-viewport"));
-  app.resize();
-  assert.equal(app.resizeCount,1);
-  assert.equal(Object.hasOwn(app.map.sources,"sites"),false);
-});
-
-
-test("the map uses the configured satellite style, direct gestures and visible demo attribution", async () => {
-  const {map} = await boot({configured:true});
+test("map attribution identifies actual source data",async()=>{
+  const {map}=await boot({configured:true});
   assert.equal(map.options.style,"mapbox://styles/mapbox/satellite-streets-v12");
   assert.equal(map.options.cooperativeGestures,false);
   const attribution=map.controls.find(control=>control.options?.customAttribution);
-  assert.equal(attribution.options.compact,false);
-  assert.match(attribution.options.customAttribution,/Experimental estimates.*official NWS/);
+  assert.match(attribution.options.customAttribution,/Okaloosa County source data/);
+  assert.doesNotMatch(attribution.options.customAttribution,/fictional|synthetic/i);
 });
 
-
-test("WeatherNext opens as rainfall with units, timing, and a neutral browsing grid", async () => {
-  const {map,get} = await boot({configured:true,mixed:true});
-  map.handlers["load:"]();
-  assert.equal(get("scenario").value,"weathernext");
-  assert.equal(get("map-layer").value,"rainfall");
-  assert.match(get("map-data-title").textContent,/County forecast rainfall.*mm \/ 6h/);
-  assert.match(get("map-data-source").textContent,/initialized 2026-10-17T12:00:00Z.*imported 2026-10-17T12:30:00Z.*0.1 degree/);
-  assert.match(get("window").textContent,/Forecast window/);
-  assert.equal(Object.hasOwn(map.sources,"sites"),false);
-  assert.equal(Object.hasOwn(map.layers,"rainfall-labels"),false);
-  assert.equal(map.layers["hotspot-fill"].visibility,"visible");
-  assert.equal(map.layers["hotspot-fill"].paint["fill-color"],"#b9c9cd");
-  assert.equal(get("rainfall-legend").hidden,false);
-  get("map-layer").value="exposure";get("map-layer").onchange();
-  assert.equal(Object.hasOwn(map.layers,"rainfall-labels"),false);
-  assert.equal(map.layers["hotspot-fill"].visibility,"visible");
-  assert.equal(get("exposure-legend").hidden,false);
-});
-
-test("site rainfall is not rendered; native county rainfall remains separate from parcel scores", async () => {
-  for (const args of [{forecastStatus:"stale",rainfall:22},{rainfall:null}]) {
-    const {map,get}=await boot({configured:true,mixed:true,...args});map.handlers["load:"]();
-    assert.equal(Object.hasOwn(map.sources,"sites"),false);
-    assert.equal(get("map-data-values").textContent,"Native county forecast cell data is unavailable. Check the Data view for imported source coverage.");
+test("unknown rainfall stays transparent and valid zero remains zero",async()=>{
+  for(const options of [{forecastStatus:"stale",rainfall:22},{rainfall:null},{rainfall:0}]){
+    const {map,get}=await boot({configured:true,...options});map.handlers["load:"]();
+    const value=map.sources["native-rainfall"].data.features[0].properties.rainfall_mm;
+    assert.equal(value,options.rainfall===0 ? 0 : null);
+    assert.equal(map.layers["native-rainfall-fill"].paint["fill-opacity"][2],0);
+    assert.match(get("map-data-source").textContent,/initialized.*imported.*0.1 degree/);
   }
-  const {map,get}=await boot({configured:true,mixed:true,rainfall:0,riskScore:null});map.handlers["load:"]();
-  assert.equal(Object.hasOwn(map.sources,"sites"),false);
-  assert.match(get("map-data-values").textContent,/Native county forecast cell data is unavailable/);
-});
-
-test("site-specific map controls are not wired into the map", async () => {
-  const {get}=await boot();
-  assert.equal(get("map-site").onchange,undefined);
-  assert.equal(get("map-inspect-toggle").onclick,undefined);
 });
 
 test("coarse cells open summaries with explicit drill-down, and parcel panel returns to the cell", async()=>{
@@ -255,8 +209,8 @@ test("county rainfall retains native polygons and never paints stale values as z
     map.handlers["load:"]();
     assert.equal(map.sources["native-rainfall"].data.features[0].id,"native-test-cell");
     assert.equal(map.sources["native-rainfall"].data.features[0].properties.rainfall_mm,status==="ready" ? 0 : null);
-    assert.match(get("map-data-values").textContent,/native county cells available/);
-    assert.match(get("map-data-source").textContent,/0.1 degree.*parcel scores remain unknown/);
+    assert.match(get("map-data-values").textContent,/native cells available|Rainfall unavailable/);
+    assert.match(get("map-data-source").textContent,/0.1 degree.*parcel flood risk/);
     get("map-layer").value="exposure";get("map-layer").onchange();
     assert.equal(map.layers["native-rainfall-fill"].visibility,"none");
   }
@@ -346,7 +300,7 @@ test('selection survives zoom and source changes, and parcel details stay stable
   app.map.zoom=8;app.map.handlers['zoomend:']();
   assert.equal(app.get('map-selection-panel').hidden,false);
   const before=geometryRequests(app).length;
-  app.get('scenario').value='heavy-rain';await app.get('scenario').onchange();
+  app.get('scenario').value='isaias-2026';await app.get('scenario').onchange();
   assert.equal(geometryRequests(app).length,before);
   release();await until(()=>app.get('parcel-status').textContent.includes('All 250'));
   assert.equal(app.get('selection-title').textContent,'Parcel details');
@@ -354,18 +308,17 @@ test('selection survives zoom and source changes, and parcel details stay stable
   assert.ok(app.get('selection-inputs').children.some(row=>row.children.some(node=>node.textContent?.includes('0.00 / 1.00 / 2.00'))));
 });
 
-test("unknown real parcels stay gray and hatched even when fictional sites have scores", async()=>{
+test("unknown parcels and cells have transparent interiors and no hatch layers",async()=>{
   const {map,get}=await boot({configured:true});map.handlers['load:']();
   get('map-layer').value='exposure';get('map-layer').onchange();
-  assert.ok(map.images['exposure-hatch'].data.some(value=>value>0));
-  assert.equal(map.layers['hotspot-hatch'].visibility,'visible');
-  assert.ok(map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
-  const cell=h3.latLngToCell(30.55,-86.485,7);
-  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
+  assert.equal(map.images,undefined);assert.equal(map.layers['hotspot-hatch'],undefined);assert.equal(map.layers['parcel-hatch'],undefined);
+  assert.equal(map.layers['hotspot-fill'].paint['fill-opacity'][2],0);
+  assert.equal(map.layers['parcel-fill'].paint['fill-opacity'][2],0);
+  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:h3.latLngToCell(30.55,-86.485,7),resolution:7}}]});
   await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_incomplete && f.properties.exposure_score===null));
-  assert.equal(get('selection-stat-one').textContent,'Unknown');
-  assert.match(get('selection-content').children[0].children[1].textContent,/Insufficient data/);
+  assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.equal(get('selection-score').textContent,'Unscored');
+  assert.notEqual(map.layers['selected-parcel-outline'].paint['line-color'],map.layers['parcel-outline'].paint['line-color']);
 });
 
 test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{
@@ -379,16 +332,14 @@ test("server parcel indices and complete-inventory p90 drive colors and accessib
   assert.equal(summary.exposure_incomplete,true);
   map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(get('selection-stat-one').textContent,'81.0');
-  assert.equal(get('selection-stat-two').textContent,'2/3');
-  assert.equal(get('selection-stat-three').textContent,'1');
+  assert.equal(get('selection-score').textContent,'81.0 / 100');
+  assert.match(get('selection-exposure').children[0].textContent,/2\/3 parcels scored/);
   assert.deepEqual(Array.from(map.sources.parcels.data.features,f=>f.properties.exposure_score),[0,90]);
   get('selection-content').children[1].onclick();
-  assert.equal(get('selection-stat-one').textContent,'90.0');
-  assert.match(get('selection-stat-two').textContent,/Highest relative exposure/);
+  assert.equal(get('selection-score').textContent,'90.0 / 100');
   assert.ok(get('selection-exposure').children.some(node=>/synthetic_factor.*90.0/.test(node.textContent)));
   // A different hour retains cached geometry and inspection, but clears old indices.
-  get('scenario').value='baseline';await get('scenario').onchange();
+  get('scenario').value='isaias-2026';await get('scenario').onchange();
   assert.equal(map.sources.parcels.data.features.length,2);
   assert.equal(map.sources['selected-parcel'].data.features.length,1);
   assert.equal(get('selection-title').textContent,'Parcel details');
@@ -401,7 +352,7 @@ test('late exposure lookups cannot recolor retained geometry after a scenario ch
   let release;
   const app=await boot({configured:true,mixed:true,exposureScores:true,holdExposure:params=>params.has('parcel_ids')?new Promise(resolve=>{release=resolve;}):Promise.resolve()});
   app.map.handlers['load:']();parcelClick(app);await until(()=>release);
-  app.get('scenario').value='baseline';await app.get('scenario').onchange();
+  app.get('scenario').value='isaias-2026';await app.get('scenario').onchange();
   release();await new Promise(resolve=>setImmediate(resolve));
   assert.ok(app.map.sources.parcels.data.features.length>0);
   assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));

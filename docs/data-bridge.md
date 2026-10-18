@@ -68,10 +68,11 @@ snapshot size limit, and caches successful reads in the Vercel process for at
 most 15 seconds. Vercel deployments without the bridge URL continue to use local
 snapshots as before.
 
-WeatherNext appears through the existing `/api/weather/status`, `/api/scenarios`
-and `/api/properties?scenario=weathernext` routes. Historical rainfall uses the
-existing replay API; route inputs use the existing route API. No new browser
-route exposes raw snapshots.
+WeatherNext appears through `/api/weather/status`, `/api/weather/timeline?source=current`
+and `/api/data/weather`. Archived forecasts use `/api/weather/timeline?source=archive`;
+source-only reports and downloads use `/api/reports` and `/api/exports`.
+Fictional-site, what-if and simulated routing endpoints are retired (410).
+No browser route exposes raw snapshots.
 
 ## Operational limits
 

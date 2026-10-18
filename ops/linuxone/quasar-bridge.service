@@ -1,0 +1,24 @@
+[Unit]
+Description=Quasar authenticated county data APIs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=linux1
+Group=linux1
+WorkingDirectory=/srv/quasar
+EnvironmentFile=/etc/quasar/bridge.env
+Environment=PYTHONPATH=/opt/quasar/current
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m quasar --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/quasar /srv/quasar/data/processed
+
+[Install]
+WantedBy=multi-user.target

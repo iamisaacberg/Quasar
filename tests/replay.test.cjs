@@ -1,11 +1,10 @@
+// Source-only playback integration. No browser, cloud or LinuxONE access.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-const Replay=require('../quasar/static/replay.js');
 const QuasarParcelCache=require('../quasar/static/parcel-cache.js');
 const QuasarInspection=require('../quasar/static/inspection.js');
-
 class Element {
   constructor(tag='div'){this.tag=tag;this.children=[];this.style={};this.value='';this.checked=true;}
   append(...items){this.children.push(...items);if(this.tag==='select'&&!this.value)this.value=items[0]?.value;}
@@ -18,154 +17,56 @@ class Element {
   addEventListener(){}
   focus(){}
 }
-async function boot(hash="#isaias-replay",{weather=false,unified=false}={}){
-  const ids=new Map(),timers=new Map(),requests=[],held=[];
-  let hold=null,fail=null;
+async function boot(hash='#map-overview'){
+  const ids=new Map(),timers=new Map(),requests=[],held=[];let hold=null,fail=null;
   const get=id=>{if(!ids.has(id))ids.set(id,new Element(id==='scenario'?'select':'div'));return ids.get(id);};
-  get('replay-mode').value='archive';get('replay-preset').value='archived';get('road-state').value='closed';
+  get('map-layer').value='rainfall';
+  const hour=(source,i)=>new Date(Date.parse(source==='archive'?'2026-10-09T05:00:00Z':'2026-10-17T12:00:00Z')+i*3600000).toISOString();
   const events={};
-  const feature=(id,score)=>({type:'Feature',id,geometry:{type:'Point',coordinates:[-86.5,30.5]},properties:{id,label:id,risk:{score,band:score===null?'unknown':'moderate',factors:[],missing:[]}}});
-  const fetch=async(url,options)=>{
-    requests.push({url,body:options?.body});
-    const path=url.split('?')[0],params=options?.body?JSON.parse(options.body):Object.fromEntries(new URLSearchParams(url.split('?')[1]));
-    if(params.at===hold)await new Promise(resolve=>held.push(resolve));
-    if(path==='/api/timeline'&&params.at===fail)return{ok:false,json:async()=>({error:'timeline unavailable'})};
+  const fetch=async url=>{
+    requests.push(url);const source=new URLSearchParams(url.split('?')[1]).get('source');
+    if(hold && source===hold)await new Promise(resolve=>held.push(resolve));
+    if(fail && source===fail)return {ok:false,json:async()=>({error:'source offline'})};
     let body;
-    if(path==='/api/config')body={map:{configured:false}};
-    else if(path==='/api/scenarios')body={scenarios:[{id:'baseline',label:'Baseline'},{id:'isaias-2026',label:'Isaias 2026'},...(weather?[{id:'weathernext',label:'WeatherNext 3'}]:[])]};
-    else if(path==='/api/weather/status')body={status:'not_configured',message:'No current forecast'};
-    else if(path==='/api/weather/timeline')body={status:'ready',default_index:0,frames:Array.from({length:3},(_,i)=>({at:Replay.hour(i),collection:{type:'FeatureCollection',mode:'mixed_forecast_demo',scenario:{id:'weathernext',valid_from:Replay.hour(i),valid_to:Replay.hour(i+6)},features:[feature('demo-001',33),feature('demo-002',44)]}}))};
-    else if(path==='/api/official-alerts')body={message:'Not connected'};
-    else if(path==='/api/replay/context')body={status:'loaded',advisories:[{number:1,issued_at:'2026-10-06T21:00:00Z',text:'Synthetic test advisory context',source_url:'https://www.nhc.noaa.gov/'}]};
-    else if(path==='/api/properties'&&params.scenario!=='isaias-2026')body={type:'FeatureCollection',mode:params.scenario==='weathernext'?'mixed_forecast_demo':'synthetic_demo',scenario:{id:params.scenario,valid_from:Replay.hour(0),valid_to:Replay.hour(6),rainfall_6h_mm:15},features:[feature('demo-001',33),feature('demo-002',44)]};
-    else if(path==='/api/properties')body={type:'FeatureCollection',mode:'historical_mixed_demo',notice:'Mixed exercise',scenario:{id:'isaias-2026',valid_from:params.at,valid_to:Replay.hour(6)},replay:{at:params.at},features:[feature('demo-001',33),feature('demo-002',44)]};
-    else if(path==='/api/timeline')body={...params,source_status:'loaded',reconstruction:'initialization-based',label:'Illustrative exposure for the next six hours',points:Array.from({length:25},(_,i)=>({at:Replay.hour(i),risk:{score:i===2?null:33},change:i===0||i===2||i===3?null:0,forecast:{status:i===2?'incomplete':'ready'}}))};
-    else if(path==='/api/routes')body={...params,status:params.mode==='what_if'?'ready':'historical_conditions_unavailable',message:'Exercise routing',route:null,unrestricted:null,notice:'Exercise only',excluded_roads:[],network:{type:'FeatureCollection',features:[{id:'road-1',geometry:{type:'LineString',coordinates:[[-86.5,30.5],[-86.51,30.5]]},properties:{id:'road-1',label:'Test road',kind:'road',state:'open'}}]},destinations:[{id:'exercise-north',label:'Exercise North',coordinates:[-86.51,30.5],available:true}]};
+    if(url==='/api/config')body={map:{configured:false}};
+    else if(url==='/api/parcels/manifest')return {ok:false,json:async()=>({error:'not configured'})};
+    else if(url==='/api/official-alerts')body={message:'Not connected'};
+    else if(url.startsWith('/api/weather/timeline?'))body={county_fips:'12091',source,status:'ready',default_index:0,frames:Array.from({length:source==='archive'?25:3},(_,i)=>({at:hour(source,i),collection:{type:'FeatureCollection',mode:source==='archive'?'county_archive':'county_forecast',scenario:{id:source==='archive'?'isaias-2026':'weathernext',valid_from:hour(source,i),valid_to:hour(source,i+6)},features:[],forecast:{status:'ready'},weather_cells:{type:'FeatureCollection',features:[]}}}))};
     else throw Error(url);
     return {ok:true,json:async()=>body};
   };
-  const context={console,URLSearchParams,fetch,QuasarSpatial:require('../quasar/static/spatial.js'),document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
-    Event:class{},MutationObserver:class{observe(){}},setTimeout,clearTimeout,setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
+  const context={console,URLSearchParams,fetch,QuasarSpatial:require('../quasar/static/spatial.js'),document:{getElementById:get,createElement:t=>new Element(t),dispatchEvent:()=>{}},
+    Event:class{},MutationObserver:class{observe(){}},setTimeout,clearTimeout,setInterval:fn=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
     window:{QuasarParcelCache,QuasarInspection,location:{hash},matchMedia:()=>({matches:false}),addEventListener:(name,fn)=>{(events[name]??=[]).push(fn);}}};
-  vm.runInNewContext(fs.readFileSync('quasar/static/replay.js','utf8'),context);
-  if(unified){vm.runInNewContext(fs.readFileSync('quasar/static/map-ui.js','utf8'),context);context.window.QuasarMapUI=context.QuasarMapUI;}
+  vm.runInNewContext(fs.readFileSync('quasar/static/map-ui.js','utf8'),context);context.window.QuasarMapUI=context.QuasarMapUI;
   await vm.runInNewContext(fs.readFileSync('quasar/static/app.js','utf8'),context);
-  return{get,requests,timers,location:context.window.location,navigate:hash=>{context.window.location.hash=hash;for(const fn of events.hashchange||[])fn();},hold:at=>{hold=at;},release:()=>{for(const fn of held.splice(0))fn();},fail:at=>{fail=at;}};
+  return {get,requests,timers,hold:value=>{hold=value;},release:()=>held.splice(0).forEach(fn=>fn()),fail:value=>{fail=value;},
+    navigate:hash=>{context.window.location.hash=hash;for(const fn of events.hashchange||[])fn();},
+    source:async value=>{get('scenario').value=value;return get('scenario').onchange();}};
 }
-
-test('replay hour bounds and chart gaps preserve isolated valid points',()=>{
-  assert.equal(Replay.hour(-1),Replay.hour(0));assert.equal(Replay.hour(25),Replay.hour(24));
-  const paths=Replay.segments([{risk:{score:5}},{risk:{score:null}},{risk:{score:7}}]);
-  assert.equal(paths.length,2);assert.equal(paths[0].length,1);assert.equal(paths[1].length,1);
+test('shared playback switches between real current and archived forecasts without simulation calls',async()=>{
+  const app=await boot();assert.equal(app.get('replay-hour').max,'2');assert.match(app.get('playback-clock').textContent,/Forecast/);
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+  await app.source('isaias-2026');assert.equal(app.get('replay-hour').max,'24');assert.match(app.get('playback-clock').textContent,/Archive/);
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+  assert.ok(app.requests.every(url=>!/^\/api\/(routes|timeline|properties|notifications|replay)/.test(url)));
+  app.get('replay-play').onclick();assert.equal(app.timers.size,1);app.navigate('#data');assert.equal(app.timers.size,0);
 });
-test('replay boots without a map and synchronizes hourly controls, timeline and routes',async()=>{
-  const app=await boot();
-  assert.equal(app.get('isaias-replay').hidden,false);
-  assert.equal(app.get('timeline-rows').children.length,25);
-  assert.match(app.get('route-summary').textContent,/historical conditions unavailable/);
-  await app.get('replay-next').onclick();
-  const routes=app.requests.filter(r=>r.url==='/api/routes');
-  assert.equal(JSON.parse(routes.at(-1).body).at,Replay.hour(1));
-  assert.match(app.get('replay-clock').textContent,/1 AM/);
-});
-test('presets and overrides enter what-if mode; reset clears overrides and clock',async()=>{
-  const app=await boot();
-  app.get('replay-preset').value='plus-5';await app.get('replay-preset').onchange();
-  assert.equal(app.get('replay-mode').value,'what_if');
-  app.get('road-select').value='road-1';await app.get('road-apply').onclick();
-  let body=JSON.parse(app.requests.filter(r=>r.url==='/api/routes').at(-1).body);
-  assert.equal(body.roads['road-1'],'closed');
-  const input=app.get('destination-controls').children[0].children[0];input.checked=false;await input.onchange();
-  body=JSON.parse(app.requests.filter(r=>r.url==='/api/routes').at(-1).body);assert.equal(body.destinations['exercise-north'],false);
-  await app.get('replay-reset').onclick();body=JSON.parse(app.requests.filter(r=>r.url==='/api/routes').at(-1).body);
-  assert.deepEqual(body.roads,{});assert.deepEqual(body.destinations,{});assert.equal(body.at,Replay.hour(0));assert.equal(body.mode,'archive');assert.equal(body.preset,'archived');
-});
-test('late responses cannot overwrite a newer hour and replay has no site picker',async()=>{
-  const app=await boot();app.hold(Replay.hour(1));
-  const old=app.get('replay-next').onclick();
-  await app.get('replay-next').onclick();
-  const clock=app.get('replay-clock').textContent;
-  app.release();await old;
-  assert.equal(app.get('replay-clock').textContent,clock);
-  assert.match(app.get('timeline-change').textContent,/Unknown/);
-  assert.equal(app.get('sites').children.length,0);
-  assert.equal(app.get('map-site').onchange,undefined);
-  assert.ok(app.requests.some(request=>request.url.startsWith('/api/timeline?site=demo-001')));
-});
-test('one failed response keeps all displayed results at the preceding clock',async()=>{
-  const app=await boot(),clock=app.get('replay-clock').textContent;
-  app.fail(Replay.hour(1));await app.get('replay-next').onclick();
-  assert.equal(app.get('replay-clock').textContent,clock);
-  assert.match(app.get('error').textContent,/timeline unavailable/);
-});
-test('playback stops at the last hour and pause removes its timer',async()=>{
-  const app=await boot();app.get('replay-hour').value='23';await app.get('replay-hour').oninput();
-  app.get('replay-play').onclick();assert.equal(app.timers.size,1);
+test('the archive deep link uses only native rainfall and playback stops at the last frame',async()=>{
+  const app=await boot('#isaias-replay');assert.equal(app.get('mode-badge').textContent,'ARCHIVED FORECAST');
+  app.get('replay-hour').value='23';await app.get('replay-hour').oninput();app.get('replay-play').onclick();
   app.timers.get(1)();await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(app.get('replay-hour').value,'24');assert.equal(app.timers.size,0);assert.equal(app.get('replay-play').textContent,'Play');
+  assert.equal(app.get('replay-hour').value,'24');assert.equal(app.timers.size,0);
 });
-
-
-test('Isaias toolbar action enters and exits simulation in the primary map',async()=>{
-  const app=await boot('#map-overview');
-  assert.equal(app.get('isaias-replay').hidden,true);
-  assert.equal(app.get('replay-toggle').disabled,false);
-  await app.get('replay-toggle').onclick();
-  assert.equal(app.get('scenario').value,'isaias-2026');
-  assert.equal(app.location.hash,'#map-overview');
-  assert.equal(app.get('isaias-replay').hidden,false);
-  assert.equal(app.get('replay-toggle')['aria-pressed'],'true');
-  assert.equal(app.get('map-layer').value,'rainfall');
-  await app.get('replay-next').onclick();
-  assert.match(app.get('replay-clock').textContent,/1 AM/);
-  await app.get('replay-toggle').onclick();
-  assert.equal(app.get('scenario').value,'baseline');
-  assert.equal(app.get('isaias-replay').hidden,true);
-  assert.equal(app.get('replay-results').hidden,true);
-  assert.equal(app.get('replay-toggle')['aria-pressed'],'false');
-  assert.equal(app.get('map-layer').value,'exposure');
-  assert.equal(app.timers.size,0);
+test('a failed source clears its old clock and disables playback until source reload',async()=>{
+  const app=await boot();app.fail('archive');await app.source('isaias-2026');
+  assert.equal(app.get('replay-hour').max,'0');assert.equal(app.get('replay-play').disabled,true);
+  assert.match(app.get('error').textContent,/source offline/);
+  app.fail(null);await app.source('isaias-2026');assert.equal(app.get('replay-hour').max,'24');
 });
-
-
-test('exiting Isaias restores the preceding WeatherNext source and stops playback',async()=>{
-  const app=await boot('#map-overview',{weather:true});
-  assert.equal(app.get('scenario').value,'weathernext');
-  await app.get('replay-toggle').onclick();
-  app.get('replay-play').onclick();
-  assert.equal(app.timers.size,1);
-  await app.get('replay-toggle').onclick();
-  assert.equal(app.get('scenario').value,'weathernext');
-  assert.equal(app.timers.size,0);
-  assert.equal(app.get('map-layer').value,'rainfall');
-});
-
-test('failed entry to simulation retains the displayed source and closed replay panel',async()=>{
-  const app=await boot('#map-overview');app.fail(Replay.hour(0));
-  await app.get('replay-toggle').onclick();
-  assert.equal(app.get('scenario').value,'baseline');
-  assert.equal(app.get('replay-toggle')['aria-pressed'],'false');
-  assert.equal(app.get('isaias-replay').hidden,true);
-  assert.match(app.get('error').textContent,/timeline unavailable/);
-});
-
-test('one visible playback control drives future frames and archive hours without enabling future routes',async()=>{
-  const app=await boot('#map-overview',{weather:true,unified:true});
-  assert.equal(app.get('replay-hour').max,'2');assert.match(app.get('playback-clock').textContent,/Forecast/);
-  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
-  assert.equal(app.requests.some(r=>r.url==='/api/routes'),false);
-  await app.get('replay-toggle').onclick();assert.match(app.get('playback-clock').textContent,/Archive/);assert.equal(app.get('replay-hour').max,'24');
-  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
-  await app.get('replay-play').onclick();assert.equal(app.timers.size,1);
-  app.navigate('#data');assert.equal(app.timers.size,0);
-  await app.get('replay-reset').onclick();assert.equal(app.get('replay-hour').value,'0');
-  await app.get('replay-toggle').onclick();assert.match(app.get('playback-clock').textContent,/Forecast/);
-  app.get('scenario').value='baseline';await app.get('scenario').onchange();assert.equal(app.get('replay-play').disabled,true);
-});
-
-test('unified archive playback retains its previous clock on failure and retries the correct next hour',async()=>{
-  const app=await boot('#isaias-replay',{unified:true}),clock=app.get('playback-clock').textContent;
-  app.fail(Replay.hour(1));await app.get('replay-next').onclick();assert.equal(app.get('playback-clock').textContent,clock);
-  assert.equal(app.get('replay-hour').value,'0');
-  app.fail(null);await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+test('late archive responses cannot overwrite a newer current-source selection',async()=>{
+  const app=await boot();app.hold('archive');const old=app.source('isaias-2026');
+  await app.source('weathernext');app.release();await old;
+  assert.equal(app.get('scenario').value,'weathernext');assert.equal(app.get('mode-badge').textContent,'COUNTY SOURCES');
+  assert.equal(app.get('replay-hour').max,'2');
 });

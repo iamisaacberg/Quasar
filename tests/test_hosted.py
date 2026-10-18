@@ -101,7 +101,7 @@ class HostedGateTests(unittest.TestCase):
             self.assertIn("SameSite=Strict", cookie)
             self.assertIn(f"Max-Age=43200", cookie)
             session = cookie.split(";", 1)[0]
-            for path in ["/", "/ui/app-shell.js", "/api/config", "/api/properties?scenario=peak"]:
+            for path in ["/", "/ui/app-shell.js", "/api/config", "/api/reports"]:
                 with self.subTest(path=path):
                     status, body, headers = self.request(path, headers={"Cookie": session})
                     self.assertEqual(status, 200)
@@ -117,8 +117,8 @@ class HostedGateTests(unittest.TestCase):
                 headers={"Cookie": session, "Content-Type": "application/json"},
                 body=json.dumps({"opt_in": True, "property_ids": ["demo-001"], "scenario": "peak"}),
             )
-            self.assertEqual(status, 200)
-            self.assertEqual(json.loads(result)["sent_count"], 0)
+            self.assertEqual(status, 410)
+            self.assertEqual(json.loads(result)["status"], "unavailable")
 
     def test_sessions_expire_and_rotate_with_password(self):
         gate = TeamGate(PASSWORD)
