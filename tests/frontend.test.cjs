@@ -120,7 +120,7 @@ test("county-clipped H3 weather initializes when map loads after data",async()=>
   assert.equal(map.sources.sites,undefined);assert.equal(map.sources["replay-network"],undefined);
   assert.ok(map.sources.hotspots.data.features.length>0);
   assert.equal(get("map-layer").value,"rainfall");
-  assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"][3],0.76);
+  assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"][3],0.5);
   get("hex-toggle").checked=false;get("hex-toggle").onchange();
   assert.equal(map.layers["hotspot-outline"].visibility,"none");
 });

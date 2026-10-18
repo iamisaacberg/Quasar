@@ -277,7 +277,7 @@ function updateCountyGrid() {
   map.getSource("hotspots").setData(grid);
   const rain = $("map-layer").value === "rainfall";
   map.setPaintProperty("hotspot-fill", "fill-color", rain ? QuasarSpatial.rainfallExpression() : mapColors("exposure_score"));
-  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? ["case",["==",["get","rainfall_mm"],null],0,0.76] : ["case",["==",["get","exposure_score"],null],0,0.28]);
+  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? ["case",["==",["get","rainfall_mm"],null],0,0.5] : ["case",["==",["get","exposure_score"],null],0,0.28]);
   for (const layer of ["parcel-fill", "selected-parcel-fill"]) map.setPaintProperty(layer,"fill-opacity",rain ? 0 : ["case",["==",["get","exposure_score"],null],0,0.45]);
   $("grid-resolution").textContent = `H3 · RES ${resolution}`;
   if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to inspect`;
