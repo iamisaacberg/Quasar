@@ -4,6 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
+  // The Python server exposes bundled UI assets under /ui/.
+  base: "/ui/",
   // Encode multiline dependency strings so generated assets have no trailing-space lines.
   esbuild: { supported: { "template-literal": false } },
   plugins: [react(), tailwindcss(), {
