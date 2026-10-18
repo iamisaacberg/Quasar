@@ -24,6 +24,7 @@ from .parcels import county_boundary, parcel_page, parcel_manifest, remote_inspe
 from .parcel_context import inspection
 from .bridge import serve_snapshot
 from .exposure import exposure, SCALE as EXPOSURE_SCALE
+from .timing import collect, phase, header as timing_header
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
@@ -75,6 +76,11 @@ def accepts_gzip(header):
                     quality = 0
         qualities[token] = quality
     return qualities.get("gzip", qualities.get("*", 0)) > 0
+
+
+@lru_cache(maxsize=4)
+def compressed_body(body):
+    return gzip.compress(body, compresslevel=5, mtime=0)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -157,11 +163,13 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(10)
 
     def send(self, status: int, payload, content_type="application/json", *, filename=None, immutable=False):
-        body = payload if isinstance(payload, bytes) else json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
+        with phase("encode"):
+            body = payload if isinstance(payload, bytes) else json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
         compressible = content_type.startswith("text/") or content_type.startswith(("application/json", "application/geo+json"))
         compressed = len(body) >= 1024 and compressible and accepts_gzip(self.headers.get("Accept-Encoding", ""))
         if compressed:
-            body = gzip.compress(body, compresslevel=5, mtime=0)
+            with phase("compress"):
+                body = compressed_body(body) if len(body) <= 30_000_000 else gzip.compress(body, compresslevel=5, mtime=0)
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -172,7 +180,9 @@ class Handler(BaseHTTPRequestHandler):
         if compressed:
             self.send_header("Content-Encoding", "gzip")
         if hasattr(self, "_request_started"):
-            self.send_header("Server-Timing", f"quasar;dur={(time.perf_counter()-self._request_started)*1000:.2f}")
+            total = f"quasar;dur={(time.perf_counter()-self._request_started)*1000:.2f}"
+            details = timing_header()
+            self.send_header("Server-Timing", total + (", " + details if details else ""))
         self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -182,6 +192,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self._request_started = time.perf_counter()
+        with collect():
+            return self._get()
+
+    def _get(self):
         url = urlsplit(self.path)
         query = parse_qs(url.query, keep_blank_values=True)
         try:
@@ -238,7 +252,9 @@ class Handler(BaseHTTPRequestHandler):
                 if parcel_token and not hmac.compare_digest(self.headers.get("X-Quasar-Parcel-Token", ""), parcel_token):
                     return self.send(HTTPStatus.UNAUTHORIZED, {"error": "Parcel API authentication required"})
                 if url.path == "/api/exposure":
-                    return self.send(200, exposure({key: values[0] for key, values in query.items()}))
+                    with phase("query"):
+                        result = exposure({key: values[0] for key, values in query.items()})
+                    return self.send(200, result)
                 if url.path == "/api/parcels/manifest":
                     return self.send(200, parcel_manifest())
                 match = re.fullmatch(r"/api/(parcels|cells)/([^/]+)/(context|summary)", url.path)
@@ -247,13 +263,16 @@ class Handler(BaseHTTPRequestHandler):
                     if (group, action) not in (("parcels", "context"), ("cells", "summary")):
                         raise ValueError("Invalid inspection route")
                     inventory = query.get("inventory_id", [None])[0]
-                    result = (remote_inspection(url.path, inventory) if os.environ.get("QUASAR_LINUXONE_API_URL")
-                              else inspection("parcel" if group == "parcels" else "cell", identifier, inventory))
+                    with phase("query"):
+                        result = (remote_inspection(url.path, inventory) if os.environ.get("QUASAR_LINUXONE_API_URL")
+                                  else inspection("parcel" if group == "parcels" else "cell", identifier, inventory))
                     return self.send(200, result)
                 if url.path != "/api/parcels":
                     return self.send(404, {"error": "Route not found"})
-                return self.send(200, parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
-                                                 query.get("inventory_id", [None])[0], query.get("cell", [None])[0]))
+                with phase("query"):
+                    result = parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
+                                         query.get("inventory_id", [None])[0], query.get("cell", [None])[0])
+                return self.send(200, result)
             if url.path in ("/api/scenarios", "/api/properties", "/api/timeline", "/api/routes", "/api/replay/context"):
                 return self.send(410, {"status": "unavailable", "error": "Exercise endpoints are retired. Use native county forecast and parcel APIs."})
             if url.path == "/api/reports":

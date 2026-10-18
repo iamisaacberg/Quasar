@@ -144,7 +144,9 @@ class InspectionApiTests(unittest.TestCase):
                 # The actual source host has a database, not another proxy.
                 with patch.dict(os.environ, {"QUASAR_LINUXONE_API_URL": ""}):
                     with urlopen(forwarded, timeout=timeout) as response:
-                        return io.BytesIO(response.read())
+                        forwarded_response = io.BytesIO(response.read())
+                        forwarded_response.headers = response.headers
+                        return forwarded_response
 
             with patch.dict(os.environ, {"QUASAR_PARCEL_DATABASE": str(database),
                     "QUASAR_PARCEL_API_TOKEN": token, "QUASAR_LINUXONE_API_URL": "https://example.test",

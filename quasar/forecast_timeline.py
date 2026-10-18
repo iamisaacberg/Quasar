@@ -4,12 +4,12 @@ from collections import OrderedDict
 import hashlib
 import json
 from threading import Lock
-from time import monotonic
 
 from .adapters import county_weather as county
 from .adapters.weathernext import iso, timestamp, summarize
 from .bridge import BridgeUnavailable, read_snapshot
 from .config import COUNTY_FIPS, TIMEZONE
+from .timing import phase
 
 
 _prepared = OrderedDict()
@@ -31,20 +31,24 @@ def timeline(*, source="archive", now=None, reader=None):
     if data is None:
         return _timeline(source=source, reader=lambda _: None)
     try:
-        key = (source, hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).digest())
+        identity = getattr(data, "content_identity", None)
+        # Injected research/test dictionaries may mutate; hash those on each read.
+        if identity is None:
+            identity = hashlib.sha256(json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).digest()
+        key = (source, identity)
     except (TypeError, ValueError):
         return _timeline(source=source, reader=lambda _: data)
-    with _prepare_lock:
+    with phase("prepare"), _prepare_lock:
         cached = _prepared.get(key)
         clock = datetime.now(timezone.utc)
-        if cached and monotonic() < cached[1]:
+        if cached:
             expiry = cached[2].get("expires_at")
             if not expiry or timestamp(expiry) > clock:
                 _prepared.move_to_end(key)
                 return cached[2]
         result = _timeline(source=source, now=clock, reader=lambda _: data)
         if result["frames"]:
-            _prepared[key] = (data, monotonic() + 15, result)
+            _prepared[key] = (data, None, result)
             while len(_prepared) > 2:
                 _prepared.popitem(last=False)
         return result
