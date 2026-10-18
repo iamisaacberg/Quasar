@@ -116,7 +116,7 @@ def run_rows(run, *, allowed=None):
     return result
 
 
-def rainfall(archive, at, site, preset):
+def rainfall(archive, at, site, preset, *, indexes=None):
     clock = timestamp(at)
     eligible = [r for r in archive['runs'] if timestamp(r['init_time']) <= clock
                 and (not r.get('published_at') or timestamp(r['published_at']) <= clock)]
@@ -134,7 +134,9 @@ def rainfall(archive, at, site, preset):
     if clock - timestamp(run['init_time']) > MAX_INIT_AGE:
         return {**base, 'status': 'stale_at_replay_time'}
     try:
-        index = run_rows(run, allowed=archive.get('cell_ids'))
+        # County playback supplies indexes validated once for this snapshot.
+        # Offline callers retain the same per-run validation and failure states.
+        index = indexes[run['init_time']] if indexes is not None else run_rows(run, allowed=archive.get('cell_ids'))
     except (ValueError, KeyError, TypeError, AttributeError):
         return {**base, 'status': 'invalid_run'}
     rows = [index.get((site, iso(clock+timedelta(hours=h)))) for h in range(1, 7)]

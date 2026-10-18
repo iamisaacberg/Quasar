@@ -158,13 +158,30 @@ def for_sites(data, *, now=None):
 
 
 def collection(data, *, at=None, preset='archived', mode='archive', now=None):
+    return PreparedForecast(data, now=now).collection(at=at, preset=preset, mode=mode)
+
+
+class PreparedForecast:
+    """Request-local validated snapshot; index archive rows once for all frames."""
+
+    def __init__(self, data, *, now=None):
+        from ..replay import run_rows
+        validate(data, now=now)
+        self.data, self.now = data, now
+        self.ids = {c['id'] for c in data['native_cells']}
+        self.indexes = {run['init_time']: run_rows(run, allowed=self.ids) for run in data['runs']}
+
+    def collection(self, *, at=None, preset='archived', mode='archive', window=None):
+        return _collection(window or self.data, at=at, preset=preset, mode=mode,
+                           now=self.now, ids=self.ids, indexes=self.indexes)
+
+
+def _collection(data, *, at, preset, mode, now, ids, indexes):
     from ..replay import rainfall, selection
-    validate(data, now=now)
-    ids = {c['id'] for c in data['native_cells']}
     if data['kind'] == 'historical_county_forecasts':
         sel = selection(at, preset, mode)
         archive = {**data,'status':'loaded','cell_ids':ids}
-        records = {identifier:rainfall(archive,sel['at'],identifier,preset) for identifier in ids}
+        records = {identifier:rainfall(archive,sel['at'],identifier,preset,indexes=indexes) for identifier in ids}
         start = sel['at']
     else:
         summary = summarize(current_snapshot(data), allowed=ids, now=now)

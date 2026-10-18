@@ -11,34 +11,35 @@ const {execFileSync} = require('node:child_process');
 const source = ts.transpileModule(fs.readFileSync('frontend/reports.tsx', 'utf8'), {
   compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}
 }).outputText;
-function render(data, {sourceName='current',error=''}={}) {
+function render(data, {selectedFrame=2,error=''}={}) {
   let index=0;
-  const values=[sourceName,data,error], exported={};
-  vm.runInNewContext(source,{exports:exported,window:{},require:name=>name==='react'?{useState:()=>[values[index++],()=>{}],useEffect:()=>{}}:name==='./reports.css'?{}:require(name)});
+  const values=[data,error,0], exported={};
+  vm.runInNewContext(source,{exports:exported,window:{},require:name=>name==='react'?{useState:()=>[values[index++],()=>{}],useEffect:()=>{}}:name==='./lib/replay-selection'?{useReplaySelection:()=>[selectedFrame,()=>{}]}:name==='./reports.css'?{}:require(name)});
   return renderToStaticMarkup(React.createElement(exported.Reports,{active:true}));
 }
-const data={source:'current',status:'incomplete',selected_index:2,init_time:'2026-10-17T12:00:00Z',retrieved_at:'2026-10-17T12:30:00Z',source_table:'test-only.native-forecast',rows:[
+const data={source:'archive',status:'incomplete',selected_index:2,init_time:'2026-10-17T12:00:00Z',retrieved_at:'2026-10-17T12:30:00Z',source_table:'test-only.native-forecast',rows:[
   {native_cell_id:'native-test-zero',rainfall_6h_mm:0,available_hours:6,status:'ready',valid_from:'2026-10-17T12:00:00Z',valid_to:'2026-10-17T18:00:00Z'},
   {native_cell_id:'native-test-unknown',rainfall_6h_mm:null,available_hours:5,status:'incomplete',valid_from:'2026-10-17T12:00:00Z',valid_to:'2026-10-17T18:00:00Z'}]};
 
 test('reports preserve native source identity, zero and unknown values and exports',()=>{
   const html=render(data);
   assert.match(html,/native-test-zero/);assert.match(html,/>0.00</);assert.match(html,/>Unknown</);
-  assert.match(html,/source=current&amp;frame=2&amp;format=zip/);
+  assert.match(html,/source=archive&amp;frame=2&amp;format=zip/);
   assert.match(html,/test-only.native-forecast/);assert.match(html,/Initialized/);assert.match(html,/Imported/);
   assert.doesNotMatch(html,/fictional|synthetic|demo-00/i);
 });
 
 test('source changes and absent imports cannot show old reports or offer exports',()=>{
-  for(const [report,options] of [[data,{sourceName:'archive'}],[null,{error:'Source offline'}],[{...data,rows:[]},{}]]){
+  for(const [report,options] of [[data,{selectedFrame:3}],[null,{error:'Source offline'}],[{...data,rows:[]},{}]]){
     const html=render(report,options);
     assert.doesNotMatch(html,/href="\/api\/exports/);assert.match(html,/disabled=""/);
   }
 });
 
-test('expired current reports clear numeric rainfall before rendering',()=>{
-  const html=render({...data,expires_at:'2000-01-01T00:00:00Z'});
-  assert.doesNotMatch(html,/>0.00</);assert.match(html,/stale/);assert.match(html,/>Unknown</);
+test('archive reports do not expire against today and have no current source selector',()=>{
+  const html=render(data);
+  assert.match(html,/>0.00</);assert.match(html,/Isaias/);
+  assert.doesNotMatch(html,/Current county forecast/);
 });
 
 for (const initialView of ['#reports', '#data']) test(`returning from ${initialView} restores the map and signals Mapbox to resize`, () => {

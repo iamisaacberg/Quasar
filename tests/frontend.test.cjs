@@ -17,17 +17,17 @@ class Element {
   getAttribute(name) { return this[name]; }
 }
 
-async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
+async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
   const ids = new Map();
-  let exposureRunId="synthetic-run", clock=Date.now();
+  let exposureRunId="synthetic-run", clock=Date.now(), archiveMissing=false;
   const exposureTimers=new Map();
   class Clock extends Date {static now(){return clock;}}
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   get("map").parentElement = get("map-viewport");
   get("map-layer").value="rainfall";
-  const data = {type:"FeatureCollection", county_fips:"12091", mode:"county_forecast", notice:"Native forecast test fixture",
-    scenario:{id:"weathernext",valid_from:"2026-10-17T12:00:00Z",valid_to:"2026-10-17T18:00:00Z"},
-    forecast:{status:forecastStatus,init_time:"2026-10-17T12:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
+  const data = {type:"FeatureCollection", county_fips:"12091", mode:forecastMode, notice:"Native forecast test fixture",
+    scenario:{id:"isaias-2026",valid_from:"2026-10-09T05:00:00Z",valid_to:"2026-10-09T11:00:00Z"},
+    forecast:{status:forecastStatus,init_time:"2026-10-09T05:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
     weather_cells:{type:"FeatureCollection",retrieved_at:"2026-10-17T12:30:00Z",features:[
       {type:"Feature",id:"native-test-cell",geometry:{type:"Polygon",coordinates:[[[-86.6,30.5],[-86.5,30.5],[-86.5,30.6],[-86.6,30.5]]]},properties:{status:forecastStatus,rainfall_6h_mm:forecastStatus==="ready" ? rainfall : null}}
     ]}};
@@ -82,12 +82,12 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
         if (parcelFailure) return {ok:false,json:async()=>({error:"GIS unavailable"})};
         if(holdPage) await holdPage(offset);
         const ids=parcelCount===101 ? [offset+1] : Array.from({length:Math.min(100,parcelCount-offset)},(_,i)=>offset+i+1);
-        return {ok:true,json:async()=>pageTransform({type:"FeatureCollection",status:"ready",county_fips:"12091",inventory_id:"snapshot",dataset_version:"snapshot:index",features:ids.map(id=>({type:"Feature",id,geometry:{type:"Polygon",coordinates:[[[-86.49,30.55],[-86.489,30.55],[-86.489,30.551],[-86.49,30.55]]]},properties:{parcel_id:id,county_fips:"12091",risk_score:null,risk_band:"unknown"}})),source_total:parcelCount,checked_count:Math.min(offset+100,parcelCount),excluded_count:0,next_offset:offset+100>=parcelCount?null:offset+100,retrieved_at:"2026-10-17T12:00:00Z",source_url:"https://example.test/parcels",crs:"EPSG:4326"})};
+        return {ok:true,json:async()=>pageTransform({type:"FeatureCollection",status:"ready",county_fips:"12091",inventory_id:"snapshot",dataset_version:"snapshot:index",features:ids.map(id=>({type:"Feature",id,geometry:{type:"Polygon",coordinates:[[[-86.49,30.55],[-86.489,30.55],[-86.489,30.551],[-86.49,30.55]]]},properties:{parcel_id:id,county_fips:"12091",risk_score:null,risk_band:"unknown"}})),source_total:parcelCount,checked_count:Math.min(offset+100,parcelCount),excluded_count:0,next_offset:offset+100>=parcelCount?null:offset+100,retrieved_at:"2026-10-09T05:00:00Z",source_url:"https://example.test/parcels",crs:"EPSG:4326"})};
       }
       if (url.startsWith("/api/weather/timeline?")) {
         if(scenarioFailure && url.includes("source=archive"))return {ok:false,json:async()=>({error:"forecast offline"})};
-        return {ok:true,json:async()=>url.includes("source=archive") ? {county_fips:"12091",source:"archive",status:"not_configured",frames:[],default_index:0,message:"Archive not imported"} :
-          {county_fips:"12091",source:"current",status:forecastStatus,frames:[{at:data.scenario.valid_from,collection:data}],default_index:0}};
+        return {ok:true,json:async()=>archiveMissing ? {county_fips:"12091",source:"archive",status:"not_configured",frames:[],default_index:0,message:"Archive not imported"} :
+          {county_fips:"12091",source:"archive",status:forecastStatus,frames:[{at:data.scenario.valid_from,collection:data}],default_index:0}};
       }
       const body = url==="/api/county" ? {county_fips:"12091",type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[[[-86.6,30.4],[-86.4,30.4],[-86.4,30.6],[-86.6,30.6],[-86.6,30.4]]]}}]} : url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/satellite-streets-v12"}} :
         url==="/api/scenarios" ? {scenarios:[{id:"baseline",label:"Exercise hour 0"},...(mixed ? [{id:"weathernext",label:"WeatherNext 3 + fictional inputs"}] : [])]} :
@@ -96,7 +96,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
       return {ok:true,json:async()=>body};
     }};
   await vm.runInNewContext(fs.readFileSync("quasar/static/app.js","utf8"),context);
-  return {get,map,data,events,requests,setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
+  return {get,map,data,events,requests,setArchiveMissing:value=>{archiveMissing=value;},setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
     exposureTimerDelays:()=>[...exposureTimers.values()].map(t=>t.delay),
     expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
@@ -110,7 +110,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
 test("missing map credentials leave source status usable without exercise requests",async()=>{
   const {get,map,requests}=await boot();
   assert.equal(map,undefined);assert.match(get("map-status").textContent,/MAPBOX_PUBLIC_TOKEN/);
-  assert.equal(get("mode-badge").textContent,"COUNTY SOURCES");
+  assert.equal(get("mode-badge").textContent,"ISAIAS · ARCHIVED FORECAST");
   assert.ok(requests.every(url=>!/^\/api\/(properties|scenarios|routes|timeline|notifications|replay)/.test(url)));
 });
 
@@ -127,15 +127,15 @@ test("native forecast polygons and county outlines initialize when map loads aft
 
 test("source failure clears prior rainfall without restoring synthetic data",async()=>{
   const {map,get}=await boot({configured:true,scenarioFailure:true});map.handlers["load:"]();
-  get("scenario").value="isaias-2026";await get("scenario").onchange();
+  await get("forecast-retry").onclick();
   assert.equal(map.sources["native-rainfall"].data.features.length,0);
   assert.match(get("error").textContent,/forecast offline/);
-  assert.equal(get("scenario").value,"isaias-2026");
+  assert.equal(get("mode-badge").textContent,"ARCHIVE UNAVAILABLE");
 });
 
 test("React can mount before the controller and starts are idempotent",async()=>{
   const app=await boot({mounted:false});assert.deepEqual(app.events,["quasar:ready"]);
-  await app.mount();await app.start();assert.equal(app.get("scenario").children.length,2);
+  await app.mount();await app.start();assert.equal(app.requests.filter(url=>url.includes("/api/weather/timeline")).length,1);
 });
 
 test("sidebar width changes resize Mapbox while preserving native sources",async()=>{
@@ -300,7 +300,7 @@ test('selection survives zoom and source changes, and parcel details stay stable
   app.map.zoom=8;app.map.handlers['zoomend:']();
   assert.equal(app.get('map-selection-panel').hidden,false);
   const before=geometryRequests(app).length;
-  app.get('scenario').value='isaias-2026';await app.get('scenario').onchange();
+  app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
   assert.equal(geometryRequests(app).length,before);
   release();await until(()=>app.get('parcel-status').textContent.includes('All 250'));
   assert.equal(app.get('selection-title').textContent,'Parcel details');
@@ -322,7 +322,7 @@ test("unknown parcels and cells have transparent interiors and no hatch layers",
 });
 
 test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{
-  const {map,get}=await boot({configured:true,mixed:true,exposureScores:true});map.handlers['load:']();
+  const app=await boot({configured:true,mixed:true,exposureScores:true});const {map,get}=app;map.handlers['load:']();
   await new Promise(resolve=>setImmediate(resolve));
   map.zoom=12;map.handlers['zoomend:']();
   await new Promise(resolve=>setImmediate(resolve));
@@ -339,7 +339,7 @@ test("server parcel indices and complete-inventory p90 drive colors and accessib
   assert.equal(get('selection-score').textContent,'90.0 / 100');
   assert.ok(get('selection-exposure').children.some(node=>/synthetic_factor.*90.0/.test(node.textContent)));
   // A different hour retains cached geometry and inspection, but clears old indices.
-  get('scenario').value='isaias-2026';await get('scenario').onchange();
+  app.setArchiveMissing(true);await get('forecast-retry').onclick();
   assert.equal(map.sources.parcels.data.features.length,2);
   assert.equal(map.sources['selected-parcel'].data.features.length,1);
   assert.equal(get('selection-title').textContent,'Parcel details');
@@ -352,7 +352,7 @@ test('late exposure lookups cannot recolor retained geometry after a scenario ch
   let release;
   const app=await boot({configured:true,mixed:true,exposureScores:true,holdExposure:params=>params.has('parcel_ids')?new Promise(resolve=>{release=resolve;}):Promise.resolve()});
   app.map.handlers['load:']();parcelClick(app);await until(()=>release);
-  app.get('scenario').value='isaias-2026';await app.get('scenario').onchange();
+  app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
   release();await new Promise(resolve=>setImmediate(resolve));
   assert.ok(app.map.sources.parcels.data.features.length>0);
   assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
@@ -391,13 +391,11 @@ test('exposure lookups batch at 100 IDs and failures or missing assessments rema
 });
 
 // protects: expired estimates revert to unknown without user navigation; fails_when: a cached current result survives two hours; seam: none; no_claim: real forecast accuracy; why_new: lifecycle expiry is distinct from forecast playback.
-test('current exposure expires to unknown while parcel geometry and selection remain',async()=>{
-  const app=await boot({configured:true,mixed:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
+test('archived exposure does not expire against today while parcel geometry remains',async()=>{
+  const app=await boot({configured:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
   await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
-  app.setExposureFailure(true);app.expireExposure();
-  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.ok(app.requests.filter(url=>url.startsWith('/api/exposure?')).every(url=>url.includes('mode=replay')));
   assert.equal(app.get('map-selection-panel').hidden,false);
-  assert.ok(app.map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
 });
 
 // protects: failed refresh cannot mix old parcel indices with a new run; fails_when: a recovered summary reuses prior assessments; seam: none; no_claim: browser rendering; why_new: recovery crosses two distinct API outcomes.
@@ -413,8 +411,9 @@ test('summary failure clears parcel indices before a different run recovers',asy
   assert.equal(geometryRequests(app).length,before);
 });
 
-test('model inspection separates learned susceptibility, rainfall rule and signed attribution',async()=>{
-  const app=await boot({configured:true,mixed:true,exposureScores:true,exposureTransform:page=>({
+for (const forecastMode of ['county_archive', 'county_forecast']) {
+test(`model inspection separates susceptibility and rainfall with ${forecastMode} expiry`,async()=>{
+  const app=await boot({configured:true,forecastMode,mixed:true,exposureScores:true,exposureTransform:page=>({
     ...page,forecast_provenance:{init_time:'synthetic-init',retrieved_at:'synthetic-import',native_resolution:'0.1 degree',availability_basis:'initialization-based reconstruction',expires_at:new Date(Date.parse(page.computed_at)+60000).toISOString()},
     parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,{...record,
       model_details:{susceptibility:.7,rainfall_6h_mm:50,rainfall_stress:.5,model_instability:.02,baseline:.6,attributions:{terrain_min_m:-.1,terrain_mean_m:.2}}}]))
@@ -429,5 +428,10 @@ test('model inspection separates learned susceptibility, rainfall rule and signe
   assert.match(text,/Forecast rainfall: 50.0 mm/);
   assert.match(text,/not a confidence interval/);
   assert.match(text,/terrain_min_m: -0.1000/);
-  assert.ok(app.exposureTimerDelays().some(delay=>delay>0 && delay<=60001));
+  if (forecastMode === "county_forecast") {
+    assert.ok(app.exposureTimerDelays().some(delay=>delay>0 && delay<=60001));
+  } else {
+    assert.equal(app.exposureTimerDelays().length,0);
+  }
 });
+}

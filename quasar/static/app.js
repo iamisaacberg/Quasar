@@ -38,17 +38,18 @@ function render(data) {
   exposureResponses.clear(); parcelAssessments.clear();
   current = data;
   if (parcelEntry && mapLoaded) publishParcels(parcelEntry,true);
-  $("mode-badge").textContent = data.mode === "county_archive" ? "ARCHIVED FORECAST" : data.forecast?.status === "stale" ? "FORECAST STALE" : ["invalid","unavailable","not_configured"].includes(data.forecast?.status) ? "SOURCE UNAVAILABLE" : "COUNTY SOURCES";
+  $("mode-badge").textContent = ["invalid","unavailable","not_configured"].includes(data.forecast?.status) ? "ARCHIVE UNAVAILABLE" : data.forecast?.status === "loading" ? "LOADING ISAIAS" : "ISAIAS · ARCHIVED FORECAST";
   $("data-notice").textContent = data.notice;
   $("map-demo-notice").textContent = data.notice;
-  showMapSummary(); updateMap();
+  showMapSummary(); updateMap(); renderArchiveTrend();
   if (selectedCell) { if (selectedParcel === null) renderCellPanel(); else renderInspectionInputs(); }
   const archive = data.mode === "county_archive";
-  const status = forecastTimeline?.status || "unavailable";
+  const status = data.forecast?.status || "unavailable";
   const enabled = !["stale","invalid","unavailable","not_configured"].includes(status);
   playback?.configure(archive ? "archive" : "forecast", (forecastTimeline?.frames || []).map(f=>f.at), forecastIndex, enabled,
     status === "stale" ? "Current forecast is stale. An explicit import is required to refresh it." :
-    forecastTimeline?.message || (archive ? "Archived forecast rainfall · not observed rain" : "Following six-hour forecast rainfall · mm / 6h"));
+    forecastTimeline?.message || (status === "loading" ? "Loading Isaias archive…" : status === "incomplete" ? "Some cells lack six complete hours. Gaps remain unknown." : "Following six-hour rainfall · forecast reconstruction"));
+  $("forecast-retry").disabled = status === "loading";
   window.clearTimeout?.(forecastExpiryTimer);
   const expiry = Date.parse(forecastTimeline?.expires_at);
   if (!archive && enabled && expiry > Date.now()) forecastExpiryTimer = window.setTimeout?.(()=>{
@@ -69,13 +70,48 @@ function showMapSummary() {
   const available = (cells?.features || []).filter(f=>f.properties.status === "ready" && typeof f.properties.rainfall_6h_mm === "number");
   const values = available.map(f=>f.properties.rainfall_6h_mm);
   $("map-data-title").textContent = rain ? "WeatherNext 3 rainfall · mm / 6h" : "Experimental relative exposure · index / 100";
-  $("map-display-label").textContent = $("map-data-title").textContent;
+  $("map-display-label").textContent = !rain ? (exposureData?.status === "ready" ? "Experimental parcel exposure · /100" : "Parcel assessments unavailable") : values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${available.length}/${cells.features.length} cells` : "Rainfall unavailable";
   $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${available.length}/${cells.features.length} native cells available` : `Rainfall unavailable · ${forecast.status || "not configured"}. Missing and stale values remain unknown.`;
-  $("window").textContent = current.scenario.valid_from ? `${current.mode === "county_archive" ? "Archived forecast" : "Forecast window"}: ${current.scenario.valid_from} – ${current.scenario.valid_to}` : "No imported forecast window available";
+  $("window").textContent = current.scenario.valid_from ? `${current.mode === "county_archive" ? "Archived forecast" : "Forecast window"}: ${formatForecastTime(current.scenario.valid_from)} – ${formatForecastTime(current.scenario.valid_to)}` : "No imported forecast window available";
   $("map-data-source").textContent = `${forecast.status || "unavailable"} · initialized ${forecast.init_time || "unavailable"} · imported ${forecast.retrieved_at || "unavailable"} · native ${forecast.native_resolution || "0.1 degree"} ensemble mean. ${forecast.source_table || "Source unavailable"}. Forecast rain is not observed rain or parcel flood risk.`;
   $("exposure-legend").hidden = rain; $("rainfall-legend").hidden = !rain;
   $("map-layer-note").textContent = rain ? "Native rainfall cells retain their source resolution. Transparent cells have unavailable rainfall. H3 outlines support parcel browsing and do not sharpen forecasts." : `${exposureData?.message || "Parcel assessments are unavailable unless matching results are configured."} Transparent interiors indicate unknown scores. Incomplete coverage is reported in details. Green does not establish safety.`;
   showWeatherStatus(forecast);
+}
+
+function formatForecastTime(value) {
+  return value ? new Date(value).toLocaleString("en-US", {timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",minute:"2-digit",timeZoneName:"short"}) : "Unavailable";
+}
+
+function renderArchiveTrend() {
+  const frames=forecastTimeline?.frames || [];
+  const peaks=frames.map(frame=>{
+    const features=frame.collection.weather_cells.features;
+    const values=features.filter(f=>f.properties.status==="ready" && Number.isFinite(f.properties.rainfall_6h_mm)).map(f=>f.properties.rainfall_6h_mm);
+    return {peak:values.length ? Math.max(...values) : null, available:values.length, total:features.length};
+  });
+  const max=Math.max(1,...peaks.map(p=>p.peak ?? 0));
+  const chart=$("archive-trend"), focused=chart.contains?.(document.activeElement); chart.replaceChildren();
+  frames.forEach((frame,index)=>{
+    const {peak,available,total}=peaks[index];
+    const label=`${formatForecastTime(frame.at)}: ${peak===null ? "rainfall unavailable" : `${peak.toFixed(2)} mm / 6h maximum; ${available}/${total} cells available`}`;
+    const button=element("button"); button.type="button"; button.title=label;
+    button.setAttribute("aria-label",label); button.setAttribute("aria-pressed",String(index===forecastIndex));
+    button.className=peak===null ? "trend-hour is-unknown" : available<total ? "trend-hour is-partial" : "trend-hour";
+    const bar=element("span"); bar.style.height=peak===null ? "100%" : `${Math.max(4,peak/max*100)}%`;
+    button.append(bar); button.onclick=()=>{playback?.pause();selectForecastFrame(index);};chart.append(button);
+  });
+  if(focused) chart.children[forecastIndex]?.focus();
+  $("archive-trend-label").textContent=frames.length ? "Maximum native-cell rainfall · mm / 6h" : "Isaias · October 9, 2026";
+  $("archive-trend-range").textContent=frames.length ? "Oct 9, midnight → Oct 10, midnight · Central" : "Archive unavailable. Recheck the source or inspect Data.";
+}
+
+function selectForecastFrame(index) {
+  if(!Number.isInteger(index) || !forecastTimeline?.frames?.[index]) return false;
+  forecastIndex=index;
+  render(forecastTimeline.frames[index].collection);
+  window.dispatchEvent?.(new CustomEvent("quasar:frame",{detail:{index}}));
+  return true;
 }
 
 function mapColors(field = "risk_score") {
@@ -105,9 +141,8 @@ function renderExposureInspection() {
   } else {
     const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
     score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
-    $("selection-badge").textContent=score===null ? "County parcel · unscored" : "County parcel · experimental index";
-    content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p",
-      `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
+    $("selection-badge").textContent=$("map-layer").value === "rainfall" ? "County parcel · archived inputs" : score===null ? "County parcel · unscored" : "County parcel · experimental index";
+    content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
     if(score===null) content.append(element("p",`Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
     const model = assessment?.model_details;
     if (model && score !== null) {
@@ -287,6 +322,13 @@ function inputRows(rows) {
 
 function renderInspectionInputs() {
   const context=selectedParcel === null ? cellContext : parcelContext;
+  const rain=$("map-layer").value === "rainfall";
+  const summary=window.QuasarInspection.rainfallSummary(context,current);
+  $("selection-rainfall").textContent=summary.value;
+  $("selection-rainfall-note").textContent=summary.detail;
+  $("selection-rainfall-meter").hidden=!rain;
+  $("selection-exposure-meter").hidden=rain;
+  $("selection-exposure-section").hidden=rain;
   const rows=selectedParcel === null ? window.QuasarInspection.forecastRows(context,current) : window.QuasarInspection.parcelRows(context,current);
   if(selectedParcel === null) rows.unshift(
     ["Distinct indexed parcels",cellContext?.parcel_count?.toLocaleString() ?? "Unknown"],
@@ -530,7 +572,7 @@ function setupMap(settings) {
       const empty = {type:"FeatureCollection", features:[]};
       map.addSource("native-rainfall", {type:"geojson", data:empty});
       map.addLayer({id:"native-rainfall-fill",type:"fill",source:"native-rainfall",paint:{
-        "fill-color":["case",["==",["get","rainfall_mm"],null],"#a1a9ad",["step",["get","rainfall_mm"],"#b9e2f8",25,"#509dce",75,"#3156a6"]],"fill-opacity":["case",["==",["get","rainfall_mm"],null],0,0.35]}});
+        "fill-color":["case",["==",["get","rainfall_mm"],null],"#a1a9ad",["interpolate",["linear"],["get","rainfall_mm"],0,"#e0edf4",5,"#83c9df",25,"#3093bc",75,"#25439a"]],"fill-opacity":["case",["==",["get","rainfall_mm"],null],0,0.55]}});
       map.addLayer({id:"native-rainfall-outline",type:"line",source:"native-rainfall",paint:{"line-color":"#6d99bc","line-width":0.6}});
       map.addSource("hotspots", {type:"geojson", data:empty});
       map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":["case",["==",["get","exposure_score"],null],0,0.28]}});
@@ -576,7 +618,7 @@ function toggleHex() {
 
 function showWeatherStatus(data) {
   if (data.message) { $("weather-status").textContent = data.message; return; }
-  $("weather-status").textContent = `${data.status.toUpperCase()} · initialized ${data.init_time} · imported ${data.retrieved_at} · ${data.native_resolution} ensemble mean. Stale or incomplete rainfall is not scored.`;
+  $("weather-status").textContent = `${(data.status || "unavailable").replaceAll("_"," ")} · initialized ${formatForecastTime(data.init_time)} · imported ${formatForecastTime(data.retrieved_at)} · ${data.native_resolution || "Unknown resolution"} ensemble mean. ${data.reconstruction || "Forecast rainfall, not observed rain."}`;
 }
 
 function unavailableFrame(source, status, message) {
@@ -587,17 +629,17 @@ function unavailableFrame(source, status, message) {
 
 async function loadScenario(options = {}) {
   const thisRequest = ++requestId;
-  const source=$("scenario").value === "isaias-2026" ? "archive" : "current";
-  const sameSource=current?.scenario.id === $("scenario").value;
-  if (!sameSource) {forecastTimeline=null;render(unavailableFrame(source,"loading","Loading imported county sources…"));}
+  const source="archive";
+  forecastTimeline=null;
+  render(unavailableFrame(source,"loading","Loading the Isaias county archive…"));
   try {
     const timeline=await api(`/api/weather/timeline?source=${source}`);
     if(thisRequest!==requestId)return false;
-    if(timeline.county_fips!=="12091")throw new Error("Wrong forecast county");
+    if(timeline.county_fips!=="12091" || timeline.source!=="archive")throw new Error("Wrong forecast county or source");
     forecastTimeline=timeline;
-    const index=Math.min(options.forecastIndex ?? (sameSource ? forecastIndex : timeline.default_index),Math.max(0,(timeline.frames?.length || 0)-1));
+    const index=Math.min(options.forecastIndex ?? forecastIndex,Math.max(0,(timeline.frames?.length || 0)-1));
     forecastIndex=index;
-    render(timeline.frames?.length ? timeline.frames[index].collection : unavailableFrame(source,timeline.status,timeline.message));
+    if(!selectForecastFrame(index)) render(unavailableFrame(source,timeline.status,timeline.message));
     $("error").hidden=true;return true;
   } catch(error) {
     if(thisRequest!==requestId)return false;
@@ -611,7 +653,7 @@ async function start() {
   if (started) return;
   started = true;
   if (window.QuasarMapUI) {
-    playback = window.QuasarMapUI.createPlayback({get:$, select:(_kind,index)=>loadScenario({forecastIndex:index})});
+    playback = window.QuasarMapUI.createPlayback({get:$, select:(_kind,index)=>selectForecastFrame(index)});
     window.addEventListener("hashchange",()=>{
       if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
     });
@@ -652,6 +694,10 @@ async function start() {
       }
     });
   }
+  $("forecast-retry").onclick=()=>{playback?.pause();return loadScenario();};
+  window.addEventListener?.("quasar:seek",event=>{playback?.pause();forecastIndex=event.detail.index;selectForecastFrame(forecastIndex);});
+  // Archive reads must not wait for Mapbox or the external county service.
+  const archiveLoad=loadScenario();
   $("selection-close").onclick = closeSelection;
   $("selection-back").onclick = () => {
     selectedParcel = null;
@@ -679,7 +725,7 @@ async function start() {
   $("parcel-clear").onclick=async()=>{closeSelection();contextCache.clear();await parcelCache.clear();};
   void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
-  $("map-layer").onchange = () => { showMapSummary(); updateMap(); };
+  $("map-layer").onchange = () => { showMapSummary(); updateMap(); if(selectedCell)renderInspectionInputs(); };
   try {
     const config=await api("/api/config");
     if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
@@ -706,16 +752,11 @@ async function start() {
     searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);
     map.flyTo({center:coordinates,zoom:15,padding:{top:90,bottom:150,left:40,right:40},essential:false});
   }});
-  for (const [id,label] of [["weathernext","Current county forecast"],["isaias-2026","October 9 archived forecast"]]) {
-    const option=element("option",label);option.value=id;$("scenario").append(option);
-  }
-  $("scenario").value=window.location?.hash === "#isaias-replay" ? "isaias-2026" : "weathernext";
-  $("scenario").disabled=false;$("scenario").onchange=()=>{playback?.pause();return loadScenario();};
-  await loadScenario();
+  await archiveLoad;
   try { $("official-status").textContent = (await api("/api/official-alerts")).message; }
   catch { $("official-status").textContent = "Official feed status unavailable. This is not an all-clear."; }
 }
 // React mounts the existing map workspace before starting its data controller.
-window.Quasar = { start };
-if ($("scenario")) start();
+window.Quasar = { start, frame:()=>forecastIndex };
+if ($("map-overview")) start();
 else document.dispatchEvent(new Event("quasar:ready"));

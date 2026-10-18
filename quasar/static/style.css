@@ -287,3 +287,20 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
   .map-viewport .map-sidebar, .map-viewport .quasar-score-panel { z-index: 10; top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-height: 60%; min-height: 200px; border-radius: 16px 16px 0 0; padding: 14px 16px max(16px, env(safe-area-inset-bottom)); }
   .map-tools-panel { max-height: 45dvh; }
 }
+
+/* The archive is the primary map narrative; each bar is a real six-hour window. */
+.map-playback { width: min(460px, calc(100% - 540px)); }
+.archive-playback-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10px; }
+.archive-playback-heading button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: transparent; padding: 4px 6px; font: inherit; }
+.archive-trend { display: flex; align-items: stretch; gap: 3px; height: 44px; margin: 10px 0 4px; }
+.archive-trend:empty { display: none; }
+.trend-hour { flex: 1; min-width: 0; display: flex; align-items: end; border: 0; border-bottom: 2px solid transparent; padding: 0 0 3px; background: transparent; }
+.trend-hour span { display: block; width: 100%; background: #509dce; border-radius: 2px 2px 0 0; }
+.trend-hour[aria-pressed="true"] { border-color: #166b62; }
+.trend-hour[aria-pressed="true"] span { background: #166b62; }
+.trend-hour.is-unknown span { background: repeating-linear-gradient(135deg, transparent 0 3px, #c8cdd3 3px 4px); }
+.trend-hour.is-partial span { background: repeating-linear-gradient(135deg, #509dce 0 3px, #dcebf3 3px 4px); }
+.trend-hour:focus-visible { outline: 2px solid #166b62; outline-offset: 2px; }
+#archive-trend-range { font-size: 9px; color: #677571; margin: 3px 0 8px; }
+.rain-light { background: #e0edf4; }.rain-low { background: #83c9df; }.rain-medium { background: #3093bc; }.rain-heavy { background: #25439a; }
+@media (max-width: 850px) { .map-playback { width: calc(100% - 32px); min-width: 0; } }

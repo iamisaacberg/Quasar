@@ -26,3 +26,15 @@ test('partial FEMA, X subtypes and a zero point sample do not fill polygon terra
  assert.ok(rows.some(([label])=>label.includes('AREA OF MINIMAL')));
  assert.equal(byLabel.get('Hydrologic connectivity / gauge linkage'),'Unknown; mapped proximity is descriptive only');
 });
+
+test('parcel rainfall headline preserves zero, partial overlap and geometry mismatches',()=>{
+ const {rainfallSummary}=require('../quasar/static/inspection.js');
+ const partial=rainfallSummary(context,current());
+ assert.equal(partial.value,'0.0');assert.match(partial.detail,/1\/2.*Partial coverage/);
+ assert.equal(rainfallSummary(context,current('stale',4)).value,'Unavailable');
+ const both=current();both.weather_cells.features[1].properties={status:'ready',rainfall_6h_mm:12};
+ assert.equal(rainfallSummary(context,both).value,'0.0–12.0');
+ both.weather_cells.features[1].geometry={type:'Polygon',coordinates:[]};
+ assert.equal(rainfallSummary(context,both).value,'0.0');
+ assert.equal(rainfallSummary(null,current()).value,'Unavailable');
+});

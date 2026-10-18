@@ -1,13 +1,33 @@
 # Real-data runtime activation
 
+## October 18 activation
+
+The Marseille activation replaced the older standalone Miami-Dade bridge with
+this repository's authenticated Okaloosa API runtime on LinuxONE (`s390x`).
+The active inspection artifact is
+`data/processed/okaloosa/parcel-inspection/20261018-marseille/` (113,818 parcels).
+It was built from the existing reconciled inputs, exact county boundary and
+45-cell Isaias archive, with no new cloud queries.
+
+Authenticated public HTTPS checks confirmed the manifest, parcel 24759 and R7
+cell 8744e5a59ffffff. The parcel has complete FEMA coverage, a 9.424685 m mean
+terrain elevation and one native forecast overlap. The cell has 3,072 distinct
+indexed parcels. No exposure artifact exists; the API returns `not_configured`
+without a fabricated score. Unauthenticated source endpoints still reject reads.
+
+Service/proxy configuration backups are on the host under
+`/etc/quasar/backups/marseille-20261018`. The previous standalone bridge remains
+under `/opt/quasar/bridge`. Host-specific activation files and verification
+receipts are ignored under `.context/rollout/` and `.context/checks/`.
+
 Activation requires explicit approval for the LinuxONE service/proxy restart,
 Vercel Preview environment changes and a Preview deployment. Preparing artifacts
 and passing tests do not activate the hosted application.
 
 ## Prepared and verified
 
-The reconciled Okaloosa inventory has 113,818 parcel records. The new inspection
-artifact is `data/processed/okaloosa/parcel-inspection/20261018-real-data/`, with
+The reconciled Okaloosa inventory has 113,818 parcel records. The earlier prepared inspection
+artifact was `data/processed/okaloosa/parcel-inspection/20261018-real-data/`, with
 113,818 parcel contexts and 833 indexed H3 contexts across resolutions 4–7.
 Preparation validates the source database, reconciled inputs, exact county
 boundary, inventory identity and checksums. All scores remain unknown.

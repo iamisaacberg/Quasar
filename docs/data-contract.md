@@ -14,7 +14,8 @@ o public endpoint substitutes fictional sites or invented inputs.
 ## Native forecast map and playback
 
 `GET /api/weather/timeline?source=current|archive` reads one configured schema-3
-county snapshot. Defaults to `current`. Other selectors, presets and what-if
+county snapshot. Defaults to `archive`. The application exposes only the Isaias archive; explicit
+`source=current` API reads remain supported for offline integration compatibility. Other selectors, presets and what-if
 parameters are rejected. Missing, invalid, disconnected and legacy site-only
 imports return explicit status, a message and no frames.
 
@@ -37,15 +38,16 @@ midnight Central. They use archived forecasts available at each reconstruction
 clock, retaining per-cell initialization and publication constraints where known.
 They are not historical rainfall observations and never use what-if additions.
 
-`GET /api/data/weather` projects this shared current pipeline into native-cell
+`GET /api/data/weather?source=archive` projects this shared archive pipeline into native-cell
 rows for the Data tab, without geometry or scoring. Frames contain `at`,
 `valid_to`, and rows with `native_cell_id`, `rainfall_6h_mm`, `available_hours`
-and `status`. Existing county/inventory checks remain in force.
+and `status`, retaining the selected initialization per frame and cell. Existing county/inventory checks remain in force.
 
 ## Reports and downloads
 
 `GET /api/reports?source=current|archive&frame=N` returns source metadata, status,
-selected frame index, source collection and native-cell rows. Frame defaults to
+selected frame index, available `windows`, source collection and native-cell rows.
+The default source is `archive`. Frame defaults to
 the imported default. No available source yields no rows or collection.
 `GET /api/exports` accepts the same selectors plus `format=csv|geojson|zip`.
 CSV retains source/validity metadata and units; unknown rain is blank. GeoJSON
@@ -60,6 +62,14 @@ All formats are based on one loaded snapshot. Unsupported selectors fail with
 Offline research adapters and synthetic test fixtures are separate from the
 application contract. `/health` and `/api/config` identify `county_sources`.
 Health status alone does not establish data readiness.
+
+## Public application, private source credentials
+
+The hosted app, source tables, reports and downloads are public. No team password,
+sign-in form or session cookie is required. Only the application route/asset
+allowlist is served; raw databases, source files, `.env` and workspace files are
+not public. LinuxONE snapshot and parcel endpoints still require server-to-server
+authentication. No Google, bridge or parcel credential is sent to browsers.
 
 ## Authenticated LinuxONE reads
 

@@ -61,14 +61,13 @@ QUASAR_DATA_BRIDGE_TOKEN=<the same random token>
 ```
 
 Do not prefix either variable with `VITE_`. Deploy the code and variables to a
-Preview deployment first. The Vercel team password remains a separate browser
-access gate; it is not the bridge credential. The bridge uses HTTPS certificate
+Preview deployment first. The Vercel application is public; the bridge credential remains server-only. The bridge uses HTTPS certificate
 verification, refuses redirects, times out after eight seconds, enforces each
 snapshot size limit, and caches successful reads in the Vercel process for at
 most 15 seconds. Vercel deployments without the bridge URL continue to use local
 snapshots as before.
 
-WeatherNext appears through `/api/weather/status`, `/api/weather/timeline?source=current`
+WeatherNext appears through `/api/weather/status`, `/api/weather/timeline?source=archive`
 and `/api/data/weather`. Archived forecasts use `/api/weather/timeline?source=archive`;
 source-only reports and downloads use `/api/reports` and `/api/exports`.
 Fictional-site, what-if and simulated routing endpoints are retired (410).

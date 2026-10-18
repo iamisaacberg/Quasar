@@ -1,137 +1,65 @@
-# Isaias 2026 replay and evacuation exercise
+# Isaias datathon replay
 
-> Current application behavior is defined by [data-contract.md](data-contract.md).
-> Synthetic scoring, fictional sites, what-if controls and simulated routing
-> described below are retained offline research context; their application
-> endpoints are retired. The app uses native county forecasts and prepared
-> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+Quasar opens on the **October 9, 2026 Isaias forecast archive for Okaloosa
+County, FIPS 12091**. This is an initialization-based forecast reconstruction,
+not observed rainfall, proof of local flooding, or a trained flood model.
 
+## Presenter flow
 
-Open **Map overview**, then choose **Isaias simulation** in the map toolbar
-(or use the legacy `/#isaias-replay` link). Playback, site inspection, trends and
-routing share the map side panel; **Exit Isaias simulation** returns to the
-previous data source. The replay spans
-October 9 04:00 UTC through October 10 04:00 UTC (October 9 in Central time), displayed in Central time. The
-hourly score always describes the **following six forecast hours**. It uses the
-existing illustrative scoring function, not a trained or validated flood model.
+1. Open Map overview. The archive loads independently of the map token and
+   county-boundary service. Rainfall polygons retain WeatherNext's native grid.
+2. Use Play, the hourly slider, previous/next, or a chart bar. The 25 positions
+   run from October 9 midnight through October 10 midnight in America/Chicago
+   (`2026-10-09T05:00:00Z` through `2026-10-10T05:00:00Z`). Each position shows
+   the **following six forecast hours**.
+3. The chart shows the maximum among available native-cell totals at each hour.
+   It is not a county mean, cumulative storm total or rainfall observation.
+   Hatched bars indicate partial coverage or unavailable rainfall; valid zero
+   remains zero. Polygons use a fixed millimeter scale across all hours.
+4. Select a county H3 cell, zoom in and select a parcel. Prepared terrain, FEMA,
+   mapped-waterway context and exact native forecast overlaps require the
+   matching inspection artifact. Geometry alone never produces a risk score.
+5. Open Data or Reports & exports. They retain the selected archive hour. CSV,
+   GeoJSON and ZIP preserve source initialization, import time, validity and
+   units. Report printing is available through the browser.
 
-## Local data preparation
+Playback reuses one loaded snapshot; it does not download/recompute every frame.
+Recheck source explicitly reloads the archive. A failed reload clears rainfall
+and playback and shows the source failure. No current-forecast selector is shown.
 
-From the repository root, fetch public NHC advisory context and a curated road
-network. This command uses public HTTP sources; it never queries BigQuery:
+## Required runtime sources
 
-```sh
-python3 scripts/prepare_isaias.py
-```
+The public Vercel app needs a public `MAPBOX_PUBLIC_TOKEN` and either an explicit
+`QUASAR_REPLAY_FILE` pointing to a schema-3 county archive or the authenticated
+snapshot bridge. The local default in `.env.example` is
+`data/processed/isaias-2026.json`; copy/configure it explicitly. Git does not
+transfer ignored data.
 
-`--only advisories` and `--only roads` prepare each source separately. Raw
-responses stay under ignored `data/raw/isaias/`; normalized files stay under
-ignored `data/processed/`. Current source road geometry is not historical proof.
-The road graph uses a subset of Okaloosa's street-centerline service, checked
-against the Census county polygon. All full line segments, including simulated
-access connectors, must stay inside that polygon. Source identifiers, checksums,
-CRS, units, retrieval times, terms and processing notes accompany the outputs.
-These local sources are not included in Git: teammates must prepare their own.
+LinuxONE must run the current Quasar county APIs, with `QUASAR_PARCEL_DATABASE`
+and `QUASAR_PARCEL_CONTEXT_DIRECTORY` pointing to compatible Okaloosa artifacts.
+Both the service and reverse proxy must expose the authenticated inspection
+routes listed in [data-bridge.md](data-bridge.md). The older standalone
+Miami-Dade `bridge_service.py` does not support these APIs.
 
-Historical WeatherNext rainfall requires an authenticated `bq` CLI on the local
-computer or in Cloud Shell. Start with the capped **dry run**:
+The app is public without a team password. Source credentials remain server-side.
+See [Vercel setup](vercel.md) and [runtime activation](real-data-rollout.md).
 
-```sh
-python3 -m quasar.adapters.historical \
-  --project quasar-ibm-z-datathon \
-  --table quasar-ibm-z-datathon.weathernext_3.weathernext_3_0_0_0p1deg \
-  --location US
-```
+## Data boundaries
 
-Review the dry-run estimate, then repeat with `--execute` to import. The default
-`--maximum-bytes-billed` is 1,000,000,000; requests exceeding it fail. SQL can be
-inspected offline using `--print-query`. The importer selects six-hourly
-initializations from October 9 00:00 UTC through October 10 00:00 UTC and each
-run's first 18 hourly precipitation intervals. Only the six fictional site
-coordinates are queried. Native-cell geometry and ensemble-mean hourly rainfall
-are retained, with source meters multiplied by 1000 once.
+Six contiguous, non-null hourly inputs are required per cell/window. Duplicate,
+negative or malformed hourly records invalidate the archive. Unknown values are
+never replaced by zero. Today's date does not expire a deliberate archive;
+eligible initializations must instead be no more than 12 hours old at replay
+time, and documented publication times must not be in the future at that time.
+Unknown publication timing remains labeled as initialization-based reconstruction.
 
-If running in Cloud Shell, copy the credential-free importer files there, execute
-the same commands, and download only `data/processed/isaias-2026.json` back into
-that path in this workspace. No cloud credentials belong in the app or snapshot.
-The October 17 current-forecast snapshot is a separate file and is not altered.
+Current-import APIs remain available by explicit source selection for integration
+compatibility, with their original expiry rules; the application focuses on Isaias.
+No runtime request performs a BigQuery query. No new acquisition is necessary for
+an already prepared archive. County import commands remain explicit, capped and
+dry-run by default; see [integrations.md](integrations.md).
 
-Optional environment paths:
-
-```dotenv
-QUASAR_REPLAY_FILE=data/processed/isaias-2026.json
-QUASAR_ROUTES_FILE=data/processed/evacuation-network.json
-```
-
-App requests read local files; they never launch imports. Snapshot and graph file
-changes are picked up without a restart. Newly added Python routes/modules require
-restarting an existing older process through the user's usual run controls.
-
-## Reading the reconstruction
-
-At each replay hour, choose the latest initialization no newer than that hour,
-and no more than 12 hours old at replay time. If `published_at` is supplied, it
-must also be no later than the selected hour. Otherwise the UI explicitly says
-**initialization-based archive reconstruction**: this is not proof of the exact
-forecast available to a resident at that time. Actual retrieval timestamps stay
-visible in feature/timeline API metadata; today's clock never makes a deliberate
-historical archive stale. Current WeatherNext freshness rules are unchanged.
-
-Six contiguous, non-null forecast hours are required. Missing hours remain
-unknown, and duplicates invalidate a run rather than trigger fallback. The
-+5/+10 mm/hour presets add synthetic rainfall only to complete windows. All
-terrain, FEMA, waterway and gauge factors remain fictional. The missing-terrain
-site stays unscored. Chart gaps and unavailable hourly changes preserve nulls.
-
-NHC advisory context uses original issue timestamps and only shows advisories
-issued by the selected replay hour. The NHC office location does not determine storm impact; advisory context alone does not establish local observed inundation. No archived official local warning feed
-or observed-outcome validation has been added.
-
-## Routing and presenter walkthrough
-
-Routing is enabled in **What-if exercise** mode. Archive mode keeps historical
-road and destination availability unknown. The three destinations are fictional
-exercise points, not an assertion that shelters are open.
-
-Routing excludes closed/unknown segments and unavailable destinations, then
-minimizes modeled travel time, distance and stable IDs. Speeds are an assumed
-30 km/h throughout, with two-way exercise traversal. Site access connectors are
-synthetic and drawn dashed. Road geometry is real source data; directionality,
-turn restrictions, traffic and flood passability are not validated navigation.
-Conditions apply at departure time and are not predicted throughout the journey.
-Site scores and H3 summaries never determine road passability.
-
-1. Select a site; scrub or play the hourly timeline. Playback advances at most
-   one hour per second while requests complete, and stops at the final hour.
-2. Enter What-if exercise and select a rainfall preset. Without historical
-   rainfall, the score stays unknown while the routing exercise remains usable.
-3. Inspect the chosen route and its unrestricted comparison. The default
-   sequence closes a segment at hour 6, removes the original destination at
-   hour 12, and closes all segments at hour 18.
-4. Use segment state overrides and destination checkboxes to change the exercise.
-   Overrides persist across hours until reset (maximum 100 road overrides).
-5. Reset to hour zero, archived rainfall, archive mode, and no overrides.
-
-Network-unavailable, historical-conditions-unavailable and no-route are separate
-states. No route is drawn through a closed or unknown segment. These estimates
-supplement official NWS/local guidance; they are not evacuation orders or safety
-assurances. No notifications are sent.
-
-## Verification
-
-```sh
-python3 -m unittest discover -s tests -v
-npm ci --ignore-scripts
-npm run check
-npm test
-npm run build
-```
-
-Tests use clearly synthetic hourly and road fixtures. They exercise nulls,
-duplicates, historical initialization/publication selection, county holes and
-concavities, routing restrictions/ties, API validation, playback/reset and late
-responses. They are not historical model validation. Isaac reviews visuals.
-
-## Okaloosa transition
-
-Replay covers October 9 in America/Chicago: 2026-10-09T05:00:00Z through 2026-10-10T05:00:00Z, inclusive. Forecast validity extends six hours past the final endpoint. Use the county importer in [integrations.md](integrations.md); original Miami-Dade point archives are incompatible. Reacquire roads with `scripts/acquire_supporting_data.py` before preparing the exercise graph. NHC advisory issue timestamps and public source URLs remain unchanged.
+Fictional sites, what-if rainfall, simulated routes and notification previews are
+retired from the application. No assessment producer or validated flood model is
+introduced here. An absent matching assessment stays unscored. Follow official
+NWS and local emergency guidance for real decisions.

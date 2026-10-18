@@ -47,17 +47,17 @@ function mount({active = true, reply} = {}) {
   const states = [], effects = [], calls = [];
   let stateCursor, effectCursor, queued, tree;
   const exported = {};
-  const context = {exports: exported, AbortController, setTimeout, clearTimeout, fetch: async (url, options) => {
+  const context = {exports: exported, window:{addEventListener(){},removeEventListener(){},dispatchEvent(){}},CustomEvent:class{}, AbortController, setTimeout, clearTimeout, fetch: async (url, options) => {
     calls.push({url, ...options});
     const body = reply ? await reply(url, options) : undefined;
-    const data = body ?? (url === '/api/data/weather' ? forecast :
+    const data = body ?? (url === '/api/data/weather?source=archive' ? forecast :
       url === '/api/parcels/manifest' ? {county_fips: '12091', status: 'ready', source_mode: 'indexed', parcel_count: 1234} :
       {status: 'not_connected', message: 'Official feed is not connected. This is not an all-clear.'});
     return {ok: !data?.error, json: async () => data || {error: 'No snapshot'}};
   }, require: name => name === 'react' ? {
     useState: initial => {
       const slot = stateCursor++;
-      if (!(slot in states)) states[slot] = initial;
+      if (!(slot in states)) states[slot] = typeof initial === 'function' ? initial() : initial;
       return [states[slot], value => {states[slot] = typeof value === 'function' ? value(states[slot]) : value;}];
     },
     useEffect: (fn, deps) => {
@@ -66,7 +66,10 @@ function mount({active = true, reply} = {}) {
         queued.push(() => { previous?.cleanup?.(); effects[slot] = {deps, cleanup: fn()}; });
       }
     },
-  } : name === './data-dashboard.css' ? {} : name.startsWith('@/') ? loadComponent(name) : require(name)};
+  } : name === './lib/replay-selection' ? hook : name === './data-dashboard.css' ? {} : name.startsWith('@/') ? loadComponent(name) : require(name)};
+  const hook={};
+  const hookSource=ts.transpileModule(fs.readFileSync('frontend/lib/replay-selection.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+  vm.runInNewContext(hookSource,{...context,exports:hook});
   vm.runInNewContext(source, context);
   const render = () => {
     stateCursor = 0; effectCursor = 0; queued = [];
@@ -95,7 +98,7 @@ test('Data loads real-source endpoints only when active, with zero and unknown d
   assert.match(html, /0.1 degree/);
   assert.doesNotMatch(html, /demo-00|Exercise hour|SYNTHETIC DEMO|Mean relative score|api\/exports/);
   assert.equal(app.calls.length, 3);
-  assert.deepEqual(app.calls.map(call => call.url).sort(), ['/api/data/weather', '/api/official-alerts', '/api/parcels/manifest']);
+  assert.deepEqual(app.calls.map(call => call.url).sort(), ['/api/data/weather?source=archive', '/api/official-alerts', '/api/parcels/manifest']);
   assert.ok(app.calls.every(call => call.cache === 'no-store'));
 });
 
@@ -113,7 +116,7 @@ test('search and status filters affect only the native-cell table', async () => 
 
 test('retained window selection uses native cells and preserves stale unknowns', async () => {
   const app = mount(); app.render(); await app.settle();
-  app.select(forecast.frames[1].at);
+  app.select('1');
   const html = app.render();
   assert.match(html, /Unknown/);
   const chart = app.find(node => node.type?.name === 'ChartGroup6')[0];
@@ -123,7 +126,7 @@ test('retained window selection uses native cells and preserves stale unknowns',
 });
 
 test('source failures stay independent and never load demo fallbacks', async () => {
-  const app = mount({reply: url => {if (url !== '/api/data/weather') throw new Error('offline');}});
+  const app = mount({reply: url => {if (url !== '/api/data/weather?source=archive') throw new Error('offline');}});
   app.render(); const html = await app.settle();
   assert.match(html, /native-a/);
   assert.match(html, /Could not verify the parcel inventory/);
@@ -133,7 +136,7 @@ test('source failures stay independent and never load demo fallbacks', async () 
 });
 
 test('absent county weather and legacy parcel counts remain unknown', async () => {
-  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, status: 'not_configured', frames: [], message: 'No imported county forecast is configured.'} :
+  const app = mount({reply: url => url === '/api/data/weather?source=archive' ? {...forecast, status: 'not_configured', frames: [], message: 'No imported county forecast is configured.'} :
     url === '/api/parcels/manifest' ? {county_fips: '12091', status: 'ready', source_mode: 'indexed'} : undefined});
   app.render(); const html = await app.settle();
   assert.match(html, /County rainfall unavailable/);
@@ -143,7 +146,7 @@ test('absent county weather and legacy parcel counts remain unknown', async () =
 });
 
 test('expired snapshots cannot display rainfall even if the response says ready', async () => {
-  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, expires_at: '2000-01-01T00:00:00Z'} : undefined});
+  const app = mount({reply: url => url === '/api/data/weather?source=archive' ? {...forecast, expires_at: '2000-01-01T00:00:00Z'} : undefined});
   app.render(); const html = await app.settle();
   assert.match(html, /data-status="stale"/);
   assert.ok(app.find(node => node.type?.name === 'ChartGroup6')[0].props.rainfall.every(row => row.value === null));
@@ -151,7 +154,7 @@ test('expired snapshots cannot display rainfall even if the response says ready'
 
 test('recheck clears failed forecast metrics and aborted old responses cannot replace new data', async () => {
   let release, pending = false;
-  const app = mount({reply: url => pending && url === '/api/data/weather' ? new Promise(resolve => {release = resolve;}) : undefined});
+  const app = mount({reply: url => pending && url === '/api/data/weather?source=archive' ? new Promise(resolve => {release = resolve;}) : undefined});
   app.render(); await app.settle(); pending = true;
   const recheck = () => app.find(node => typeof node.props?.onClick === 'function')[0].props.onClick();
   recheck(); app.render(); await new Promise(setImmediate);
@@ -165,9 +168,9 @@ test('recheck clears failed forecast metrics and aborted old responses cannot re
 });
 
 test('wrong county responses fail closed', async () => {
-  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, county_fips: '12086'} : undefined});
+  const app = mount({reply: url => url === '/api/data/weather?source=archive' ? {...forecast, county_fips: '12086'} : undefined});
   app.render(); const html = await app.settle();
-  assert.match(html, /Could not read the county forecast/);
+  assert.match(html, /Could not read the Isaias county archive/);
   assert.doesNotMatch(html, /native-a/);
 });
 

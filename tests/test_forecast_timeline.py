@@ -14,7 +14,7 @@ from quasar.bridge import BridgeUnavailable
 class ForecastTimelineTests(unittest.TestCase):
     def frames(self, data=None, now=NOW):
         with patch('quasar.forecast_timeline.read_snapshot', return_value=current() if data is None else data) as read:
-            result = timeline(now=now)
+            result = timeline(source="current", now=now)
         self.assertEqual(read.call_count, 1)
         return result
 
@@ -114,3 +114,65 @@ class ForecastTimelineTests(unittest.TestCase):
             timeline(source='what_if')
         with patch('quasar.forecast_timeline.read_snapshot', return_value=current()):
             self.assertEqual(timeline(source='archive', now=NOW)['status'], 'invalid')
+
+class ArchivePlaybackTests(unittest.TestCase):
+    def archive(self):
+        from test_county_weather import rows, TABLE, GEOMETRY
+        from quasar.adapters.county_weather import normalize, replay_initializations
+        from quasar.adapters.weathernext import timestamp
+        raw = []
+        for init in replay_initializations():
+            for i in range(5):
+                for row in rows(timestamp(init)):
+                    # Synthetic distinct native IDs only, not a real spatial inventory.
+                    row['native_cell_wkt'] = row['native_cell_wkt'].replace('-87 30', f'{-87+i/1000} 30')
+                    raw.append(row)
+        return normalize(raw, TABLE, GEOMETRY, historical=True, now=NOW)
+
+    def test_default_archive_indexes_once_per_run_not_per_cell_and_frame(self):
+        from quasar import replay
+        data = self.archive()
+        with patch.object(replay, 'run_rows', wraps=replay.run_rows) as index:
+            result = timeline(reader=lambda name: data if name == 'isaias-2026' else None)
+        self.assertEqual(result['source'], 'archive')
+        self.assertEqual(result['status'], 'ready')
+        self.assertEqual(len(result['frames']), 25)
+        self.assertLessEqual(index.call_count, len(data['runs']) * 2)
+        for frame in result['frames']:
+            self.assertEqual(len(frame['collection']['weather_cells']['features']), 5)
+            for feature in frame['collection']['weather_cells']['features']:
+                self.assertEqual(feature['properties']['rainfall_6h_mm'], 12)
+
+    def test_archive_publication_null_and_duplicate_constraints_survive_indexing(self):
+        data = self.archive()
+        # At 06 UTC the newer run is not yet published, so select 00 UTC.
+        data['runs'][1]['published_at'] = '2026-10-09T07:00:00Z'
+        result = timeline(reader=lambda _: data)
+        self.assertEqual(result['frames'][1]['collection']['forecast']['init_time'], '2026-10-09T00:00:00Z')
+        self.assertEqual(result['frames'][2]['collection']['forecast']['init_time'], '2026-10-09T06:00:00Z')
+        data['runs'][0]['rows'][5]['rainfall_1h_mm'] = None
+        result = timeline(reader=lambda _: data)
+        first = result['frames'][0]['collection']['weather_cells']['features'][0]['properties']
+        self.assertEqual(first['status'], 'incomplete')
+        self.assertIsNone(first['rainfall_6h_mm'])
+        data['runs'][-1]['rows'].append(copy.deepcopy(data['runs'][-1]['rows'][0]))
+        self.assertEqual(timeline(reader=lambda _: data)['status'], 'invalid')
+
+    def test_data_report_and_export_use_the_same_archive_window_and_initialization(self):
+        import csv, io, json, zipfile
+        from quasar.data_dashboard import weather_data
+        from quasar.source_exports import report, export
+        data = self.archive()
+        with patch('quasar.data_dashboard.read_snapshot', return_value=data):
+            table = weather_data()
+        with patch('quasar.forecast_timeline.read_snapshot', return_value=data):
+            selected = report(frame=24)
+            body, _, _ = export(frame=24, format='zip')
+        self.assertEqual(len(selected['windows']), 25)
+        self.assertEqual(table['frames'][24]['at'], selected['rows'][0]['valid_from'])
+        self.assertEqual(table['frames'][24]['rows'][0]['init_time'], selected['rows'][0]['init_time'])
+        with zipfile.ZipFile(io.BytesIO(body)) as archive:
+            rows = list(csv.DictReader(io.StringIO(archive.read('rainfall.csv').decode())))
+            self.assertEqual(rows[0]['init_time'], selected['init_time'])
+            self.assertEqual(rows[0]['valid_from'], selected['windows'][24]['at'])
+            self.assertEqual(json.loads(archive.read('provenance.json'))['source'], 'archive')
