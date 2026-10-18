@@ -30,7 +30,7 @@ def weather_window(data, start, mode, now):
     eligible = [r for r in data["runs"] if timestamp(r["init_time"]) <= clock
                 and (not r.get("published_at") or timestamp(r["published_at"]) <= clock)]
     if not eligible:
-        return {}, {"status": "unavailable", "missing": "forecast_initialization"}
+        raise ValueError("No eligible forecast initialization; no assessment artifact published")
     run = max(eligible, key=lambda r: timestamp(r["init_time"]))
     init = timestamp(run["init_time"])
     expiry = min(init+timedelta(hours=12), retrieved+timedelta(hours=2), clock+timedelta(hours=6))
@@ -156,7 +156,9 @@ def produce(database, inputs, boundary, inspection, model_path, evaluation_path,
             os.fsync(stream.fileno())
         if counts["total"] != audited["parcel_count"] or Path(temporary).stat().st_size > 128*1024*1024:
             raise ValueError("Incomplete or oversized assessment artifact")
-        os.replace(temporary, output)
+        # Same-directory hard link publishes a complete file atomically without
+        # clobbering a destination created by another producer during this run.
+        os.link(temporary, output)
     finally:
         if Path(temporary).exists():
             Path(temporary).unlink()

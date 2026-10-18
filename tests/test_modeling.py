@@ -11,7 +11,7 @@ import tempfile
 import unittest
 import zlib
 from contextlib import closing
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
@@ -165,6 +165,19 @@ class FeatureAndRuntimeTests(unittest.TestCase):
         self.assertEqual(run.returncode, 0)
         self.assertIn("validate-outcomes", run.stdout)
 
+    # Value: protects=training dataset checksum and feature schema; fails_when=tampered training inputs are accepted; why_new=preparation tests load only intact manifests; seam=none; no_claim=source authenticity.
+    def test_dataset_rejects_checksum_or_schema_tamper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prepared = synthetic_dataset(Path(directory))
+            manifest = read_json(prepared/"manifest.json")
+            for field, value in (("dataset_id", "tampered"), ("features", list(reversed(FEATURES)))):
+                with self.subTest(field=field):
+                    write_json(prepared/"manifest.json", {**manifest, field: value})
+                    with self.assertRaisesRegex(ValueError, "checksum/schema"):
+                        dataset.load_dataset(prepared)
+            write_json(prepared/"manifest.json", manifest)
+            self.assertEqual(dataset.load_dataset(prepared)[1]["dataset_id"], manifest["dataset_id"])
+
 
 def complete_fixture(root):
     database, inputs, boundary, meta = parcel_fixture.fixture(root)
@@ -207,6 +220,101 @@ class AuditAndProducerTests(unittest.TestCase):
         parent = read_json(self.inputs/"manifest.json");parent["terrain"]["units"] = "ft"
         write_json(self.inputs/"manifest.json", parent)
         with self.assertRaises(ValueError):dataset.audit(self.database, self.inputs, self.boundary)
+
+    # Value: protects=missing forecast initialization cannot publish assessments; fails_when=an unusable artifact is published; why_new=weather tests have an eligible initialization; seam=none; no_claim=live forecast availability.
+    def test_no_eligible_initialization_never_publishes_an_artifact(self):
+        model = model_fixture();model.update(boundary_version=digest(self.boundary), promoted=True)
+        model_path, evaluation = self.root/"model.json", self.root/"evaluation.json"
+        write_json(model_path, model)
+        write_json(evaluation, {"promoted": True, "model_sha256": digest(model_path),
+                               "dataset_manifest": {"dataset_id": "synthetic-dataset"}})
+        output = self.root/"unavailable.json"
+        start = weather_fixture.iso(weather_fixture.INIT-timedelta(hours=1))
+        with self.assertRaises(ValueError):
+            production.produce(self.database, self.inputs, self.boundary, self.inspection, model_path,
+                               evaluation, self.weather, start, "replay", output, now=weather_fixture.NOW)
+        self.assertFalse(output.exists())
+        self.assertFalse(list(self.root.glob("*.partial")))
+
+    # Value: protects=assessment publication never overwrites a competing output; fails_when=a race replaces existing bytes; why_new=existing rejection only checks a file present before production; seam=none; no_claim=distributed filesystem semantics.
+    def test_publication_preserves_output_created_during_audit(self):
+        model = model_fixture();model.update(boundary_version=digest(self.boundary), promoted=True)
+        model_path, evaluation = self.root/"model.json", self.root/"evaluation.json"
+        write_json(model_path, model)
+        write_json(evaluation, {"promoted": True, "model_sha256": digest(model_path),
+                               "dataset_manifest": {"dataset_id": "synthetic-dataset"}})
+        output = self.root/"competing.json"
+        sentinel = b"another process owns this artifact\n"
+        original_audit = production.audit
+        def concurrent_publication(*args):
+            result = original_audit(*args)
+            output.write_bytes(sentinel)
+            return result
+        with patch.object(production, "audit", side_effect=concurrent_publication):
+            try:
+                production.produce(self.database, self.inputs, self.boundary, self.inspection, model_path,
+                                   evaluation, self.weather, weather_fixture.iso(weather_fixture.INIT),
+                                   "current", output, now=weather_fixture.NOW)
+            except (OSError, ValueError):
+                pass
+        self.assertEqual(output.read_bytes(), sentinel)
+        self.assertFalse(list(self.root.glob("*.partial")))
+
+    # Value: protects=model forecast freshness and window agreement at API boundaries; fails_when=invalid model context returns known scores; why_new=legacy expiry tests lack model provenance; seam=none; no_claim=live host or rendered UI.
+    def test_model_source_expiry_window_and_status_fail_closed_locally_and_remotely(self):
+        model = model_fixture();model.update(boundary_version=digest(self.boundary), promoted=True)
+        model_path, evaluation = self.root/"model.json", self.root/"evaluation.json"
+        write_json(model_path, model)
+        write_json(evaluation, {"promoted": True, "model_sha256": digest(model_path),
+                               "dataset_manifest": {"dataset_id": "synthetic-dataset"}})
+        output = self.root/"api.json"
+        production.produce(self.database, self.inputs, self.boundary, self.inspection, model_path,
+                           evaluation, self.weather, weather_fixture.iso(weather_fixture.INIT),
+                           "current", output, now=weather_fixture.NOW)
+        baseline = read_json(output)
+        now = datetime.now(timezone.utc)
+        start = now.replace(minute=0, second=0, microsecond=0)
+        end = start+timedelta(hours=6)
+        baseline["windows"][0].update(valid_from=start.isoformat(), valid_to=end.isoformat(), computed_at=now.isoformat())
+        baseline["forecast_provenance"].update(init_time=start.isoformat(), retrieved_at=now.isoformat(),
+            published_at=None, valid_from=start.isoformat(), valid_to=end.isoformat(), expires_at=(start+timedelta(hours=1)).isoformat())
+        query = {"from": start.isoformat(), "to": end.isoformat(), "mode": "current", "parcel_ids": "1"}
+        mutations = {
+            "expiry": lambda source: source.update(expires_at=(now-timedelta(minutes=1)).isoformat()),
+            "window": lambda source: source.update(valid_from=(start+timedelta(hours=1)).isoformat(), valid_to=(end+timedelta(hours=1)).isoformat()),
+            "status": lambda source: source.update(status="stale"),
+            "mode": lambda source: source.update(mode="replay"),
+        }
+        with patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": str(output), "QUASAR_PARCEL_DATABASE": str(self.database), "QUASAR_LINUXONE_API_URL": ""}):
+            write_json(output, baseline);exposure._artifact.cache_clear();exposure._aggregate.cache_clear()
+            remote_baseline = exposure.exposure(query)
+            self.assertEqual(remote_baseline["status"], "ready")
+            for name, mutate in mutations.items():
+                with self.subTest(boundary="local", mutation=name):
+                    bad = copy.deepcopy(baseline);mutate(bad["forecast_provenance"])
+                    write_json(output, bad);exposure._artifact.cache_clear();exposure._aggregate.cache_clear()
+                    result = exposure.exposure(query)
+                    self.assertIn(result["status"], ("invalid", "stale"))
+                    self.assertEqual(result["parcels"], {})
+                with self.subTest(boundary="proxy", mutation=name), patch.dict(os.environ,
+                        {"QUASAR_LINUXONE_API_URL": "https://synthetic.example", "QUASAR_LINUXONE_API_TOKEN": "x"*32}):
+                    bad = copy.deepcopy(remote_baseline);mutate(bad["forecast_provenance"])
+                    with patch.object(exposure, "build_opener") as opener:
+                        opener.return_value.open.return_value = BytesIO(json.dumps(bad).encode())
+                        with self.assertRaises(exposure.SourceUnavailable):exposure.exposure(query)
+            # A replay bypasses today's expiry, never the initialization age at its decision time.
+            aged = copy.deepcopy(baseline)
+            aged["forecast_provenance"].update(mode="replay", init_time=(start-timedelta(hours=24)).isoformat(),
+                                               expires_at=(start-timedelta(hours=12)).isoformat())
+            replay_query = {**query, "mode": "replay"}
+            write_json(output, aged);exposure._artifact.cache_clear();exposure._aggregate.cache_clear()
+            self.assertEqual(exposure.exposure(replay_query)["status"], "invalid")
+            remote = copy.deepcopy(remote_baseline);remote["forecast_provenance"] = aged["forecast_provenance"]
+            with patch.dict(os.environ, {"QUASAR_LINUXONE_API_URL": "https://synthetic.example", "QUASAR_LINUXONE_API_TOKEN": "x"*32}):
+                with patch.object(exposure, "build_opener") as opener:
+                    opener.return_value.open.return_value = BytesIO(json.dumps(remote).encode())
+                    with self.assertRaises(exposure.SourceUnavailable):exposure.exposure(replay_query)
+        exposure._artifact.cache_clear();exposure._aggregate.cache_clear()
 
     def test_streaming_producer_api_round_trip_and_unpromoted_rejection(self):
         model = model_fixture();model.update(boundary_version=digest(self.boundary), promoted=True)
@@ -340,6 +448,7 @@ class NativeExportTests(unittest.TestCase):
         bad = copy.deepcopy(saved);bad["learner"]["gradient_booster"]["model"]["trees"][0]["split_type"][0] = 1
         with self.assertRaises(ValueError):portable.export_saved([bad]*5, metadata)
 
+    # Value: protects=evaluated native export identity and directory confinement; fails_when=tampered or external native members export; why_new=existing experiment only exercises a valid export; seam=none; no_claim=real-data parity or model accuracy.
     def test_full_research_experiment_exports_and_locks_heldout_test(self):
         from quasar.modeling.training import train, export
         with tempfile.TemporaryDirectory() as directory:
@@ -354,6 +463,21 @@ class NativeExportTests(unittest.TestCase):
             self.assertEqual(read_json(root/"exported.json"), read_json(root/"experiment/model.json"))
             self.assertTrue((root/"experiment/spatial-residuals.svg").exists())
             with self.assertRaises(FileExistsError):train(prepared, root/"retry")
+            native = root/"experiment/member-0.json"
+            original_native = native.read_bytes()
+            native.write_bytes(original_native+b" ")
+            with self.assertRaisesRegex(ValueError, "checksum/path"):
+                export(root/"experiment", root/"tampered-export.json")
+            self.assertFalse((root/"tampered-export.json").exists())
+            native.write_bytes(original_native)
+            report_path = root/"experiment/evaluation.json"
+            report = read_json(report_path)
+            outside = root/"outside-member.json";outside.write_bytes(original_native)
+            report["native_models"][0].update(path="../outside-member.json", sha256=digest(outside))
+            write_json(report_path, report)
+            with self.assertRaisesRegex(ValueError, "checksum/path"):
+                export(root/"experiment", root/"external-export.json")
+            self.assertFalse((root/"external-export.json").exists())
 
 
 def synthetic_dataset(root, count=40):

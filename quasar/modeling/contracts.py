@@ -53,6 +53,7 @@ def forecast(value):
     init, start, end, retrieved, expires = [timestamp(value[k]) for k in
                                             ("init_time", "valid_from", "valid_to", "retrieved_at", "expires_at")]
     if (end-start != timedelta(hours=6) or init > start or retrieved < init
+            or (value["status"] == "ready" and start-init > timedelta(hours=12))
             or expires > min(init+timedelta(hours=12), retrieved+timedelta(hours=2), end)
             or value["availability_basis"] not in ("publication-constrained", "initialization-based reconstruction")
             or (value["published_at"] is not None and not init <= timestamp(value["published_at"]) <= start)):

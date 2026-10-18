@@ -9,11 +9,12 @@ from pathlib import Path
 
 from ..adapters.weathernext import timestamp
 from ..parcel_context import readonly
+from ..replay import run_rows
 from . import COUNTY, FEATURES, NOTICE, digest, finite, read_json, utcnow, write_json
 from .dataset import load_dataset, samples
 from .production import weather_window, parcel_rainfall
 
-OUTCOME_FEATURES = FEATURES + ["forecast_rainfall_6h_mm"]
+OUTCOME_FEATURES = FEATURES + ["forecast_rainfall_6h_mm", "forecast_rainfall_3h_mm", "forecast_peak_hourly_mm"]
 
 
 def prepare_outcomes(dataset, observations, inspection, weather_files):
@@ -40,10 +41,10 @@ def prepare_outcomes(dataset, observations, inspection, weather_files):
             if type(parcel) is not int or parcel not in inventory or not isinstance(episode, str) or not episode:
                 raise ValueError("Invalid observed parcel/episode")
             clock = timestamp(at)
-            key = (parcel, episode, clock)
-            if key in seen:
+            record_identity = (parcel, episode, clock)
+            if record_identity in seen:
                 raise ValueError("Duplicate parcel/episode/decision-time label")
-            seen.add(key)
+            seen.add(record_identity)
             if record.get("label") is None:
                 counts["unlabeled"] += 1
                 continue
@@ -72,19 +73,26 @@ def prepare_outcomes(dataset, observations, inspection, weather_files):
             source_hash = record.get("forecast_sha256")
             if source_hash not in snapshots:
                 raise ValueError("Label references an unavailable forecast snapshot")
-            window_key = (source_hash, at)
-            if window_key not in windows:
-                windows[window_key] = weather_window(snapshots[source_hash], at, "replay", datetime.now(timezone.utc))
-            rainfall, forecast = windows[window_key]
+            window_identity = (source_hash, at)
+            if window_identity not in windows:
+                rainfall, forecast = weather_window(snapshots[source_hash], at, "replay", datetime.now(timezone.utc))
+                run = next(r for r in snapshots[source_hash]["runs"] if r["init_time"] == forecast["init_time"])
+                native_ids = {c["id"] for c in snapshots[source_hash]["native_cells"]}
+                hourly = run_rows(run, allowed=native_ids)
+                windows[window_identity] = rainfall, forecast, hourly, native_ids
+            rainfall, forecast, hourly, native_ids = windows[window_identity]
             raw = contexts.execute("SELECT context_json FROM inspection WHERE kind='parcel' AND identifier=?", (str(parcel),)).fetchone()
             context = json.loads(raw[0]) if raw else {}
             rain = parcel_rainfall(context.get("forecast_overlaps"), rainfall)
+            hourly_values = [parcel_rainfall(context.get("forecast_overlaps"), {
+                native: hourly.get((native, (clock+timedelta(hours=h)).isoformat().replace("+00:00", "Z")), {}).get("rainfall_1h_mm")
+                for native in native_ids}) for h in range(1, 7)]
             base = inventory[parcel]
-            if base["features"] is None or rain is None:
+            if base["features"] is None or rain is None or any(v is None for v in hourly_values):
                 counts["missing_predictors"] += 1
                 continue
             rows.append({"parcel_id": parcel, "episode": episode, "at": at, "block": base["block"],
-                         "target": record["label"], "features": base["features"]+[rain], "reference_mode": reference,
+                         "target": record["label"], "features": base["features"]+[rain, sum(hourly_values[:3]), max(hourly_values)], "reference_mode": reference,
                          "source_id": record["source_id"], "forecast": forecast})
     episodes = sorted({r["episode"] for r in rows}, key=lambda e: min(timestamp(r["at"]) for r in rows if r["episode"] == e))
     test = set(episodes[-3:])
