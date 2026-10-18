@@ -1,5 +1,7 @@
 # Quasar documentation
 
+For the incoming developer, start with the [complete gap-closure execution plan](DATATHON-GAP-CLOSURE-PLAN.md) and [workboard](DATATHON-WORKBOARD.md). The [datathon rubric audit](DATATHON-DEV-HANDOFF.md) supplies the requirement-by-requirement evidence, artifact identities and initial LinuxONE commands.
+
 Quasar displays Okaloosa County parcels, prepared terrain/FEMA reference inputs,
 and imported native forecast rainfall. The application has no fictional-site or
 synthetic fallback; real parcel scores remain unknown without separate matching
@@ -48,7 +50,7 @@ The guides explain the whole application; the following files retain the detaile
 | --- | --- |
 | Run the county source-data app | [Run locally](../README.md#run-locally) |
 | Configure the map or import current rainfall | [Integration setup](integrations.md) |
-| Prepare historical context and exercise roads | [Local replay preparation](isaias-demo.md#local-data-preparation) |
+| Configure the archived forecast replay | [Required runtime sources](isaias-demo.md#required-runtime-sources) |
 | Understand a displayed score | [Scoring mechanism](mechanisms.md#scoring-mechanism) |
 | Work in Power BI or Tableau | [Reports and downloads contract](data-contract.md#reports-and-downloads) |
 | Explore data in a notebook | [Notebook workflow](../notebooks/README.md) |

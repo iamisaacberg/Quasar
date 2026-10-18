@@ -1,5 +1,7 @@
 # Quasar teammate handoff: WeatherNext + IBM LinuxONE parcel exposure
 
+> Taking over development? Start with the [complete execution plan](DATATHON-GAP-CLOSURE-PLAN.md), [workboard](DATATHON-WORKBOARD.md) and [rubric audit](DATATHON-DEV-HANDOFF.md). This document retains the earlier exposure implementation snapshot; later modeling and runtime changes supersede its unfinished-producer and display descriptions.
+
 **Handoff snapshot: October 17, 2026. County scope: Okaloosa, Florida, FIPS `12091`.**
 
 **Model status update, October 18 UTC / October 17 Central:** PR #17 added the
