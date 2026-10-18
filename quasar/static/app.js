@@ -111,6 +111,7 @@ function renderExposureInspection() {
     if(score===null) content.append(element("p",`Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
     const model = assessment?.model_details;
     if (model && score !== null) {
+      content.append(element("p", `Model: ${exposureData?.model_metadata?.model_version || exposureData?.method_version || "Unavailable"}`, "detail-note"));
       content.append(element("p", `Learned mapped susceptibility: ${model.susceptibility.toFixed(3)} · FEMA mapping proxy, not observed flood skill.`, "detail-note"));
       content.append(element("p", `Forecast rainfall: ${model.rainfall_6h_mm.toFixed(1)} mm / 6h · Rainfall stress: ${model.rainfall_stress.toFixed(3)} (experimental rule).`, "detail-note"));
       content.append(element("p", `Model instability: ${model.model_instability.toFixed(3)} · Ensemble spread, not a confidence interval.`, "detail-note"));

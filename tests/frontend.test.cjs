@@ -423,6 +423,7 @@ test('model inspection separates learned susceptibility, rainfall rule and signe
   await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
   app.get('selection-content').children[1].onclick();
   const text=app.get('selection-exposure').children.map(node=>node.textContent).join('\n');
+  assert.match(text,/Model: synthetic-test-only/);
   assert.match(text,/Learned mapped susceptibility: 0.700/);
   assert.match(text,/FEMA mapping proxy, not observed flood skill/);
   assert.match(text,/Forecast rainfall: 50.0 mm/);
