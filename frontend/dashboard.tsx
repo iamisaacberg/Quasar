@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { Reports } from "./reports";
 import { MapSelectionPanel } from "./components/map-selection-panel";
 import { DataDashboard } from "./data-dashboard";
-import { ArrowUpRight, CircleHelp, CloudRain, Layers3, MapPin, Radar, TriangleAlert, Waves, Search, X, SlidersHorizontal, Plus, Minus, ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { ArrowUpRight, CloudRain, Layers3, MapPin, Radar, TriangleAlert, Waves, Search, X, SlidersHorizontal, Plus, Minus, ChevronLeft, ChevronRight, Info } from "lucide-react";
 
 declare global {
   interface Window { Quasar?: { start: () => Promise<void>; frame?: () => number }; }
@@ -107,7 +107,6 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
           <section className="source-card" aria-labelledby="forecast-heading"><CloudRain aria-hidden="true" /><div><h2 id="forecast-heading">WeatherNext 3</h2><p id="weather-status" role="status">Checking imported forecast status…</p></div></section>
           <section className="source-card" aria-labelledby="official-heading"><Radar aria-hidden="true" /><div><h2 id="official-heading">Official NWS alerts</h2><p id="official-status">Official feed is not connected. This is not an all-clear.</p><a href="https://www.weather.gov/mob/" target="_blank" rel="noopener noreferrer">Open NWS Mobile/Pensacola <ArrowUpRight aria-hidden="true" /></a></div></section>
         </section>
-        <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read the map</summary><p>Play or select an hour in the Isaias timeline. The bars show the maximum six-hour rainfall among available native cells, not observed rain or a county average. Hex colors show the maximum overlapping native forecast, clipped to the county boundary. Select a cell for its rainfall range, then a parcel for prepared terrain, FEMA and exact native rainfall overlaps. Thin outlines remain visible when a score is unavailable; transparent interiors do not indicate low risk.</p><p>Archived rainfall is a forecast reconstruction, not observed rain. Missing and stale values remain unknown. H3 does not increase forecast resolution. Follow official NWS and local guidance for real decisions.</p></details>
         <footer className="dashboard-footer"><span><Waves aria-hidden="true" />Quasar · IBM Z Datathon</span><p>Okaloosa only · Source dates and coverage retained · Follow official guidance</p></footer>
       </div>
     </div>

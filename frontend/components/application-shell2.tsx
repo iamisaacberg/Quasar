@@ -6,7 +6,6 @@ import {
   Map,
   Database,
   FileChartColumn,
-  ShieldCheck,
 } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -253,10 +252,6 @@ const NavUser = ({ user }: { user: UserData }) => {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <a href="#data"><Database className="mr-2 size-4" />Data</a>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="https://www.weather.gov/mob/" target="_blank" rel="noopener noreferrer"><ShieldCheck className="mr-2 size-4" />Official NWS guidance</a>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
