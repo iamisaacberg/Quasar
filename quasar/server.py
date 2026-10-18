@@ -26,6 +26,7 @@ from .exports import export
 from .parcels import county_boundary, parcel_page, parcel_manifest, remote_inspection, SourceUnavailable
 from .parcel_context import inspection
 from .bridge import serve_snapshot
+from .exposure import exposure, SCALE as EXPOSURE_SCALE
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
@@ -157,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/config":
                 return self.send(200, {"county_fips": COUNTY_FIPS, "county_name": COUNTY_NAME,
                                        "timezone": TIMEZONE, "notice": NOTICE, "mode": "synthetic_demo",
-                                       "map": map_settings()})
+                                       "map": map_settings(), "exposure_scale": EXPOSURE_SCALE})
             if url.path == "/api/weather/status":
                 forecast = load_forecast()
                 return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
@@ -166,13 +167,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, forecast_timeline())
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
-            if url.path.startswith(("/api/parcels", "/api/cells/")):
+            if url.path == "/api/exposure" or url.path.startswith(("/api/parcels", "/api/cells/")):
                 parcel_token = os.environ.get("QUASAR_PARCEL_API_TOKEN", "")
                 parcel_database = os.environ.get("QUASAR_PARCEL_DATABASE", "")
                 if parcel_database and len(parcel_token) < 32:
                     return self.send(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Parcel API authentication is not configured"})
                 if parcel_token and not hmac.compare_digest(self.headers.get("X-Quasar-Parcel-Token", ""), parcel_token):
                     return self.send(HTTPStatus.UNAUTHORIZED, {"error": "Parcel API authentication required"})
+                if url.path == "/api/exposure":
+                    return self.send(200, exposure({key: values[0] for key, values in query.items()}))
                 if url.path == "/api/parcels/manifest":
                     return self.send(200, parcel_manifest())
                 match = re.fullmatch(r"/api/(parcels|cells)/([^/]+)/(context|summary)", url.path)

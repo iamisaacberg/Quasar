@@ -84,7 +84,17 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                 <p id="playback-status" role="status">Playback unavailable for static exercise windows.</p>
               </section>
               <details className="map-legend map-float" id="map-legend" open><summary><Layers3 aria-hidden="true" />Legend</summary><div className="map-legend-content">
-                <div id="exposure-legend" className="legend" aria-label="Relative exposure legend"><span><i className="dot elevated" />Elevated</span><span><i className="dot moderate" />Moderate</span><span><i className="dot lower_relative" />Lower relative</span><span><i className="dot unknown" />Unknown</span></div>
+                <div id="exposure-legend" className="legend exposure-legend" aria-label="Experimental relative exposure">
+                <strong>Experimental relative exposure</strong>
+                <div className="exposure-gradient" aria-hidden="true" />
+                <span><i className="dot lower_relative" />0–34 · Lower relative exposure</span>
+                <span><i className="dot moderate" />35–64 · Moderate relative exposure</span>
+                <span><i className="dot elevated" />65–84 · Elevated relative exposure</span>
+                <span><i className="dot highest" />85–100 · Highest relative exposure</span>
+                <span><i className="dot unknown" />Unknown · Insufficient data</span>
+                <span>Hatched · Incomplete scoring coverage</span>
+                <strong>Green does not establish safety.</strong>
+              </div>
                 <div id="rainfall-legend" className="legend" hidden aria-label="Rainfall legend"><span><i className="dot rain-light" />0–25</span><span><i className="dot rain-medium" />25–75</span><span><i className="dot rain-heavy" />75+ mm / 6h</span><span><i className="dot unknown" />Unavailable</span></div>
                 <p>Rainfall: mm / 6h · Exposure: score / 100</p>
                 <details className="map-info" id="map-source-info"><summary><Info aria-hidden="true" />Source &amp; interpretation</summary>

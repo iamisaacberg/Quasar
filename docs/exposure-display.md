@@ -1,0 +1,102 @@
+# Experimental relative exposure display
+
+The map uses fixed green/yellow/orange/red anchors for experimental exposure
+indices. It is not a trained parcel flood model, flood probability, depth, or
+safety assessment. **Green does not establish safety.** Existing real-parcel
+`risk_score` and `risk_band` remain null/unknown.
+
+| Index | Label | Color anchor |
+| --- | --- | --- |
+| 0–34 | Lower relative exposure | Green `#16a34a` at 0 |
+| 35–64 | Moderate relative exposure | Yellow `#eab308` at 35 |
+| 65–84 | Elevated relative exposure | Orange `#f97316` at 65 |
+| 85–100 | Highest relative exposure | Red `#dc2626` at 85 and 100 |
+| Unknown | Insufficient data | Gray `#9ca3af`, hatched |
+
+Colors interpolate in RGB between fixed anchors. Labels change at 35, 65 and
+85, including fractional indices. Hour and zoom never renormalize the scale.
+The source of truth is `quasar/static/exposure-scale.json`, supplied through
+`/api/config`. Numeric indices, explanations and a gradient legend accompany color.
+
+## Explicit assessments
+
+Geometry-only databases contain no exposure assessments. Set
+`QUASAR_EXPOSURE_FILE` and `QUASAR_PARCEL_DATABASE` on LinuxONE to consume explicit
+results from a separately documented scoring method. Existing parcel API
+authentication also protects `/api/exposure`; set `QUASAR_PARCEL_API_TOKEN` to
+32+ characters. Never expose that token to the browser.
+
+This change adds no scoring formula or training dataset. Missing assessments
+stay gray/unknown. Fictional site points use the same palette but remain labelled
+exercise sites and never supply real parcel or county-cell indices.
+
+Schema 1 example (**synthetic format documentation**, not real parcel data):
+
+```json
+{
+  "schema_version": 1,
+  "county_fips": "12091",
+  "run_id": "synthetic-format-example",
+  "method_version": "synthetic-method-example",
+  "inventory_id": "matching-source-provenance-output-sha256",
+  "windows": [{
+    "valid_from": "2026-10-09T05:00:00Z",
+    "valid_to": "2026-10-09T11:00:00Z",
+    "computed_at": "2026-10-17T12:00:00Z",
+    "parcels": [{
+      "parcel_id": 1,
+      "score": 70,
+      "factors": [{"name": "synthetic_factor", "value": "synthetic example", "contribution": 70}],
+      "missing": []
+    }]
+  }]
+}
+```
+
+Indices must be finite numbers from 0 to 100. Known indices require no missing
+inputs and named, nonnegative contributions summing to the index within 0.11
+points (rounding tolerance). Missing inputs require null indices. Omitted records
+also remain unknown. Duplicate IDs/windows, out-of-inventory IDs, wrong county,
+inventory mismatch and invalid values invalidate the artifact. Windows are
+exactly six hours; timestamps require timezones. Files are limited to 128 MiB,
+read-only and cached by file version. Publish atomically.
+
+## Complete-inventory summaries
+
+`GET /api/exposure?from=<UTC>&to=<UTC>&mode=current|replay&resolution=4|5|6|7`
+returns summaries keyed by indexed H3 cell. Every parcel in the database cell
+membership contributes to coverage; absent assessments are unknown. Client
+pagination never changes a cell's color.
+
+- Color value: linear-interpolated P90 at sorted position `(n-1)*0.9`, using
+  eligible indices. Zero is valid; no eligible indices produce null.
+- Coverage: scored / full parcel count. Incomplete cells retain hatching.
+- Elevated count: number of parcel indices >=65, including highest indices.
+- Unoccupied or unassessed cells remain gray and hatched.
+- Memberships use intersecting polygons: a parcel can occur in several cells.
+  Do not sum cell counts as a distinct county parcel count.
+
+`parcel_ids=<comma-separated IDs>` returns up to 100 assessments instead of cell
+summaries. Supply the summary's `run_id`; a changed run returns `status: changed`
+without indices. Responses include method/run/inventory identity, forecast
+window, computation time, scale version and actual aggregation host architecture.
+
+Current results expire at window end or after two hours since computation.
+Future computation timestamps are invalid. Replay permits deliberate past
+windows without today's freshness cutoff. Missing exact windows and invalid or
+stale artifacts return explicit status without indices. Synthetic and what-if
+modes never reuse real parcel artifacts.
+
+## LinuxONE and hosted behavior
+
+Run aggregation on the actual LinuxONE host. With `QUASAR_LINUXONE_API_URL` and
+`QUASAR_LINUXONE_API_TOKEN` set, the web host proxies `/api/exposure` through
+authenticated HTTPS. It never recomputes a local substitute when that service
+fails. Forward `/api/exposure` through the existing parcel reverse proxy with
+the same authentication header. This code does not modify infrastructure.
+
+`aggregation_architecture` records the actual summary host. Local synthetic tests
+do not establish IBM Z execution, configured real assessments or visual acceptance.
+Changing scenario/hour retains cached parcel geometry and the selected cell/parcel
+while clearing previous exposure indices until matching assessments arrive. Late
+responses cannot repopulate closed or superseded selections.

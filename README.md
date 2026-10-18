@@ -95,6 +95,13 @@ The **Data** sidebar view provides a separate selected-window summary, charts, i
 
 ## Map workspace UI
 
+The exposure map uses a fixed green/yellow/orange/red gradient, gray hatching for
+unknown or incomplete inputs, and numeric inspection. Optional explicit parcel
+assessments and server-side P90 cell summaries follow the
+[exposure display contract](docs/exposure-display.md). A matching assessment
+artifact is required; real parcel indices otherwise remain unknown. Green does
+not establish safety.
+
 The Map overview fills the space beside the stock Application Shell 2 navigation
 sidebar. A floating county address/place search sits at the top, a tools dock at
 bottom-left, shared forecast/archive playback at bottom-center, and the active
@@ -125,7 +132,8 @@ validity window, initialization/import times, native resolution, available-site
 count and unavailable values. Stale or incomplete rainfall remains unavailable;
 valid zero rainfall stays zero even when missing terrain prevents a site score.
 Site scores remain fictional; native rainfall cells are not flood depth. **Relative
-exposure** switches to the illustrative score colors and optional H3 summaries.
+exposure** switches to experimental parcel indices and server-side P90 H3 summaries
+when matching assessments are configured; otherwise those indices stay unknown.
 A neutral county H3 grid stays available for parcel browsing in rainfall mode. Legends and demo labels remain visible.
 
 **Inspect sites** opens the site selector and factor explanation, including when
@@ -226,6 +234,7 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/parcels/manifest` | Lightweight geometry/source version for persistent browser caching |
 | GET | `/api/parcels/{id}/context` | Verified descriptive parcel inputs and native forecast overlaps; no score |
 | GET | `/api/cells/{h3}/summary` | Distinct indexed parcel counts, input coverage and native overlaps at R4–R7 |
+| GET | `/api/exposure?from=...&to=...&mode=current&resolution=7` | Optional matching parcel assessments and complete-inventory P90 summaries; [contract](docs/exposure-display.md) |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |

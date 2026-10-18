@@ -17,8 +17,11 @@ class Element {
   getAttribute(name) { return this[name]; }
 }
 
-async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page}={}) {
+async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
   const ids = new Map();
+  let exposureRunId="synthetic-run", clock=Date.now();
+  const exposureTimers=new Map();
+  class Clock extends Date {static now(){return clock;}}
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   get("map").parentElement = get("map-viewport");
   const data = {type:"FeatureCollection", mode:mixed ? "mixed_forecast_demo" : "synthetic_demo", notice:"demo notice",
@@ -41,6 +44,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     getCanvas() { return {clientWidth:1200,style:{}}; }
     queryRenderedFeatures() { return []; }
     addControl(control) { this.controls.push(control); }
+    addImage(id,image) { (this.images ||= {})[id]=image; }
     on(name,...rest) { this.handlers[`${name}:${rest.length===1 ? "" : rest[0]}`]=rest.at(-1); }
     addSource(id,source) { this.sources[id]={data:source.data,setData(data){this.data=data;}}; }
     getSource(id) { return this.sources[id]; }
@@ -49,14 +53,24 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     setLayoutProperty(id,key,value) { this.layers[id][key]=value; }
   }
   const mapboxgl = {Map:FakeMap,NavigationControl:class {},AttributionControl:class { constructor(options) { this.options=options; } }};
-  const context = {console,URLSearchParams,document:{getElementById:(id)=>mounted ? get(id) : null,dispatchEvent:(event)=>events.push(event.type),createElement:(tag)=>new Element(tag),createTextNode:(text)=>({textContent:text})},
+  const context = {console,URLSearchParams,Date:Clock,document:{getElementById:(id)=>mounted ? get(id) : null,dispatchEvent:(event)=>events.push(event.type),createElement:(tag)=>new Element(tag),createTextNode:(text)=>({textContent:text})},
     Event:class { constructor(type) { this.type=type; } },
-    window:{h3,QuasarSpatial,QuasarInspection,QuasarParcelCache:{create:options=>QuasarParcelCache.create({...options,storage:cacheStorage})},mapboxgl, ResizeObserver:class {
+    window:{setTimeout:(fn,delay)=>{const id=Symbol();exposureTimers.set(id,{fn,delay});return id;},clearTimeout:id=>exposureTimers.delete(id),h3,QuasarSpatial,QuasarInspection,QuasarParcelCache:{create:options=>QuasarParcelCache.create({...options,storage:cacheStorage})},mapboxgl, ResizeObserver:class {
       constructor(callback) { resizeCallback=callback; }
       observe(element) { observed=element; }
     }},h3,QuasarSpatial,mapboxgl,
     fetch:async (url) => {
       requests.push(url);
+      if (url.startsWith("/api/exposure?")) {
+        if (exposureFailure) return {ok:false,json:async()=>({error:"synthetic exposure outage"})};
+        if (!exposureScores) return {ok:true,json:async()=>({status:"not_configured",cells:{},parcels:{},message:"Exposure not configured"})};
+        const params=new URLSearchParams(url.split("?")[1]), resolution=Number(params.get("resolution"));
+        const cell=h3.latLngToCell(30.55,-86.485,resolution), runId=exposureRunId;
+        const score=id=>runId==="second" ? (id===1?30:100) : (id===1?0:90);
+        const page=exposureTransform({status:"ready",county_fips:"12091",run_id:runId,inventory_id:"snapshot",method_version:"synthetic-test-only",aggregation:"parcel_p90_linear",aggregation_architecture:"s390x",computed_at:new Date(clock).toISOString(),valid_to:new Date(clock+6*3600000).toISOString(),cells:{[cell]:{parcel_count:3,scored_count:2,unknown_count:1,coverage:2/3,incomplete:true,elevated_count:1,p90_score:runId==="second"?93:81}},parcels:Object.fromEntries((params.get("parcel_ids")||"").split(",").filter(Boolean).map(id=>[id,{score:score(Number(id)),factors:[{name:"synthetic_factor",value:score(Number(id)),contribution:score(Number(id))}],missing:[]}]))},params);
+        if(holdExposure) await holdExposure(params);
+        return {ok:true,json:async()=>page};
+      }
       if(url==="/api/parcels/manifest") {
         if(holdManifest) await holdManifest();
         return {ok:!manifestFailure,json:async()=>manifestFailure ? {error:"source offline"} : {status:"ready",county_fips:"12091",source_mode:"indexed",source_url:"https://example.test/parcels",dataset_version:"snapshot:index",inventory_id:"snapshot",boundary_version:"boundary",crs:"EPSG:4326"}};
@@ -80,7 +94,8 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
       return {ok:true,json:async()=>body};
     }};
   await vm.runInNewContext(fs.readFileSync("quasar/static/app.js","utf8"),context);
-  return {get,map,data,events,requests,
+  return {get,map,data,events,requests,setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
+    expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
     start:()=>context.window.Quasar.start(),
     resize:()=>resizeCallback(),
@@ -341,4 +356,112 @@ test('selection survives zoom and source changes, and parcel details stay stable
   assert.equal(app.get('selection-title').textContent,'Parcel details');
   assert.equal(app.get('selection-content').children.length,1);
   assert.ok(app.get('selection-inputs').children.some(row=>row.children.some(node=>node.textContent?.includes('0.00 / 1.00 / 2.00'))));
+});
+
+test("unknown real parcels stay gray and hatched even when fictional sites have scores", async()=>{
+  const {map,get}=await boot({configured:true});map.handlers['load:']();
+  get('map-layer').value='exposure';get('map-layer').onchange();
+  assert.ok(map.images['exposure-hatch'].data.some(value=>value>0));
+  assert.equal(map.layers['hotspot-hatch'].visibility,'visible');
+  assert.ok(map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
+  const cell=h3.latLngToCell(30.55,-86.485,7);
+  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_incomplete && f.properties.exposure_score===null));
+  assert.equal(get('selection-stat-one').textContent,'Unknown');
+  assert.match(get('selection-content').children[0].children[1].textContent,/Insufficient data/);
+});
+
+test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{
+  const {map,get}=await boot({configured:true,mixed:true,exposureScores:true});map.handlers['load:']();
+  await new Promise(resolve=>setImmediate(resolve));
+  map.zoom=12;map.handlers['zoomend:']();
+  await new Promise(resolve=>setImmediate(resolve));
+  const cell=h3.latLngToCell(30.55,-86.485,7);
+  const summary=map.sources.hotspots.data.features.find(f=>f.id===cell).properties;
+  assert.equal(summary.exposure_score,81);
+  assert.equal(summary.exposure_incomplete,true);
+  map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(get('selection-stat-one').textContent,'81.0');
+  assert.equal(get('selection-stat-two').textContent,'2/3');
+  assert.equal(get('selection-stat-three').textContent,'1');
+  assert.deepEqual(Array.from(map.sources.parcels.data.features,f=>f.properties.exposure_score),[0,90]);
+  get('selection-content').children[1].onclick();
+  assert.equal(get('selection-stat-one').textContent,'90.0');
+  assert.match(get('selection-stat-two').textContent,/Highest relative exposure/);
+  assert.ok(get('selection-exposure').children.some(node=>/synthetic_factor.*90.0/.test(node.textContent)));
+  // A different hour retains cached geometry and inspection, but clears old indices.
+  get('scenario').value='baseline';await get('scenario').onchange();
+  assert.equal(map.sources.parcels.data.features.length,2);
+  assert.equal(map.sources['selected-parcel'].data.features.length,1);
+  assert.equal(get('selection-title').textContent,'Parcel details');
+  assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.equal(get('selection-stat-one').textContent,'Unknown');
+});
+
+// protects: hourly scores never enter the persistent geometry cache; fails_when: a late lookup recolors the next window; seam: none; no_claim: browser pixels or live LinuxONE.
+test('late exposure lookups cannot recolor retained geometry after a scenario change',async()=>{
+  let release;
+  const app=await boot({configured:true,mixed:true,exposureScores:true,holdExposure:params=>params.has('parcel_ids')?new Promise(resolve=>{release=resolve;}):Promise.resolve()});
+  app.map.handlers['load:']();parcelClick(app);await until(()=>release);
+  app.get('scenario').value='baseline';await app.get('scenario').onchange();
+  release();await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(app.map.sources.parcels.data.features.length>0);
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.equal(app.get('map-selection-panel').hidden,false);
+});
+
+// protects: switching assessment runs replaces every cached index; fails_when: old indices are reused under a new run; seam: none; no_claim: real model accuracy.
+test('a new server run replaces indices without reloading parcel geometry',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  const before=geometryRequests(app).length;
+  app.setExposureRunId('second');app.map.zoom=8;app.map.handlers['zoomend:']();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===100));
+  assert.equal(geometryRequests(app).length,before);
+  assert.deepEqual(Array.from(app.map.sources.parcels.data.features,f=>f.properties.exposure_score),[30,100]);
+});
+
+// protects: bounded lookup and unknown-state handling; fails_when: oversized lookup, missing record painted, or source error leaves prior colors; seam: none; no_claim: operational data completeness.
+test('exposure lookups batch at 100 IDs and failures or missing assessments remain unknown',async()=>{
+  const batched=await boot({configured:true,mixed:true,exposureScores:true,parcelCount:250});batched.map.handlers['load:']();parcelClick(batched);
+  await until(()=>batched.map.sources.parcels.data.features.filter(f=>f.properties.exposure_score!==null).length===250);
+  const requests=batched.requests.filter(url=>url.startsWith('/api/exposure?')&&url.includes('parcel_ids'));
+  assert.ok(requests.length>=3);
+  assert.ok(requests.every(url=>new URLSearchParams(url.split('?')[1]).get('parcel_ids').split(',').length<=100));
+  for(const options of [
+    {exposureFailure:true},
+    {exposureTransform:page=>({...page,parcels:{}})},
+    {exposureTransform:(page,params)=>params.has('parcel_ids')?{...page,run_id:'changed'}:page},
+    {exposureTransform:page=>({...page,aggregation:'invalid-summary'})}
+  ]) {
+    const app=await boot({configured:true,mixed:true,exposureScores:true,...options});app.map.handlers['load:']();parcelClick(app);
+    await until(()=>app.get('parcel-status').textContent.includes('All 101'));
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  }
+});
+
+// protects: expired estimates revert to unknown without user navigation; fails_when: a cached current result survives two hours; seam: none; no_claim: real forecast accuracy; why_new: lifecycle expiry is distinct from forecast playback.
+test('current exposure expires to unknown while parcel geometry and selection remain',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  app.setExposureFailure(true);app.expireExposure();
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.equal(app.get('map-selection-panel').hidden,false);
+  assert.ok(app.map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
+});
+
+// protects: failed refresh cannot mix old parcel indices with a new run; fails_when: a recovered summary reuses prior assessments; seam: none; no_claim: browser rendering; why_new: recovery crosses two distinct API outcomes.
+test('summary failure clears parcel indices before a different run recovers',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  const before=geometryRequests(app).length;
+  app.setExposureFailure(true);app.map.zoom=8;app.map.handlers['zoomend:']();
+  await until(()=>app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  app.setExposureFailure(false);app.setExposureRunId('second');app.map.zoom=6;app.map.handlers['zoomend:']();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===100));
+  assert.deepEqual(Array.from(app.map.sources.parcels.data.features,f=>f.properties.exposure_score),[30,100]);
+  assert.equal(geometryRequests(app).length,before);
 });
