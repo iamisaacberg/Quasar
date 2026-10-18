@@ -37,6 +37,13 @@ An explicit county importer retains native geometry, initialization/publication/
 
 The archive exposes 25 starts from October 9 midnight through October 10 midnight Central. The final forward window requires six additional hours. Map/Data/Reports share selected rainfall time. Selection changes invalidate prior exposure indices; late summary/parcel responses cannot repaint a new selection. Geometry may remain cached while time-dependent scores are cleared.
 
+The archive opens at 4 PM Central on October 9 (index 16). Playback advances
+one hour every 250 ms when the selected hour's summaries and selected parcel are
+ready, then stops at the final hour; playing again restarts at 4 PM. Other parcel
+assessments load in the background with unknown values until ready. Next-hour
+summary buffering stops when paused or hidden. Rainfall playback reuses the
+loaded archive without exposure requests.
+
 Legacy single-file assessments still work. A configured catalog instead selects exact mode/window and enforces inventory/model/forecast/file identity beneath an explicit artifact root. No missing hour substitutes a prior score. Batch production writes a new release, records genuine gaps and publishes an atomic catalog marker after validation. Cached summaries do not retain full parcel maps across windows. The [verified execution checkpoint](datathon-submission/verified-run.md) records actual host measurements; broader load/recovery remains open.
 
 ## Browser map and H3
@@ -58,3 +65,6 @@ Use [README](../README.md), [.env.example](../.env.example), [bridge setup](data
 ## Verification boundaries
 
 Run required Python/npm checks and optional ML/GIS tests for research changes. Regression fixtures cover missing/stale/wrong-time and authentication behavior. Actual source/model artifacts, LinuxONE execution/parity/latency, Isaac's rendered review and independent research validation require separate evidence. The [acceptance checklist](datathon-submission/acceptance.md), [claim ledger](datathon-submission/limitations.md) and [workboard](DATATHON-WORKBOARD.md) retain those boundaries.
+
+See [loading performance](loading-performance.md) for the optional indexed serving
+database, bounded caches, geometry worker and synthetic measurement commands.

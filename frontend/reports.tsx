@@ -15,8 +15,10 @@ export function Reports({ active }: { active: boolean }) {
     if (!active) return;
     const controller = new AbortController();
     setError("");
-    void fetch(`/api/reports?source=archive&frame=${frame}`, { signal: controller.signal, cache: "no-store" })
-      .then(async response => { const body = await response.json(); if (!response.ok) throw new Error(body.error || "Source unavailable"); if (body.source !== "archive") throw new Error("Unexpected forecast source"); return body as Report; })
+    const url = `/api/reports?source=archive&frame=${frame}`;
+    const request = window.QuasarData ? window.QuasarData.get<Report>(url, {signal: controller.signal}) :
+      fetch(url, {signal: controller.signal, cache: "no-store"}).then(async response => {const body = await response.json(); if (!response.ok) throw new Error(body.error || "Source unavailable"); return body as Report;});
+    void request.then(body => {if (body.source !== "archive") throw new Error("Unexpected forecast source"); return body;})
       .then(body => { if (!controller.signal.aborted) setData(body); })
       .catch((reason: Error) => { if (!controller.signal.aborted) { setData(null); setError(reason.message); } });
     return () => controller.abort();
@@ -27,7 +29,7 @@ export function Reports({ active }: { active: boolean }) {
     <header><p className="report-eyebrow">ISAIAS · OCTOBER 9, 2026 · OKALOOSA</p><h1 id="reports-heading">Reports &amp; exports</h1><p>The selected Isaias forecast window, with source dates and cell availability.</p></header>
     <div className="report-controls">
       {!!data?.windows?.length && <label>Replay hour<select value={frame} onChange={event => selectFrame(Number(event.target.value))}>{data.windows.map((window, index) => <option key={window.at} value={index}>{time(window.at)}</option>)}</select></label>}
-      <button type="button" onClick={() => setRevision(value => value + 1)}>Recheck source</button>
+      <button type="button" onClick={() => {window.QuasarData?.invalidate("/api/reports"); setRevision(value => value + 1);}}>Recheck source</button>
       <button type="button" disabled={!current?.rows.length} onClick={() => window.print()}>Print / Save as PDF</button>
     </div>
     {error && <p role="alert">Archive unavailable: {error}. Recheck the source to try again.</p>}

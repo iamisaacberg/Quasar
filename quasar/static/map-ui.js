@@ -81,8 +81,8 @@
     return {close:()=>{invalidate();results=[];active=-1;draw();}};
   }
   const localTime=value=>new Date(value).toLocaleString("en-US",{timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",timeZoneName:"short"});
-  function createPlayback({get, select, every=setInterval, stop=clearInterval}) {
-    let kind="none", times=[], index=0, timer=null, busy=false, selecting=null, generation=0, playGeneration=0, available=false, note="Waiting for imported forecast data.";
+  function createPlayback({get, select, prepare=()=>{}, every=setInterval, stop=clearInterval}) {
+    let kind="none", times=[], index=0, startIndex=0, timer=null, busy=false, selecting=null, generation=0, playGeneration=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
       get("replay-play").setAttribute("aria-label",timer===null?"Play Isaias timeline":"Pause playback");
@@ -97,6 +97,10 @@
       get("playback-status").textContent=busy?"Loading selected hour…":note;
     }
     function pause() {playGeneration++;if(timer!==null)stop(timer);timer=null;draw();}
+    function prepareNext() {
+      const ticket=playGeneration;
+      if(index+1<times.length) void Promise.resolve().then(()=>{if(timer!==null && ticket===playGeneration)return prepare(kind,index+1);}).catch(()=>{});
+    }
     async function go(next) {
       if(!available || busy || next<0 || next>=times.length)return;
       const ticket=++generation;busy=true;selecting=next;draw();
@@ -104,7 +108,7 @@
         const ok=await select(kind,next);
         if(ticket!==generation)return;
         if(ok===false){note="Selected hour unavailable. Playback paused.";pause();return false;}
-        index=next;if(index===times.length-1)pause();
+        index=next;if(index===times.length-1)pause();else if(timer!==null)prepareNext();
         return true;
       } catch(error) {if(ticket===generation){note=`Selected hour unavailable. Playback paused.${error?.message ? ` ${error.message}` : ""}`;pause();}return false;}
       finally {if(ticket===generation){busy=false;draw();}}
@@ -116,14 +120,15 @@
       if(timer!==null){pause();return;}
       if(!available || busy || times.length<2)return;
       const playTicket=playGeneration;
-      if(index===times.length-1 && await go(0)!==true)return;
+      if(index===times.length-1 && await go(startIndex)!==true)return;
       if(playTicket!==playGeneration)return;
       if(!available || index===times.length-1)return;
-      timer=every(()=>{if(!busy)void go(index+1);},1000);draw();
+      timer=every(()=>{if(!busy)void go(index+1);},250);prepareNext();draw();
     };
-    return {pause, configure(nextKind,nextTimes,nextIndex=0,enabled=true,message="Following six-hour rainfall · mm / 6h") {
+    return {pause, get playing(){return timer!==null;}, configure(nextKind,nextTimes,nextIndex=0,enabled=true,message="Following six-hour rainfall · mm / 6h",defaultIndex=0) {
       if(nextKind!==kind || (busy && nextIndex!==selecting)){pause();generation++;busy=false;}
       kind=nextKind;times=nextTimes;index=nextIndex;available=enabled && times.length>0;note=message;
+      startIndex=Number.isInteger(defaultIndex) && defaultIndex>=0 && defaultIndex<times.length ? defaultIndex : 0;
       if(!available)pause();draw();
     }};
   }

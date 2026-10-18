@@ -250,3 +250,11 @@ Updates/cancellations retire older referenced messages; duplicate identical IDs
 are deduplicated, conflicting duplicates invalidate the response. Future-issued,
 expired and cancelled messages cannot appear active. An empty fresh complete
 query means only no matching messages returned for that query/time, never safety.
+
+## Loading and serving optimizations
+
+See [loading performance](loading-performance.md) for explicit indexed exposure
+preparation, cache identity/freshness, worker behavior and benchmark evidence.
+Existing forecast/exposure response shapes are unchanged. Hashed UI/worker files
+are allowlisted by the committed build manifest and immutable; HTML and API
+responses remain no-store. Negotiated gzip preserves original JSON semantics.

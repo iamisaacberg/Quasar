@@ -41,7 +41,7 @@ Do not start a deployment or restart shared services without authorization.
 ## County sources
 
 The map, Data tab and Reports use imported native county forecast cells only.
-The map opens directly on the Isaias October 9 archive, with 25 hourly
+The map opens at 4 PM Central on the Isaias October 9 archive, with 25 hourly
 positions, county-clipped H3 rainfall and compact rewind, play/pause and forward
 controls. Tools → Archive details contains the interactive maximum-native-cell
 rainfall trend, hour scrubber and source recheck.
@@ -75,6 +75,9 @@ The archive's official NWS feed remains explicitly disconnected; this is not an 
 An optional explicit county NWS importer and separate current-alert API read a
 short-lived saved snapshot, with no network fetch during serving and no current
 alerts on the replay. A live importer connection was verified separately; no current-alert UI/refresh was activated.
+
+See [loading performance](docs/loading-performance.md) for offline exposure serving
+preparation, bounded browser caches and synthetic benchmarks.
 
 ## Development and checks
 
