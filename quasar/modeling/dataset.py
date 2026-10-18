@@ -39,7 +39,7 @@ def audit(database, inputs, boundary, inspection=None):
                 or provenance["output_sha256"] != parent["sources"]["parcels"]["output_sha256"]
                 or provenance["county_boundary"]["sha256"] != digest(boundary)
                 or parent["sources"]["boundary_sha256"] != digest(boundary)
-                or parent["terrain"].get("units") != "m"
+                or parent["terrain"].get("units") not in ("m", "meters")
                 or parent["terrain"].get("vertical_datum") != "North American Vertical Datum of 1988"):
             raise ValueError("Incompatible inventory/boundary/terrain references")
         ids = {r[0] for r in source.execute("SELECT parcel_id FROM parcels")}

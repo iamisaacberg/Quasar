@@ -221,6 +221,23 @@ class AuditAndProducerTests(unittest.TestCase):
         write_json(self.inputs/"manifest.json", parent)
         with self.assertRaises(ValueError):dataset.audit(self.database, self.inputs, self.boundary)
 
+    def test_audit_accepts_preparer_meter_units_without_changing_provenance(self):
+        parent = read_json(self.inputs/"manifest.json")
+        # prepare_parcel_inputs preserves the USGS XML spelling in its manifest;
+        # individual terrain records use the normalized unit "m".
+        parent["terrain"]["units"] = "meters"
+        write_json(self.inputs/"manifest.json", parent)
+        original_hash = digest(self.inputs/"manifest.json")
+        report = dataset.audit(self.database, self.inputs, self.boundary)
+        self.assertEqual(report["coverage"]["label_eligible"], 2)
+        self.assertEqual(report["provenance"]["terrain"]["units"], "meters")
+        self.assertEqual(digest(self.inputs/"manifest.json"), original_hash)
+        for units in ("feet", "unknown", "", None):
+            parent["terrain"]["units"] = units
+            write_json(self.inputs/"manifest.json", parent)
+            with self.subTest(units=units), self.assertRaises(ValueError):
+                dataset.audit(self.database, self.inputs, self.boundary)
+
     # Value: protects=missing forecast initialization cannot publish assessments; fails_when=an unusable artifact is published; why_new=weather tests have an eligible initialization; seam=none; no_claim=live forecast availability.
     def test_no_eligible_initialization_never_publishes_an_artifact(self):
         model = model_fixture();model.update(boundary_version=digest(self.boundary), promoted=True)

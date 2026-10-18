@@ -2,11 +2,18 @@
 
 **Handoff snapshot: October 17, 2026. County scope: Okaloosa, Florida, FIPS `12091`.**
 
-Current code qualification: the later [offline modeling pipeline](modeling.md)
-implements experimental FEMA mapping-proxy training, assessment production and
-gated observed-outcome research. The implementation gaps below describe this
-handoff snapshot; adding that code establishes no trained or validated real model,
-configured assessments, observed-report overlay or LinuxONE execution.
+**Model status update, October 18 UTC / October 17 Central:** PR #17 added the
+[offline modeling pipeline](modeling.md) without trained weights. A subsequent
+[real-data training run](modeling-run-v1.md) now provides a locally trained,
+exported FEMA mapping proxy that passed the pipeline's promotion gates, plus a
+local county assessment for one archived rainfall window. LinuxONE supplied the
+prepared inputs; the new model and assessment have not been installed or
+activated there. This is not observed-flood validation. Artifacts are ignored
+and therefore absent from a repository clone.
+
+The implementation gaps and decisions below are the earlier handoff snapshot,
+not the current model status. An observed-report overlay and actual LinuxONE
+model benchmark remain unestablished.
 
 ## What we are building
 

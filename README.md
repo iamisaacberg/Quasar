@@ -48,7 +48,10 @@ parcels have a distinct outline. H3 does not sharpen native rainfall forecasts.
 
 Real parcel scores remain unknown unless separately produced matching exposure
 assessments exist. Optional offline modeling implements an experimental FEMA
-mapping proxy and rainfall interaction; no validated flood model is established.
+mapping proxy and rainfall interaction. A real-data model has now been trained
+locally and passed the pipeline's mapping-proxy promotion gates; see the
+[training report](docs/modeling-run-v1.md). It has not been activated on LinuxONE,
+and no observed-flood validation is established.
 Exposure colors are not flood probability or depth, and green does not establish safety.
 
 Fictional sites, synthetic scenarios, what-if additions, notification previews and
@@ -78,5 +81,7 @@ remain optional, explicit research tools; see the documentation index.
 The optional [modeling pipeline](docs/modeling.md) prepares spatially split datasets,
 evaluates a FEMA mapping proxy, exports portable trees and produces experimental
 rainfall/exposure assessments, with a separate gated observed-outcome experiment.
-No real trained model or LinuxONE benchmark is established by adding this code;
-absent datasets and failed promotion gates remain explicit.
+The [first real-data run](docs/modeling-run-v1.md) produced a trained portable
+model and a local archived-rainfall assessment. Training artifacts stay under
+ignored `data/processed/`; cloning this repo does not include them. Server
+activation and actual LinuxONE performance remain separate, uncompleted steps.

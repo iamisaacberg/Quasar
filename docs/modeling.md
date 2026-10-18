@@ -1,9 +1,13 @@
 # Offline parcel modeling
 
 These commands prepare, train, evaluate, export and score an experimental FEMA
-mapping proxy. **No real model has been trained or promoted by adding this code.**
-Ignored county datasets are absent from this workspace. Synthetic tests do not
-establish flood accuracy, county coverage, visual acceptance or LinuxONE execution.
+mapping proxy. PR #17 supplied the pipeline without trained weights. The
+[first real-data run](modeling-run-v1.md), completed October 18, 2026 UTC
+(October 17 Central), trained and exported a model locally from verified
+LinuxONE inputs and passed the unchanged promotion gates. It has not been
+installed or activated on LinuxONE. Ignored datasets and trained artifacts are
+not included in a repository clone. This mapping-proxy evaluation does not
+establish observed-flood accuracy or actual LinuxONE performance.
 County scope is Okaloosa, FIPS `12091`.
 
 ## Method
@@ -20,7 +24,8 @@ excluded. Terrain requires complete polygon statistics; separate point samples
 never fill gaps. Mapped-stream distance retains incomplete coastal/lake/canal
 coverage warnings and does not establish hydraulic connectivity.
 
-Preparation verifies manifests, database/input hashes, inventory identity, units,
+Preparation verifies manifests, database/input hashes, inventory identity, units
+(the manifest accepts `m` or the preparer's USGS spelling `meters`),
 datum and actual polygon containment in the authoritative county geometry. It
 assigns representative points to fixed 10 km EPSG:26916 squares, ordered by SHA256
 of `42:<block>`, with cumulative 70/85% boundaries for development/validation/test.
