@@ -3,13 +3,10 @@
 import {
   ChevronRight,
   ChevronsUpDown,
-  HelpCircle,
   Map,
-  CloudRain,
   Database,
   FileChartColumn,
   ShieldCheck,
-  Waves,
 } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -113,15 +110,7 @@ const sidebarData: SidebarData = {
     { title: "Workspace", items: [
       { label: "Map overview", icon: Map, href: "#map-overview" },
       { label: "Data", icon: Database, href: "#data" },
-      { label: "Forecast & sources", icon: CloudRain, href: "#data-sources" },
       { label: "Reports & exports", icon: FileChartColumn, href: "#reports" },
-    ] },
-    { title: "Resources", items: [
-      { label: "Map guide", icon: HelpCircle, href: "#exercise-guide", children: [
-        { label: "Reading the map", icon: Map, href: "#exercise-guide" },
-        { label: "Understanding the inputs", icon: Waves, href: "#exercise-guide" },
-      ] },
-      { label: "Official NWS guidance", icon: ShieldCheck, href: "https://www.weather.gov/mob/" },
     ] },
   ],
   footerGroup: { title: "Support", items: [] },
@@ -264,10 +253,6 @@ const NavUser = ({ user }: { user: UserData }) => {
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <a href="#data"><Database className="mr-2 size-4" />Data</a>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <a href="#data-sources"><CloudRain className="mr-2 size-4" />Forecast & sources</a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
