@@ -43,8 +43,10 @@ Do not start a deployment or restart shared services without authorization.
 The map, Data tab and Reports use imported native county forecast cells only.
 The map opens at 8 AM Central on the Isaias October 9 archive, with 25 hourly
 positions, county-clipped H3 rainfall and compact rewind, play/pause and forward
-controls. Tools → Archive details contains the interactive maximum-native-cell
-rainfall trend, hour scrubber and source recheck.
+controls. An optional, full-coverage archived NEXRAD reflectivity mosaic follows
+the selected replay hour; it remains distinct from the following six-hour
+WeatherNext forecast and extends beyond the county. Tools → Archive details
+contains the interactive maximum-native-cell rainfall trend, hour scrubber and source recheck.
 Each hex uses the maximum of its overlapping native forecasts; this does not
 increase forecast resolution. Missing overlaps leave the hex transparent.
 Map, Data and Reports share the selected hour. The current forecast is absent

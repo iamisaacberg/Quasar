@@ -55,6 +55,22 @@ midnight Central. They use archived forecasts available at each reconstruction
 clock, retaining per-cell initialization and publication constraints where known.
 They are not historical rainfall observations and never use what-if additions.
 
+The map's optional **Archived NEXRAD radar** overlay follows the selected replay
+start time, rounded down to a five-minute UTC interval. It displays the full
+`USCOMP-N0Q` reflectivity mosaic coverage and is not clipped to Okaloosa County;
+county boundaries, H3 cells and parcel outlines remain over the raster. The
+radar observation is at the selected clock, while the forecast below it covers
+the following six hours. Reflectivity is not a rainfall total, parcel estimate
+or flood observation.
+
+`GET /api/radar/tiles/{YYYYMMDDHHmm}/{z}/{x}/{y}.png` proxies an immutable
+Iowa Environmental Mesonet archived NEXRAD mosaic tile for the fixed replay
+window. Only five-minute timestamps within the replay and zoom levels 4–12 are
+accepted. The proxy uses a fixed upstream URL, validates PNG content and size,
+and caches validated requests in memory. Invalid time/coordinates return 400;
+an unavailable upstream image returns 502. The map credits the Mesonet service
+and NOAA/NWS radar data. This is separate from WeatherNext forecast imports.
+
 `GET /api/data/weather?source=archive` projects this shared archive pipeline into native-cell
 rows for the Data tab, without geometry or scoring. Frames contain `at`,
 `valid_to`, and rows with `native_cell_id`, `rainfall_6h_mm`, `available_hours`

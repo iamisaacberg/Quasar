@@ -228,6 +228,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"county_fips": COUNTY_FIPS, "county_name": COUNTY_NAME,
                                        "timezone": TIMEZONE, "notice": "County source data; missing inputs remain unknown. Follow official NWS/local guidance.", "mode": "county_sources",
                                        "map": map_settings(), "exposure_scale": EXPOSURE_SCALE})
+            match = re.fullmatch(r"/api/radar/tiles/(.+)", url.path)
+            if match:
+                from .radar import fetch_tile
+                try:
+                    body = fetch_tile(match.group(1))
+                except ValueError:
+                    raise
+                except RuntimeError as exc:
+                    return self.send(HTTPStatus.BAD_GATEWAY, {"status": "unavailable", "error": str(exc)})
+                return self.send(200, body, "image/png", immutable=True)
             if url.path == "/api/weather/status":
                 from .data_dashboard import weather_data
                 forecast = weather_data()

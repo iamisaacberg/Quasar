@@ -4,6 +4,7 @@ const colors = { unknown: "#9ca3af" };
 const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)", susceptibility_rainfall_interaction: "Susceptibility-rainfall interaction" };
 let map, mapLoaded = false, current, mapData = {}, requestId = 0, started = false;
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
+let radarTileKey = null;
 const countyGrids = new Map(), rainfallGrids = new Map(), sourceKeys=new Map(), sourceStates=new Map();
 let gridScheduled=false, gridEpoch=0;
 function stateExpression(expression,field) {
@@ -206,8 +207,27 @@ function selectForecastFrame(index) {
   if(!Number.isInteger(index) || !forecastTimeline?.frames?.[index]) return false;
   forecastIndex=index;
   render(forecastTimeline.frames[index].collection);
+  updateArchiveRadar();
   window.dispatchEvent?.(new CustomEvent("quasar:frame",{detail:{index}}));
   return true;
+}
+
+function updateArchiveRadar() {
+  if(!mapLoaded)return;
+  const source=map.getSource("archive-radar"), at=current?.scenario?.valid_from;
+  if(!source || !at)return;
+  const tiles=window.QuasarMapUI?.archiveRadarTiles?.(at);
+  if(!tiles)return;
+  if(tiles!==radarTileKey){source.setTiles([tiles]);radarTileKey=tiles;}
+  const status=$("radar-status");
+  if(status)status.textContent=`NEXRAD mosaic · ${formatForecastTime(at)} · observation at replay time`;
+}
+
+function toggleArchiveRadar() {
+  if(!mapLoaded)return;
+  const enabled=$("radar-toggle").checked;
+  map.setLayoutProperty("archive-radar", "visibility", enabled ? "visible" : "none");
+  if(enabled)updateArchiveRadar();
 }
 
 async function selectPlaybackFrame(index) {
@@ -863,7 +883,14 @@ function setupMap(settings) {
     if (window.ResizeObserver) {
       new window.ResizeObserver(() => map.resize()).observe($("map").parentElement);
     }
-    map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. Source tables remain available."; });
+    map.on("error", event => {
+      if(event?.sourceId==="archive-radar"){
+        const status=$("radar-status");
+        if(status)status.textContent="Archived NEXRAD image unavailable for this hour.";
+        return;
+      }
+      $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. Source tables remain available.";
+    });
     map.on("load", () => {
       const empty = {type:"FeatureCollection", features:[]};
       const belowLabels=map.getStyle?.().layers?.find(layer=>layer.type==="symbol")?.id;
@@ -872,6 +899,8 @@ function setupMap(settings) {
         map.setPaintProperty(layer.id,"raster-saturation",-1);
         map.setPaintProperty(layer.id,"raster-brightness-max",0.55);
       }
+      map.addSource("archive-radar", {type:"raster", tiles:["/api/radar/tiles/202610091300/{z}/{x}/{y}.png"], tileSize:256, minzoom:4, maxzoom:12, attribution:"NEXRAD radar mosaic © Iowa Environmental Mesonet; radar data: NOAA/NWS"});
+      map.addLayer({id:"archive-radar", type:"raster", source:"archive-radar", layout:{visibility:"visible"}, paint:{"raster-opacity":0.58}}, belowLabels);
       // Vector tiles retain integer IDs only. Promote the H3 property so tiled
       // hexagons can read the string-keyed rainfall and exposure feature state.
       map.addSource("hotspots", {type:"geojson", data:empty, promoteId:"h3_index"});
@@ -900,12 +929,13 @@ function setupMap(settings) {
         map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
       }
-      mapLoaded = true; frameCounty(); updateMap(); toggleHex();
+      mapLoaded = true; frameCounty(); updateArchiveRadar(); updateMap(); toggleHex(); toggleArchiveRadar();
     });
     map.on("zoomend", () => {
       updateCountyGrid();
     });
     $("hex-toggle").onchange = toggleHex;
+    $("radar-toggle").onchange = toggleArchiveRadar;
   } catch {
     $("map-status").textContent = "Mapbox could not initialize on this browser. Source tables remain available.";
   }

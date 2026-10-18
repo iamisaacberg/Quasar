@@ -52,6 +52,27 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertTrue(body)
 
+    @patch("quasar.radar._fetch", return_value=b"\x89PNG\r\n\x1a\nradar")
+    def test_archived_radar_tiles_are_proxied_and_cached(self, fetch):
+        connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        try:
+            connection.request("GET", "/api/radar/tiles/202610091300/7/33/52.png")
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Type"), "image/png")
+            self.assertIn("immutable", response.getheader("Cache-Control"))
+            self.assertEqual(response.read(), b"\x89PNG\r\n\x1a\nradar")
+        finally:
+            connection.close()
+        fetch.assert_called_once_with("202610091300", 7, 33, 52)
+        for path in (
+            "/api/radar/tiles/202610091301/7/33/52.png",
+            "/api/radar/tiles/202610101000/7/33/52.png",
+            "/api/radar/tiles/202610091300/13/33/52.png",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(self.request(path)[0], 400)
+
     def test_bad_scope_scenario_and_route(self):
         for path, expected in [("/api/properties?county_fips=12011",400),
                                ("/api/properties?scenario=invalid",410),
