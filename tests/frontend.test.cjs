@@ -29,7 +29,7 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
     scenario:{id:"isaias-2026",valid_from:"2026-10-09T05:00:00Z",valid_to:"2026-10-09T11:00:00Z"},
     forecast:{status:forecastStatus,init_time:"2026-10-09T05:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
     weather_cells:{type:"FeatureCollection",retrieved_at:"2026-10-17T12:30:00Z",features:[
-      {type:"Feature",id:"native-test-cell",geometry:{type:"Polygon",coordinates:[[[-86.6,30.5],[-86.5,30.5],[-86.5,30.6],[-86.6,30.5]]]},properties:{status:forecastStatus,rainfall_6h_mm:forecastStatus==="ready" ? rainfall : null}}
+      {type:"Feature",id:"native-test-cell",geometry:{type:"Polygon",coordinates:[[[-86.6,30.4],[-86.4,30.4],[-86.4,30.6],[-86.6,30.6],[-86.6,30.4]]]},properties:{status:forecastStatus,rainfall_6h_mm:forecastStatus==="ready" ? rainfall : null}}
     ]}};
   let map, resizeCallback, resizeCount=0, observed;
   const events=[], requests=[];
@@ -96,7 +96,7 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
       return {ok:true,json:async()=>body};
     }};
   await vm.runInNewContext(fs.readFileSync("quasar/static/app.js","utf8"),context);
-  return {get,map,data,events,requests,setArchiveMissing:value=>{archiveMissing=value;},setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
+  return {get,map,data,events,requests,setInspectionContext:value=>{inspectionContext=value;},setArchiveMissing:value=>{archiveMissing=value;},setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
     exposureTimerDelays:()=>[...exposureTimers.values()].map(t=>t.delay),
     expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
@@ -114,21 +114,21 @@ test("missing map credentials leave source status usable without exercise reques
   assert.ok(requests.every(url=>!/^\/api\/(properties|scenarios|routes|timeline|notifications|replay)/.test(url)));
 });
 
-test("native forecast polygons and county outlines initialize when map loads after data",async()=>{
+test("county-clipped H3 weather initializes when map loads after data",async()=>{
   const {map,get}=await boot({configured:true});map.handlers["load:"]();
-  assert.equal(map.sources["native-rainfall"].data.features.length,1);
+  assert.equal(map.sources.hotspots.data.features.some(f=>f.properties.rainfall_mm!==null),true);
   assert.equal(map.sources.sites,undefined);assert.equal(map.sources["replay-network"],undefined);
   assert.ok(map.sources.hotspots.data.features.length>0);
   assert.equal(get("map-layer").value,"rainfall");
-  assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"],0);
+  assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"][3],0.76);
   get("hex-toggle").checked=false;get("hex-toggle").onchange();
-  assert.equal(map.layers["hotspot-fill"].visibility,"none");
+  assert.equal(map.layers["hotspot-outline"].visibility,"none");
 });
 
 test("source failure clears prior rainfall without restoring synthetic data",async()=>{
   const {map,get}=await boot({configured:true,scenarioFailure:true});map.handlers["load:"]();
   await get("forecast-retry").onclick();
-  assert.equal(map.sources["native-rainfall"].data.features.length,0);
+  assert.equal(map.sources.hotspots.data.features.every(f=>f.properties.rainfall_mm===null),true);
   assert.match(get("error").textContent,/forecast offline/);
   assert.equal(get("mode-badge").textContent,"ARCHIVE UNAVAILABLE");
 });
@@ -138,10 +138,10 @@ test("React can mount before the controller and starts are idempotent",async()=>
   await app.mount();await app.start();assert.equal(app.requests.filter(url=>url.includes("/api/weather/timeline")).length,1);
 });
 
-test("sidebar width changes resize Mapbox while preserving native sources",async()=>{
+test("sidebar width changes resize Mapbox while preserving H3 weather",async()=>{
   const app=await boot({configured:true});app.map.handlers["load:"]();app.resize();
   assert.equal(app.observed,app.get("map-viewport"));assert.equal(app.resizeCount,1);
-  assert.equal(app.map.sources["native-rainfall"].data.features.length,1);
+  assert.equal(app.map.sources.hotspots.data.features.some(f=>f.properties.rainfall_mm!==null),true);
 });
 
 test("map attribution identifies actual source data",async()=>{
@@ -156,9 +156,9 @@ test("map attribution identifies actual source data",async()=>{
 test("unknown rainfall stays transparent and valid zero remains zero",async()=>{
   for(const options of [{forecastStatus:"stale",rainfall:22},{rainfall:null},{rainfall:0}]){
     const {map,get}=await boot({configured:true,...options});map.handlers["load:"]();
-    const value=map.sources["native-rainfall"].data.features[0].properties.rainfall_mm;
+    const value=map.sources.hotspots.data.features.find(f=>f.properties.rainfall_mm!==null)?.properties.rainfall_mm ?? null;
     assert.equal(value,options.rainfall===0 ? 0 : null);
-    assert.equal(map.layers["native-rainfall-fill"].paint["fill-opacity"][2],0);
+    assert.equal(map.layers["hotspot-fill"].paint["fill-opacity"][2],0);
     assert.match(get("map-data-source").textContent,/initialized.*imported.*0.1 degree/);
   }
 });
@@ -203,16 +203,16 @@ test("parcel failure is unavailable, and closing a selection discards late pages
   assert.equal(other.get('map-selection-panel').hidden,true);
 });
 
-test("county rainfall retains native polygons and never paints stale values as zero", async () => {
+test("H3 rainfall replaces native rectangles and never paints stale values as zero", async () => {
   for (const status of ["ready","stale"]) {
     const {map,get} = await boot({configured:true,mixed:true,countyWeather:true,forecastStatus:status,rainfall:0});
     map.handlers["load:"]();
-    assert.equal(map.sources["native-rainfall"].data.features[0].id,"native-test-cell");
-    assert.equal(map.sources["native-rainfall"].data.features[0].properties.rainfall_mm,status==="ready" ? 0 : null);
+    assert.equal(map.sources["native-rainfall"],undefined);
+    assert.equal(map.sources.hotspots.data.features.find(f=>f.properties.rainfall_mm!==null)?.properties.rainfall_mm ?? null,status==="ready" ? 0 : null);
     assert.match(get("map-data-values").textContent,/native cells available|Rainfall unavailable/);
     assert.match(get("map-data-source").textContent,/0.1 degree.*parcel flood risk/);
     get("map-layer").value="exposure";get("map-layer").onchange();
-    assert.equal(map.layers["native-rainfall-fill"].visibility,"none");
+    assert.equal(map.layers["native-rainfall-fill"],undefined);
   }
 });
 
@@ -435,3 +435,19 @@ test(`model inspection separates susceptibility and rainfall with ${forecastMode
   }
 });
 }
+
+test('H3 rainfall survives missing parcel context and refresh recovers prepared inputs',async()=>{
+  const app=await boot({configured:true,rainfall:86.4});app.map.handlers['load:']();
+  parcelClick(app);await until(()=>app.get('context-retry').hidden===false);
+  assert.equal(app.get('selection-rainfall').textContent,'86.4');
+  assert.match(app.get('context-status').textContent,/unavailable/);
+  assert.equal(app.get('selection-stat-two').textContent,'Unknown');
+  app.setInspectionContext({inventory_id:'snapshot',parcel_count:101,terrain_complete_count:90,fema_complete_count:101,forecast_overlaps:[]});
+  await app.get('forecast-retry').onclick();
+  assert.equal(app.get('selection-rainfall').textContent,'86.4');
+  assert.equal(app.get('selection-stat-two').textContent,'90');
+  assert.equal(app.get('context-retry').hidden,true);
+  app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
+  assert.equal(app.get('selection-rainfall').textContent,'No rainfall data');
+  assert.ok(app.map.sources.hotspots.data.features.every(f=>f.properties.rainfall_mm===null));
+});

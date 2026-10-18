@@ -9,6 +9,7 @@ let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, 
 const exposureResponses = new Map(), parcelAssessments = new Map();
 const parcelCache = window.QuasarParcelCache.create({indexedDB:window.indexedDB});
 let selectedResolution = 7, parcelEntry, cellContext, parcelContext, contextRequest = 0;
+let contextLoading = false;
 let contextMessage = "", parcelListPage = 0, parcelSearch = "", lastParcelPaint = 0;
 let parcelPaintTimer;
 const contextCache = new Map();
@@ -75,7 +76,7 @@ function showMapSummary() {
   $("window").textContent = current.scenario.valid_from ? `${current.mode === "county_archive" ? "Archived forecast" : "Forecast window"}: ${formatForecastTime(current.scenario.valid_from)} – ${formatForecastTime(current.scenario.valid_to)}` : "No imported forecast window available";
   $("map-data-source").textContent = `${forecast.status || "unavailable"} · initialized ${forecast.init_time || "unavailable"} · imported ${forecast.retrieved_at || "unavailable"} · native ${forecast.native_resolution || "0.1 degree"} ensemble mean. ${forecast.source_table || "Source unavailable"}. Forecast rain is not observed rain or parcel flood risk.`;
   $("exposure-legend").hidden = rain; $("rainfall-legend").hidden = !rain;
-  $("map-layer-note").textContent = rain ? "Native rainfall cells retain their source resolution. Transparent cells have unavailable rainfall. H3 outlines support parcel browsing and do not sharpen forecasts." : `${exposureData?.message || "Parcel assessments are unavailable unless matching results are configured."} Transparent interiors indicate unknown scores. Incomplete coverage is reported in details. Green does not establish safety.`;
+  $("map-layer-note").textContent = rain ? "Hex color shows the maximum rainfall among overlapping native forecast cells. Missing overlaps stay transparent. The H3 display does not increase forecast resolution." : `${exposureData?.message || "Parcel assessments are unavailable unless matching results are configured."} Transparent interiors indicate unknown scores. Incomplete coverage is reported in details. Green does not establish safety.`;
   showWeatherStatus(forecast);
 }
 
@@ -102,7 +103,8 @@ function renderArchiveTrend() {
     button.append(bar); button.onclick=()=>{playback?.pause();selectForecastFrame(index);};chart.append(button);
   });
   if(focused) chart.children[forecastIndex]?.focus();
-  $("archive-trend-label").textContent=frames.length ? "Maximum native-cell rainfall · mm / 6h" : "Isaias · October 9, 2026";
+  $("archive-trend-label").textContent="ISAIAS / OCTOBER 9, 2026";
+  $("archive-peak").textContent=peaks[forecastIndex]?.peak?.toFixed(1) ?? "—";
   $("archive-trend-range").textContent=frames.length ? "Oct 9, midnight → Oct 10, midnight · Central" : "Archive unavailable. Recheck the source or inspect Data.";
 }
 
@@ -252,15 +254,6 @@ async function hydrateParcelExposure() {
 
 function updateMap() {
   if (!mapLoaded || !mapData) return;
-  const rain = $("map-layer").value === "rainfall";
-  const nativeSource = map.getSource("native-rainfall");
-  if (nativeSource) {
-    const cells = current?.weather_cells || emptyCollection();
-    nativeSource.setData({...cells, features:cells.features.map(f => ({...f,
-      properties:{...f.properties, rainfall_mm:f.properties.rainfall_6h_mm}}))});
-    map.setLayoutProperty("native-rainfall-fill", "visibility", rain ? "visible" : "none");
-    map.setLayoutProperty("native-rainfall-outline", "visibility", rain ? "visible" : "none");
-  }
   toggleHex();
   updateCountyGrid();
 }
@@ -276,9 +269,15 @@ function updateCountyGrid() {
     grid = QuasarSpatial.exposureCoverage(countyGrids.get(resolution), cached?.status === "ready" ? cached.cells : {});
     void refreshExposure(resolution);
   }
+  const rainfallGrid=county ? QuasarSpatial.rainfallCoverage(countyGrids.get(resolution),current?.weather_cells) : emptyCollection();
+  grid={...grid,features:grid.features.map((f,i)=>{
+    const weather=rainfallGrid.features[i]?.properties;
+    return {...f,properties:{...f.properties,rainfall_mm:weather?.rainfall_mm ?? null}};
+  })};
   map.getSource("hotspots").setData(grid);
   const rain = $("map-layer").value === "rainfall";
-  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0 : ["case",["==",["get","exposure_score"],null],0,0.28]);
+  map.setPaintProperty("hotspot-fill", "fill-color", rain ? QuasarSpatial.rainfallExpression() : mapColors("exposure_score"));
+  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? ["case",["==",["get","rainfall_mm"],null],0,0.76] : ["case",["==",["get","exposure_score"],null],0,0.28]);
   for (const layer of ["parcel-fill", "selected-parcel-fill"]) map.setPaintProperty(layer,"fill-opacity",rain ? 0 : ["case",["==",["get","exposure_score"],null],0,0.45]);
   $("grid-resolution").textContent = `H3 · RES ${resolution}`;
   if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to inspect`;
@@ -298,7 +297,7 @@ function closeSelection() {
   ++parcelRequest; ++contextRequest;
   window.clearTimeout?.(parcelPaintTimer); parcelPaintTimer=undefined;
   selectedCell = selectedParcel = parcelData = parcelEntry = cellContext = parcelContext = null;
-  contextMessage = "";
+  contextLoading=false; contextMessage = "";
   $("map-selection-panel").hidden = true;
   if(restoreFocus)$("map-overview").focus();
   if (mapLoaded) {
@@ -320,12 +319,28 @@ function inputRows(rows) {
   }));
 }
 
+function weatherContextForCell() {
+  if(!selectedCell || !county) return null;
+  const resolution=selectedResolution;
+  if(!countyGrids.has(resolution)) countyGrids.set(resolution,QuasarSpatial.countyCells(county.features[0].geometry,h3,resolution));
+  return QuasarSpatial.rainfallCoverage(countyGrids.get(resolution),current?.weather_cells).features.find(f=>f.id===selectedCell)?.properties;
+}
+
 function renderInspectionInputs() {
-  const context=selectedParcel === null ? cellContext : parcelContext;
+  const prepared=selectedParcel === null ? cellContext : parcelContext;
+  const weather=selectedParcel===null ? weatherContextForCell() : null;
+  const context=selectedParcel === null ? {...prepared,forecast_overlaps:weather?.forecast_overlaps || [],forecast_coverage_complete:weather?.forecast_coverage_complete} : prepared;
   const rain=$("map-layer").value === "rainfall";
   const summary=window.QuasarInspection.rainfallSummary(context,current);
+  if (selectedParcel===null && !context.forecast_overlaps.length) {
+    summary.value=current?.forecast?.status==="loading" ? "Loading…" : "No rainfall data";
+    summary.detail="No native forecast geometry covers this selection in the loaded archive.";
+  } else if (!context) {
+    summary.value=contextLoading ? "Loading…" : "Not linked";
+    summary.detail=contextLoading ? "Loading this selection’s prepared weather overlaps…" : "Parcel reference inputs did not load. Retry below, or inspect the parent H3 cell for forecast rainfall.";
+  }
   $("selection-rainfall").textContent=summary.value;
-  $("selection-rainfall-note").textContent=summary.detail;
+  $("selection-rainfall-note").textContent=summary.detail + (selectedParcel===null ? " Hex color uses the maximum; H3 does not increase forecast resolution." : "");
   $("selection-rainfall-meter").hidden=!rain;
   $("selection-exposure-meter").hidden=rain;
   $("selection-exposure-section").hidden=rain;
@@ -342,20 +357,27 @@ function renderInspectionInputs() {
       [context?.forecast_overlaps?.length ? String(context.forecast_overlaps.length) : "Unknown","Native overlaps"]]);
   }
   $("context-status").textContent=contextMessage;
-  $("context-provenance").textContent=window.QuasarInspection.provenance(context);
+  $("context-retry").hidden=Boolean(prepared) || contextLoading;
+  $("context-provenance").textContent=window.QuasarInspection.provenance(prepared);
   renderExposureInspection();
 }
 
-async function loadInspection(kind,identifier) {
+async function loadInspection(kind,identifier,force=false) {
   const request=++contextRequest, inventory=parcelEntry?.inventory_id;
   const key=JSON.stringify([kind,identifier,inventory]);
-  contextMessage="Loading prepared reference inputs…"; renderInspectionInputs();
+  if(force) {
+    contextCache.delete(key);
+    if(kind==="parcel") parcelContext=null; else cellContext=null;
+  }
+  contextLoading=true; contextMessage="Loading prepared reference inputs…";
+  if(selectedParcel===null) renderCellPanel(); else renderInspectionInputs();
   try {
-    const context=contextCache.get(key) || await api(`/api/${kind === "parcel" ? "parcels" : "cells"}/${identifier}/${kind === "parcel" ? "context" : "summary"}${inventory ? `?${new URLSearchParams({inventory_id:inventory})}` : ""}`);
+    const context=(!force && contextCache.get(key)) || await api(`/api/${kind === "parcel" ? "parcels" : "cells"}/${identifier}/${kind === "parcel" ? "context" : "summary"}${inventory ? `?${new URLSearchParams({inventory_id:inventory})}` : ""}`);
     if(context.status!=="ready" || context.county_fips!=="12091" || context.risk_score!==null
         || (kind==="parcel" ? context.parcel_id!==identifier : context.cell_id!==identifier)
         || (parcelEntry?.inventory_id && context.inventory_id!==parcelEntry.inventory_id)) throw new Error("Prepared context is invalid or describes a different inventory");
     if(request!==contextRequest) return;
+    contextLoading=false;
     contextCache.set(key,context);
     if(contextCache.size>100) contextCache.delete(contextCache.keys().next().value);
     if(kind==="parcel") parcelContext=context; else cellContext=context;
@@ -367,7 +389,9 @@ async function loadInspection(kind,identifier) {
   } catch(error) {
     if(request!==contextRequest) return;
     if(selectedParcel!==null) panelStats([["Unknown","Exposure"],["Unknown","Forecast overlap"],["Unknown","Terrain"]]);
-    contextMessage=`Reference inputs unavailable: ${error.message}`; renderInspectionInputs();
+    contextLoading=false;
+    contextMessage=`Reference inputs unavailable: ${error.message}`;
+    if(selectedParcel===null) renderCellPanel(); else renderInspectionInputs();
   }
 }
 
@@ -378,7 +402,8 @@ function renderParcelList() {
     const button=element("button",undefined,"selection-parcel-row"); button.type="button";
     const score=feature.properties.exposure_score;
     button.style.borderLeft=`4px solid ${QuasarSpatial.exposureColor(score)}`;
-    button.append(element("strong",`Parcel ${feature.id}`),element("span",`${score == null ? "Unknown" : score.toFixed(1)+" / 100"} · ${QuasarSpatial.exposureBand(score).label} →`));
+    const label=$("map-layer").value === "rainfall" ? "View terrain & rainfall →" : `${score == null ? "Unknown" : score.toFixed(1)+" / 100"} · ${QuasarSpatial.exposureBand(score).label} →`;
+    button.append(element("strong",`Parcel ${feature.id}`),element("span",label));
     button.onclick=()=>inspectParcel(feature); return button;
   }));
   $("parcel-page").textContent=`${features.length ? parcelListPage*50+1 : 0}–${Math.min((parcelListPage+1)*50,features.length)} of ${features.length.toLocaleString()} loaded matches`;
@@ -432,7 +457,8 @@ async function inspectCell(cell,resolution=7) {
   closeSelection(); selectedCell=cell; selectedResolution=resolution;
   parcelListPage=0; parcelSearch=""; $("parcel-search").value="";
   if (playback) $("map-source-info").open = false;
-  map.getSource("selected-cell").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]}}]});
+  const selectionGeometry=county && QuasarSpatial.clipGeometry({type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]},county.features[0].geometry);
+  map.getSource("selected-cell").setData({type:"FeatureCollection",features:selectionGeometry ? [{type:"Feature",geometry:selectionGeometry}] : []});
   $("parcel-status").textContent=resolution===7?"Restoring parcel inventory…":"Parcel outlines load at resolution 7.";
   $("parcel-provenance").textContent=""; $("parcel-retry").hidden=true;
   renderCellPanel();
@@ -440,6 +466,9 @@ async function inspectCell(cell,resolution=7) {
   if(resolution===7) {
     const [lat,lon]=h3.cellToLatLng(cell); map.flyTo({center:[lon,lat],zoom:Math.max(13.5,map.getZoom()),duration:650});
     await loadParcels();
+    // A cached inventory can arrive before the manifest and reject the first
+    // context response. Retry against the now-verified inventory, not that cache.
+    if(selectedCell===cell && selectedParcel===null && !cellContext) await loadInspection("cell",cell);
   }
 }
 
@@ -570,13 +599,15 @@ function setupMap(settings) {
     map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. Source tables remain available."; });
     map.on("load", () => {
       const empty = {type:"FeatureCollection", features:[]};
-      map.addSource("native-rainfall", {type:"geojson", data:empty});
-      map.addLayer({id:"native-rainfall-fill",type:"fill",source:"native-rainfall",paint:{
-        "fill-color":["case",["==",["get","rainfall_mm"],null],"#a1a9ad",["interpolate",["linear"],["get","rainfall_mm"],0,"#e0edf4",5,"#83c9df",25,"#3093bc",75,"#25439a"]],"fill-opacity":["case",["==",["get","rainfall_mm"],null],0,0.55]}});
-      map.addLayer({id:"native-rainfall-outline",type:"line",source:"native-rainfall",paint:{"line-color":"#6d99bc","line-width":0.6}});
+      const belowLabels=map.getStyle?.().layers?.find(layer=>layer.type==="symbol")?.id;
+      // Satellite imagery competes with rain colors. Keep geography, quiet its texture.
+      for(const layer of map.getStyle?.().layers || []) if(layer.type==="raster") {
+        map.setPaintProperty(layer.id,"raster-saturation",-1);
+        map.setPaintProperty(layer.id,"raster-brightness-max",0.55);
+      }
       map.addSource("hotspots", {type:"geojson", data:empty});
-      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":["case",["==",["get","exposure_score"],null],0,0.28]}});
-      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":"#9ca3af", "line-width":1}});
+      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":["case",["==",["get","exposure_score"],null],0,0.28]}},belowLabels);
+      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":"#9ca3af", "line-opacity":0.45, "line-width":0.65}});
       map.addSource("county-boundary", {type:"geojson", data:county || empty});
       map.addLayer({id:"county-boundary", type:"line", source:"county-boundary", paint:{"line-color":"#ecf4ef","line-width":2,"line-dasharray":[3,2]}});
       map.addSource("selected-cell", {type:"geojson", data:empty});
@@ -613,7 +644,7 @@ function setupMap(settings) {
 
 function toggleHex() {
   if (!mapLoaded) return;
-  for (const id of ["hotspot-fill", "hotspot-outline"]) map.setLayoutProperty(id, "visibility", $("hex-toggle").checked ? "visible" : "none");
+  map.setLayoutProperty("hotspot-outline", "visibility", $("hex-toggle").checked ? "visible" : "none");
 }
 
 function showWeatherStatus(data) {
@@ -694,7 +725,12 @@ async function start() {
       }
     });
   }
-  $("forecast-retry").onclick=()=>{playback?.pause();return loadScenario();};
+  $("forecast-retry").onclick=async()=>{
+    playback?.pause(); const loaded=await loadScenario();
+    if(selectedCell) await loadInspection(selectedParcel===null ? "cell" : "parcel",selectedParcel ?? selectedCell,true);
+    return loaded;
+  };
+  $("context-retry").onclick=()=>loadInspection(selectedParcel===null ? "cell" : "parcel",selectedParcel ?? selectedCell,true);
   window.addEventListener?.("quasar:seek",event=>{playback?.pause();forecastIndex=event.detail.index;selectForecastFrame(forecastIndex);});
   // Archive reads must not wait for Mapbox or the external county service.
   const archiveLoad=loadScenario();
@@ -725,7 +761,7 @@ async function start() {
   $("parcel-clear").onclick=async()=>{closeSelection();contextCache.clear();await parcelCache.clear();};
   void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
-  $("map-layer").onchange = () => { showMapSummary(); updateMap(); if(selectedCell)renderInspectionInputs(); };
+  $("map-layer").onchange = () => { showMapSummary(); updateMap(); if(selectedCell) { if(selectedParcel===null)renderCellPanel(); else renderInspectionInputs(); } };
   try {
     const config=await api("/api/config");
     if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
@@ -742,6 +778,7 @@ async function start() {
       updateCountyGrid();
     } catch {
       $("grid-status").textContent = "County boundary unavailable · reload to retry";
+      $("map-status").textContent = "County boundary unavailable. H3 rainfall cannot be drawn; native forecasts remain available in Data. Reload to retry.";
     }
   }
   if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,select:feature=>{

@@ -104,7 +104,7 @@ The same server-only parcel authentication/proxy applies to all these endpoints.
 
 Offline preparation copies verified descriptive records and computes positive-area
 native forecast overlaps in EPSG:26916, keeping native IDs, geometry and overlap
-fractions. Multiple cells remain separate. Browser rainfall comes only from the
+fractions. Multiple cells remain separate. Parcel inspection rainfall comes only from the
 selected scenario's existing `weather_cells`, matched by native ID and geometry;
 stale/missing values stay null. Synthetic exercise rainfall is never assigned to
 real parcels. No runtime GIS dependency, cloud query or score calculation is added.
@@ -113,10 +113,24 @@ real parcels. No runtime GIS dependency, cloud query or score calculation is add
 Census TIGERweb `GEOID=12091` boundary, source URL, retrieval time, CRS, units,
 license and processing notes. It is cached in memory for the UTC day. The browser
 fills all intersecting county cells at H3 resolutions 4, 5, 6 and 7, including
-coastal slivers and islands. Hexagons can extend beyond the dashed county outline.
+coastal slivers and islands. Displayed hexagons and the selected-cell outline are clipped to the authoritative
+county polygon, retaining holes and islands. H3 IDs and parcel membership remain unchanged.
 Zoom thresholds are 6.75, 8.5 and 10.75, matching TrialSmiles. No site-derived
-score exists for unoccupied cells; their score stays null. In rainfall mode the
-grid is neutral and is not a forecast layer.
+score exists for unoccupied cells; their score stays null.
+
+In rainfall mode the H3 grid is the only weather surface. A browser geometry join
+intersects each clipped hex with the imported native forecast polygons. Boundary-only
+contacts are excluded. The hex color is the **maximum** overlapping six-hour
+forecast, only when the geometry is fully covered and every overlapping native cell
+has a finite, nonnegative, ready value. Otherwise the fill remains transparent.
+The inspector retains the individual native values, their range, initialization,
+import time, source resolution and units. It requires no prepared parcel artifact.
+Geometry joins are cached per grid and native ID/geometry signature; every hour
+reads new rainfall, and a failed source reload clears colors. Native square outlines
+are not drawn. H3 does not increase forecast resolution, and the color is neither
+an area-weighted mean nor a parcel estimate. The browser uses the pure-JavaScript
+`polygon-clipping` library bundled in committed UI assets; Python/GIS runtime
+requirements are unchanged. Existing API payloads and exports retain native geometry.
 
 `GET /api/parcels?ring=<JSON closed lon/lat R7 ring>&offset=0` queries the fixed
 Okaloosa parcel GIS layer for intersecting polygons. Only `OBJECTID`

@@ -91,3 +91,50 @@ test('zoom thresholds match TrialSmiles and county grid includes unoccupied area
   const tiny=[[[-86.5,30.5],[-86.49999,30.5],[-86.49999,30.50001],[-86.5,30.5]]];
   assert.ok(countyCells({type:'MultiPolygon',coordinates:[tiny,tiny]},h3,7).features.length>=1);
 });
+
+const rectangle=(x0,y0,x1,y1)=>({type:'Polygon',coordinates:[[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]]]});
+const weatherCell=(id,geometry,rain,status='ready')=>({type:'Feature',id,geometry,properties:{status,rainfall_6h_mm:rain}});
+test('county clipping preserves holes and islands and leaves no H3 area outside the boundary',()=>{
+  const {countyCells}=require('../quasar/static/spatial.js');
+  const clipping=require('polygon-clipping');
+  const outer=rectangle(-86.6,30.4,-86.4,30.6).coordinates;
+  const hole=rectangle(-86.54,30.46,-86.48,30.52).coordinates[0];
+  const county={type:'MultiPolygon',coordinates:[[outer[0],hole],rectangle(-86.7,30.7,-86.69,30.71).coordinates]};
+  for(const resolution of [4,5,6,7]) {
+    const grid=countyCells(county,h3,resolution);
+    assert.ok(grid.features.length>0);
+    for(const hex of grid.features) assert.deepEqual(clipping.difference(hex.geometry.coordinates,county.coordinates),[]);
+    const union=clipping.union(...grid.features.map(f=>f.geometry.coordinates));
+    assert.deepEqual(clipping.difference(county.coordinates,union),[]);
+  }
+});
+test('H3 weather uses maximum overlapping native rainfall and retains the original geometries',()=>{
+  const {rainfallCoverage}=require('../quasar/static/spatial.js');
+  const grid={type:'FeatureCollection',features:[{id:'hex',geometry:rectangle(0,0,2,1),properties:{}}]};
+  const cells={features:[weatherCell('west',rectangle(0,0,1,1),10),weatherCell('east',rectangle(1,0,2,1),25),weatherCell('touch',rectangle(2,0,3,1),99)]};
+  const p=rainfallCoverage(grid,cells).features[0].properties;
+  assert.equal(p.rainfall_mm,25);
+  assert.deepEqual(p.forecast_overlaps.map(o=>o.native_cell_id),['west','east']);
+  assert.deepEqual(p.forecast_overlaps[0].geometry,cells.features[0].geometry);
+  assert.equal(p.forecast_coverage_complete,true);
+  assert.equal(grid.features[0].properties.rainfall_mm,undefined);
+  // Same geometries, next hour: joins are reused but rainfall is not cached.
+  cells.features[1].properties.rainfall_6h_mm=0;
+  assert.equal(rainfallCoverage(grid,cells).features[0].properties.rainfall_mm,10);
+});
+test('partial geometry, stale, missing and invalid hours never paint known H3 rainfall; zero does',()=>{
+  const {rainfallCoverage}=require('../quasar/static/spatial.js');
+  const geometry=rectangle(0,0,2,1), grid={features:[{id:'hex',geometry,properties:{}}]};
+  const get=cells=>rainfallCoverage(grid,{features:cells}).features[0].properties;
+  assert.equal(get([weatherCell('a',geometry,0)]).rainfall_mm,0);
+  for(const value of [null,undefined,NaN,Infinity,-1,'5']) assert.equal(get([weatherCell('a',geometry,value)]).rainfall_mm,null);
+  assert.equal(get([weatherCell('a',geometry,12,'stale')]).rainfall_mm,null);
+  assert.equal(get([weatherCell('a',geometry,12,'incomplete')]).rainfall_mm,null);
+  assert.equal(get([]).rainfall_mm,null);
+  const partial=get([weatherCell('a',rectangle(0,0,1,1),12)]);
+  assert.equal(partial.rainfall_mm,null);assert.equal(partial.forecast_coverage_complete,false);
+  const missing=get([weatherCell('a',rectangle(0,0,1,1),12),weatherCell('b',rectangle(1,0,2,1),null,'incomplete')]);
+  assert.equal(missing.rainfall_mm,null);assert.equal(missing.rainfall_available,1);
+  // Changing source geometry with the same ID invalidates the geometry join.
+  assert.equal(get([weatherCell('a',rectangle(3,0,4,1),12)]).rainfall_total,0);
+});

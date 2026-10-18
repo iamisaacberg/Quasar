@@ -7,7 +7,9 @@ not observed rainfall, proof of local flooding, or a trained flood model.
 ## Presenter flow
 
 1. Open Map overview. The archive loads independently of the map token and
-   county-boundary service. Rainfall polygons retain WeatherNext's native grid.
+   county-boundary service. The map colors H3 cells clipped to the authoritative
+   county boundary. WeatherNext native polygons remain the underlying source;
+   their rectangular outlines are not drawn. The H3 display requires the county boundary.
 2. Use Play, the hourly slider, previous/next, or a chart bar. The 25 positions
    run from October 9 midnight through October 10 midnight in America/Chicago
    (`2026-10-09T05:00:00Z` through `2026-10-10T05:00:00Z`). Each position shows
@@ -15,8 +17,13 @@ not observed rainfall, proof of local flooding, or a trained flood model.
 3. The chart shows the maximum among available native-cell totals at each hour.
    It is not a county mean, cumulative storm total or rainfall observation.
    Hatched bars indicate partial coverage or unavailable rainfall; valid zero
-   remains zero. Polygons use a fixed millimeter scale across all hours.
-4. Select a county H3 cell, zoom in and select a parcel. Prepared terrain, FEMA,
+   remains zero. H3 colors use a fixed millimeter scale across all hours, showing
+   the maximum among the native forecasts overlapping each hex. Any missing,
+   stale or incomplete overlapping forecast, or incomplete spatial coverage,
+   leaves the hex transparent. This is a display summary, not higher-resolution weather.
+4. Select a county H3 cell to see the range and provenance of its overlapping
+   native forecasts immediately, independently of prepared parcel inputs. Zoom in
+   and select a parcel. Prepared terrain, FEMA,
    mapped-waterway context and exact native forecast overlaps require the
    matching inspection artifact. Geometry alone never produces a risk score.
 5. Open Data or Reports & exports. They retain the selected archive hour. CSV,
@@ -25,7 +32,10 @@ not observed rainfall, proof of local flooding, or a trained flood model.
 
 Playback reuses one loaded snapshot; it does not download/recompute every frame.
 Recheck source explicitly reloads the archive. A failed reload clears rainfall
-and playback and shows the source failure. No current-forecast selector is shown.
+and playback and shows the source failure. Recheck source also retries the
+selected parcel/cell reference inputs. Failed reference requests have their own
+retry control; a cache inventory change triggers a context retry after parcel
+loading. No current-forecast selector is shown.
 
 ## Required runtime sources
 

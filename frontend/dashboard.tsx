@@ -51,7 +51,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
         <p id="error" role="alert" hidden />
         <div className="map-workspace">
           <section className="map-card" id="map-overview" tabIndex={-1} aria-label="Okaloosa county map">
-            <div className="panel-header"><div><h2 id="map-heading"><MapPin aria-hidden="true" />County map</h2><p>County grid · parcel browsing · native forecast rainfall</p></div><span id="grid-resolution" className="subtle-tag">H3 · RES 6</span></div>
+            <div className="panel-header"><div><h2 id="map-heading"><MapPin aria-hidden="true" />County map</h2><p>County H3 cells · archived forecast rainfall</p></div><span id="grid-resolution" className="subtle-tag">H3 · RES 6</span></div>
             <div className="map-viewport">
               <div id="map"><p className="map-fallback">Map loading. County source tables remain available in Data.</p></div>
               <div className="map-search map-float" role="search">
@@ -68,11 +68,12 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                     <p className="detail-note">Isaias archive · October 9, 2026<br />Each hour shows the following six forecast hours.</p>
                     <label htmlFor="map-layer"><Layers3 aria-hidden="true" /><span>Display</span><select id="map-layer" defaultValue="rainfall"><option value="rainfall">Rainfall · mm / 6h</option><option value="exposure">Relative exposure · /100</option></select></label>
                   </section>
-                  <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />County H3 grid</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
+                  <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />H3 cell outlines</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
                 </div></details>
               </div>
               <section className="map-playback map-float" aria-label="Isaias archive playback">
                 <div className="archive-playback-heading"><strong id="archive-trend-label">Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
+                <div className="archive-reading"><span id="archive-peak">—</span><span>mm / 6h <small>maximum across native cells</small></span></div>
                 <div id="archive-trend" className="archive-trend" role="group" aria-label="Hourly maximum forecast rainfall; select an hour" />
                 <p id="archive-trend-range" />
                 <p id="playback-clock">Loading Isaias archive…</p>
@@ -90,11 +91,10 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                 <span>Transparent · Unknown or unavailable assessment</span>
                 <strong>Green does not establish safety.</strong>
               </div>
-                <div id="rainfall-legend" className="legend" hidden aria-label="Rainfall legend"><span><i className="dot rain-light" />0</span><span><i className="dot rain-low" />5</span><span><i className="dot rain-medium" />25</span><span><i className="dot rain-heavy" />75+ mm / 6h</span><span>Transparent · Unavailable</span></div>
-                <p>Rainfall: mm / 6h · Exposure: score / 100</p>
+                <div id="rainfall-legend" className="rainfall-scale" hidden aria-label="Rainfall legend"><strong>Forecast rainfall · mm / 6h</strong><div className="rainfall-gradient" /><div className="rainfall-ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span><span>150+</span></div><span>Hex color = maximum overlapping forecast</span><small>Transparent = missing rainfall</small></div>
                 <details className="map-info" id="map-source-info"><summary><Info aria-hidden="true" />Source &amp; interpretation</summary>
                   <div className="map-data-summary" aria-live="polite"><strong id="map-data-title">Loading map data…</strong><p id="window">Loading source window…</p><p id="map-data-values" /><p id="map-data-source" /></div>
-                  <p id="map-layer-note" className="detail-note">H3 outlines support parcel browsing. Native rainfall cells retain their original resolution.</p>
+                  <p id="map-layer-note" className="detail-note">H3 colors summarize overlapping native forecasts; they do not increase forecast resolution.</p>
                   <p id="map-demo-notice">Forecasts supplement official NWS/local guidance.</p>
                 </details>
               </div></details>
@@ -107,7 +107,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
           <section className="source-card" aria-labelledby="forecast-heading"><CloudRain aria-hidden="true" /><div><h2 id="forecast-heading">WeatherNext 3</h2><p id="weather-status" role="status">Checking imported forecast status…</p></div></section>
           <section className="source-card" aria-labelledby="official-heading"><Radar aria-hidden="true" /><div><h2 id="official-heading">Official NWS alerts</h2><p id="official-status">Official feed is not connected. This is not an all-clear.</p><a href="https://www.weather.gov/mob/" target="_blank" rel="noopener noreferrer">Open NWS Mobile/Pensacola <ArrowUpRight aria-hidden="true" /></a></div></section>
         </section>
-        <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read the map</summary><p>Play or select an hour in the Isaias timeline. The bars show the maximum six-hour rainfall among available native cells, not observed rain or a county average. Then select a county cell and parcel to inspect prepared terrain, FEMA and native rainfall overlaps. Thin outlines remain visible when a score is unavailable; transparent interiors do not indicate low risk.</p><p>Archived rainfall is a forecast reconstruction, not observed rain. Missing and stale values remain unknown. H3 does not increase forecast resolution. Follow official NWS and local guidance for real decisions.</p></details>
+        <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read the map</summary><p>Play or select an hour in the Isaias timeline. The bars show the maximum six-hour rainfall among available native cells, not observed rain or a county average. Hex colors show the maximum overlapping native forecast, clipped to the county boundary. Select a cell for its rainfall range, then a parcel for prepared terrain, FEMA and exact native rainfall overlaps. Thin outlines remain visible when a score is unavailable; transparent interiors do not indicate low risk.</p><p>Archived rainfall is a forecast reconstruction, not observed rain. Missing and stale values remain unknown. H3 does not increase forecast resolution. Follow official NWS and local guidance for real decisions.</p></details>
         <footer className="dashboard-footer"><span><Waves aria-hidden="true" />Quasar · IBM Z Datathon</span><p>Okaloosa only · Source dates and coverage retained · Follow official guidance</p></footer>
       </div>
     </div>

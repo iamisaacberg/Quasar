@@ -1,10 +1,49 @@
 /* H3 is an index/summary, not hydrologic downscaling or county containment. */
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./exposure-scale.json"));
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./exposure-scale.json"), require("polygon-clipping"));
   else root.QuasarSpatial = factory();
-})(typeof globalThis !== "undefined" ? globalThis : this, function (initialScale) {
+})(typeof globalThis !== "undefined" ? globalThis : this, function (initialScale, clipping) {
   "use strict";
   let exposureScale = initialScale;
+  function configureGeometry(value) { clipping=value; }
+  const coordinates=geometry=>geometry.type==="Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  function geometryBounds(geometry) {
+    const points=coordinates(geometry).flat(2);
+    return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
+  }
+  const boxesOverlap=(a,b)=>a[0]<b[2] && a[2]>b[0] && a[1]<b[3] && a[3]>b[1];
+  function clipGeometry(geometry,boundary) {
+    const result=clipping.intersection(coordinates(geometry),coordinates(boundary));
+    return result.length ? {type:"MultiPolygon",coordinates:result} : null;
+  }
+  // Geometry-only joins are reused across hours; rainfall is always read anew.
+  const weatherJoins=new WeakMap();
+  function rainfallCoverage(grid,weather) {
+    const cells=weather?.features || [];
+    const signature=JSON.stringify(cells.map(f=>[f.id,f.geometry]));
+    let joined=weatherJoins.get(grid);
+    if(!joined || joined.signature!==signature) {
+      const natives=cells.map(f=>({...f,bounds:geometryBounds(f.geometry)}));
+      const overlaps=new Map(grid.features.map(hex=>{
+        const bounds=geometryBounds(hex.geometry);
+        const matches=natives.filter(f=>boxesOverlap(bounds,f.bounds) && clipGeometry(hex.geometry,f.geometry));
+        const complete=matches.length>0 && clipping.difference(coordinates(hex.geometry),...matches.map(f=>coordinates(f.geometry))).length===0;
+        return [hex.id,{complete,overlaps:matches.map(f=>({native_cell_id:f.id,geometry:f.geometry}))}];
+      }));
+      joined={signature,overlaps};weatherJoins.set(grid,joined);
+    }
+    const native=new Map(cells.map(f=>[f.id,f]));
+    return {...grid,features:grid.features.map(hex=>{
+      const {overlaps,complete}=joined.overlaps.get(hex.id), values=overlaps.map(o=>native.get(o.native_cell_id)?.properties)
+        .filter(p=>p?.status==="ready" && typeof p.rainfall_6h_mm==="number" && Number.isFinite(p.rainfall_6h_mm) && p.rainfall_6h_mm>=0).map(p=>p.rainfall_6h_mm);
+      return {...hex,properties:{...hex.properties,forecast_overlaps:overlaps,forecast_coverage_complete:complete,
+        rainfall_mm:complete && values.length===overlaps.length && values.length ? Math.max(...values) : null,
+        rainfall_available:values.length,rainfall_total:overlaps.length}};
+    })};
+  }
+  function rainfallExpression(field="rainfall_mm") {
+    return ["interpolate",["linear"],["coalesce",["get",field],0],0,"#e0edf4",5,"#94dded",25,"#32b6d5",50,"#3478cf",75,"#6655c9",100,"#a643ad",150,"#db4482"];
+  }
   function configureExposure(scale) { exposureScale = scale; }
   function validScore(value) { return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100; }
   function exposureBand(score) {
@@ -78,15 +117,15 @@
       rings, resolution, h3.POLYGON_TO_CELLS_FLAGS.containmentOverlapping, true)));
     return {type:"FeatureCollection", features:Array.from(indexes, cell => ({
       type:"Feature", id:cell,
-      geometry:{type:"Polygon", coordinates:[h3.cellToBoundary(cell, true)]},
+      geometry:clipGeometry({type:"Polygon", coordinates:[h3.cellToBoundary(cell, true)]},geometry),
       properties:{h3_index:cell, resolution, site_count:0, unknown_count:0, scored_count:0,
         max_score:null, mean_score:null, risk_band:"unknown"}
-    }))};
+    })).filter(feature=>feature.geometry)};
   }
   function coverage(grid, collection, h3, resolution) {
     const occupied = new Map(aggregate(collection, h3, resolution).cells.features.map(f => [f.id, f.properties]));
     return {...grid, features:grid.features.map(f => ({...f, properties:occupied.get(f.id) || f.properties}))};
   }
-  return {aggregate, resolutionForZoom, childZoom, countyCells, coverage, configureExposure,
+  return {configureGeometry,clipGeometry,rainfallCoverage,rainfallExpression,aggregate, resolutionForZoom, childZoom, countyCells, coverage, configureExposure,
     exposureBand, exposureColor, exposureExpression, exposureFeature, exposureCoverage, validScore};
 });

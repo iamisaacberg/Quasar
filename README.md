@@ -36,7 +36,9 @@ Do not start a deployment or restart shared services without authorization.
 
 The map, Data tab and Reports use imported native county forecast cells only.
 The map opens directly on the Isaias October 9 archive, with 25 hourly
-positions, native rainfall polygons and an interactive maximum-cell rainfall trend.
+positions, county-clipped H3 rainfall and an interactive maximum-native-cell rainfall trend.
+Each hex uses the maximum of its overlapping native forecasts; this does not
+increase forecast resolution. Missing overlaps leave the hex transparent.
 Map, Data and Reports share the selected hour. The current forecast is absent
 from the application controls. Archive rainfall is a forecast reconstruction, not an observation.
 Source initialization, retrieval, validity, resolution and mm / 6h remain visible.
