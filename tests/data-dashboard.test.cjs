@@ -102,13 +102,13 @@ test('Data loads real-source endpoints only when active, with zero and unknown d
   assert.ok(app.calls.every(call => call.cache === 'no-store'));
 });
 
-test('Data opened before the map defaults to October 9 at 4 PM Central', async () => {
+test('Data opened before the map defaults to October 9 at 8 AM Central', async () => {
   const frames=Array.from({length:25},(_,index)=>({at:new Date(Date.parse('2026-10-09T05:00:00Z')+index*3600000).toISOString(),
     valid_to:new Date(Date.parse('2026-10-09T11:00:00Z')+index*3600000).toISOString(),rows:cells}));
-  const app=mount({frame:null,reply:async url=>url==='/api/data/weather?source=archive' ? {...forecast,frames,default_index:16} : undefined});
+  const app=mount({frame:null,reply:async url=>url==='/api/data/weather?source=archive' ? {...forecast,frames,default_index:8} : undefined});
   app.render();const html=await app.settle();
-  assert.match(html,/Oct 9, 2026, 4:00 PM Central time/);
-  assert.equal(app.find(node=>typeof node.props?.onValueChange==='function')[0].props.value,'16');
+  assert.match(html,/Oct 9, 2026, 8:00 AM Central time/);
+  assert.equal(app.find(node=>typeof node.props?.onValueChange==='function')[0].props.value,'8');
 });
 
 test('search and status filters affect only the native-cell table', async () => {
