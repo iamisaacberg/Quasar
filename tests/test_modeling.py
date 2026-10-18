@@ -479,6 +479,17 @@ class NativeExportTests(unittest.TestCase):
             export(root/"experiment", root/"exported.json")
             self.assertEqual(read_json(root/"exported.json"), read_json(root/"experiment/model.json"))
             self.assertTrue((root/"experiment/spatial-residuals.svg").exists())
+            from quasar.modeling.evidence import verify_model_evidence
+            verified = verify_model_evidence(root/"experiment", prepared)
+            self.assertEqual(verified["status"], "verified_model_metrics")
+            residual_path = root/"experiment/spatial-residuals.json"
+            residuals = read_json(residual_path)
+            original_residuals = residual_path.read_bytes()
+            residuals["rows"][0]["prediction"] += .01
+            write_json(residual_path, residuals)
+            with self.assertRaisesRegex(ValueError, "Saved residual"):
+                verify_model_evidence(root/"experiment", prepared)
+            residual_path.write_bytes(original_residuals)
             with self.assertRaises(FileExistsError):train(prepared, root/"retry")
             native = root/"experiment/member-0.json"
             original_native = native.read_bytes()

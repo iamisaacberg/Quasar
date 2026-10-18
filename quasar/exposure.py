@@ -91,11 +91,18 @@ def model_context(data):
             "forecast_provenance": forecast(data.get("forecast_provenance"))}
 
 
-@lru_cache(maxsize=2)
-def _artifact(path, size, modified):
+@lru_cache(maxsize=1)
+def _artifact(path, size, modified, revision=None, expected_sha256=None):
     if size > MAX_BYTES:
         raise ValueError("Exposure artifact exceeds its size limit")
-    data = json.loads(Path(path).read_bytes())
+    from .modeling import digest, read_json
+    from .exposure_catalog import version
+    before = version(path)
+    if expected_sha256 and digest(path) != expected_sha256:
+        raise ValueError("Exposure artifact checksum mismatch")
+    data = read_json(path, MAX_BYTES)
+    if version(path) != before or (revision and before != revision):
+        raise ValueError("Exposure artifact changed during loading")
     if (not isinstance(data, dict) or data.get("schema_version") != 1
             or data.get("county_fips") != COUNTY_FIPS
             or not all(isinstance(data.get(key), str) and data[key] for key in
@@ -123,7 +130,7 @@ def _artifact(path, size, modified):
             if context and score is not None and ("model_details" not in records[parcel_id]
                     or context["forecast_provenance"]["status"] != "ready"):
                 raise ValueError("Model scores require diagnostics and ready source data")
-        windows[start, end] = {**window, "records": records}
+        windows[start, end] = {**{k: v for k, v in window.items() if k != "parcels"}, "records": records}
     return {**data, "windows": windows}
 
 
@@ -133,8 +140,9 @@ def _unavailable(status, message):
 
 
 @lru_cache(maxsize=8)
-def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution):
-    data = _artifact(artifact_path, size, modified)
+def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution,
+               revision=None, expected_sha256=None):
+    data = _artifact(artifact_path, size, modified, revision, expected_sha256)
     window = data["windows"].get((start, end))
     if window is None:
         return None
@@ -160,8 +168,7 @@ def _aggregate(database, db_size, db_modified, artifact_path, size, modified, st
             "computed_at": window["computed_at"], "scale_version": SCALE["version"],
             "aggregation": "parcel_p90_linear", "resolution": resolution,
             "aggregation_architecture": platform.machine(),
-            "cells": {cell: summarize(scores) for cell, scores in groups.items()},
-            "records": window["records"]}
+            "cells": {cell: summarize(scores) for cell, scores in groups.items()}}
 
 
 def exposure(query):
@@ -181,12 +188,30 @@ def exposure(query):
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
         return _remote(query)
     path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
-    if not path or not database:
+    catalog = os.environ.get("QUASAR_EXPOSURE_CATALOG")
+    if (not path and not catalog) or not database:
         return _unavailable("not_configured", "Parcel exposure results are not configured; scores remain unknown.")
     try:
+        from .exposure_catalog import select, verify, version
+        expected = None
+        selected = None
+        if catalog:
+            root = os.environ.get("QUASAR_EXPOSURE_ARTIFACT_ROOT")
+            if not root:
+                raise ValueError("Exposure catalog requires an explicit artifact root")
+            selected = select(catalog, root, mode, start, end)
+            if selected is None:
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+            _, entry, path = selected
+            expected = entry["sha256"]
+        path = str(Path(path).resolve())
+        revision = version(path)
         file_stat, db_stat = Path(path).stat(), Path(database).stat()
+        data = _artifact(path, file_stat.st_size, file_stat.st_mtime_ns, revision, expected)
+        if selected:
+            verify(selected[0], selected[1], data, start, end)
         result = _aggregate(database, db_stat.st_size, db_stat.st_mtime_ns, path, file_stat.st_size,
-                            file_stat.st_mtime_ns, start, end, resolution)
+                            file_stat.st_mtime_ns, start, end, resolution, revision, expected)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
         now = datetime.now(timezone.utc)
@@ -201,9 +226,10 @@ def exposure(query):
             return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
         if query.get("run_id") not in (None, result["run_id"]):
             return _unavailable("changed", "Exposure run changed; refresh this selection.")
-        return {**{k: v for k, v in result.items() if k != "records"},
+        records = data["windows"][start, end]["records"]
+        return {**result,
                 "cells": {} if ids else result["cells"],
-                "parcels": {str(i): result["records"].get(i, {"parcel_id": i, "score": None,
+                "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
                             "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
         return _unavailable("invalid", "Parcel exposure artifact is unavailable or invalid; scores remain unknown.")

@@ -1,5 +1,7 @@
 # Real-data runtime activation
 
+For the later model/catalog activation candidate and rollback, use the [current operations runbook](datathon-submission/operations.md). The record below concerns earlier county-context serving, not model activation. Hosted access is public; source API authentication remains required.
+
 ## October 18 activation
 
 The Marseille activation replaced the older standalone Miami-Dade bridge with
@@ -61,7 +63,7 @@ This change runs no cloud query and does not manufacture fresh timestamps.
    It reads credentials through SSH into memory and passes values to Vercel on
    stdin. It never writes credentials into the repository or deploys.
 6. Deploy the reviewed feature branch to Vercel Preview. Verify the real-data
-   APIs through the team access gate, expiry behavior, archive and parcel input
+   APIs through the public hosted application, expiry behavior, archive and parcel input
    reads. Isaac reviews the map. Do not promote production or push main.
 
 `.context/rollout/` holds the exact host-specific config changes and real-artifact

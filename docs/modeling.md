@@ -213,3 +213,40 @@ modeling tests inside the optional environment for native export, full training,
 conditional outcome experiments and actual GIS containment. The 10,000-row
 synthetic parity test checks numerical fidelity, not real model performance or
 the real experiment promotion gate. Isaac reviews rendered visuals.
+
+## Replay batches and read-only evidence commands
+
+`assess-replay` accepts the same database/inputs/boundary/inspection/model/evaluation/
+weather paths as `assess`, plus a new release directory in `--output`. It reads the
+actual 25-position archive timeline and plans all forward-six-hour windows. The
+default makes no writes or cloud calls. `--execute` preflights worst-case disk
+(128 MiB per eligible window plus 1 GiB reserve), runs the existing producer and
+R4–R7 benchmark sequentially, records source gaps/counts/timings in `coverage.json`,
+then atomically publishes a version-1 `catalog.json` completion marker. Existing
+release directories are refused; unrelated producer/identity errors abort
+publication. A partial release remains labeled partial. One decoded artifact
+and small summary caches prevent retaining all county parcel maps across hours;
+actual host memory/latency acceptance still requires measurements.
+
+`verify-bundle --manifest PATH --root PATH --output PATH` checks producer-supplied
+file hashes in a private bounded transfer manifest. It does not confuse inventory
+identity with SQLite file checksum or replace semantic/containment auditing.
+`compare-assessments --reference PATH --candidate PATH --output PATH` compares every
+parcel and exact method/source/window/known/unknown identity, allowing only fixed
+absolute numerical tolerances (1e-6 model details, 1e-5 index/factors). Run ID and
+computation time may differ. Neither command is proof of actual host execution.
+
+`verify-model-evidence --experiment DIR --dataset DIR --output PATH` reconciles
+portable/native/dataset/evaluation/ledger identities and replays saved test
+predictions without training or changing the test ledger. It recomputes model
+and development-mean metrics, all supported/unknown IDs and subgroup errors from
+saved residuals. Ridge results remain explicitly recorded-only because the
+existing artifact does not save ridge predictions. Retain source dates/terms and
+weak subgroup findings. Run commands only on the supplied existing release;
+never recreate the dataset to tune against the published test.
+
+See [operations](datathon-submission/operations.md) for full invocations,
+[model summary](datathon-submission/model-summary.md) for recorded results, and
+[research protocols](datathon-submission/research-protocols.md) for experiments
+requiring new evidence. No command configures shared services, deploys or
+starts a cloud query.

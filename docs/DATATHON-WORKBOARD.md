@@ -1,25 +1,25 @@
 # Quasar teammate workboard
 
-Use this with the [complete execution plan](DATATHON-GAP-CLOSURE-PLAN.md) and [evidence audit](DATATHON-DEV-HANDOFF.md). This is a planning tracker: **none of the rows below is marked complete by creation of this document**. Existing implementation and historical run evidence are described in the audit.
+Use this with the [complete execution plan](DATATHON-GAP-CLOSURE-PLAN.md) and [evidence audit](DATATHON-DEV-HANDOFF.md). This is the current completion record. The implementation checkpoint below separates local software/evidence preparation from actual data, target-host and human acceptance. Existing historical run evidence remains in the audit. Isaac excluded team/lab/deadline/submission administration for this implementation; those items are not counted as completed.
 
 ## Takeover details
 
 | Field | Fill in before starting |
 | --- | --- |
-| Incoming development owner | Unassigned |
+| Incoming development owner | Codex, local implementation on existing feature branch |
 | Team lead / actual team name | Unconfirmed |
 | Runtime/access owner | Unassigned |
 | Model/data owner | Unassigned |
 | Presenter | Unassigned |
 | Visual reviewer | Isaac |
 | Selected theme / track | Confirm against submitted abstract |
-| Source baseline | `665b3e2`; verify current checkout |
+| Source baseline | `507de03`; local feature implementation is the current branch diff/commit |
 | Final cutoff / time zone / organizer source | Unconfirmed; do not infer from ambiguous guidebook schedule |
 | Last proven demo window | Recorded local assessment: Oct 9, 2026, 05:00–11:00 UTC; host/app proof pending |
-| Artifact transfer location / receipt | Unconfirmed; private channel |
-| Evidence ledger location | To be created; proposed layout in plan section 8 |
+| Artifact transfer location / receipt | Expected paths/hashes in audit D1 and model-run report; actual files absent in this checkout |
+| Evidence ledger location | `.context/datathon-evidence/manifest.json`; public summaries in `docs/datathon-submission/` |
 
-Statuses: **Open → In progress → Ready for review → Verified**. Use **Blocked** with an owner/next action when an external dependency prevents progress. Use **Deferred** only for an explicitly retained post-deadline item. “Documented limitation” is not “Verified capability.”
+Statuses: **Open → In progress → Ready for review → Verified**. Use **Blocked** with an owner/next action when an external dependency prevents progress. Use **Deferred** only for an explicitly retained post-deadline item. Use **Excluded** for work explicitly removed by Isaac. “Documented limitation” is not “Verified capability.”
 
 ## Task queue
 
@@ -27,27 +27,27 @@ P0 means needed for the immediate submission/demo. P1 means evidence or usabilit
 
 | ID | Task | Priority / owner role | Depends on | Deliverable required for verification | Status |
 | --- | --- | --- | --- | --- | --- |
-| T01 | Eligibility, labs, team/title and deadline | P0 / lead | Organizer/member evidence | Private receipts and resolved prerequisite/cutoff questions | Open |
-| T02 | Artifact transfer and audit | P0 / developer + supplier | Existing artifact owner | File/hash manifest, matched lineage and authoritative county-validation evidence | Open |
-| T03 | Local/research baseline | P0 / developer | Source; T02 for actual data | Logs, versions, required checks and relevant optional-test results | Open |
-| T04 | Actual LinuxONE inference | P0 / runtime + developer | T02, T03, authorized host access | Real `s390x` run, complete output, parity comparison, benchmark and redacted captures | Open |
-| T05 | Activate and verify app path | P0 / integrator | T04, authorized changes | Same model/run/window in host, proxy, API and app; rollback evidence | Open |
-| T06A | Honest single-window demo | P0 / developer | T05 | Supported hour works; unsupported hour clears scores and remains unknown | Open |
-| T06B | Complete replay coverage | P2 / developer | T06A, agreed contract | Catalog/orchestrator, exact per-window provenance, bounded memory, tests and coverage report | Open |
-| T07 | Reproducible model summary | P0 / model owner | T02; T04 for host claims | Verified metric lineage, baselines, exclusions, weak groups and limitations | Open |
-| T08 | Functional and human acceptance | P0 / developer + Isaac | T05, chosen T06 path | Test matrix, actual visual/accessibility checklist and fixes | Open |
-| T09 | Runtime performance/security evidence | P0 for claimed capabilities; P1 for broader testing / runtime owner | T04, T05, approved test scope | Measured production/API limits and proof for platform/control claims | Open |
-| T10 | Attribution, originality and code link | P0 / developer + lead | Source inventory, T01 | Reviewed resource/terms list, contribution record and accessible final source | Open |
-| T11 | Community value and novelty | P0 brief; P1 external measurement / presenter + lead | Theme, sources, usable demo for study | Sourced problem/comparison; separately labeled actual user evidence | Open |
-| T12 | Docs and pitch package | P0 / presenter + developer | T07–T11 | Current architecture, claim ledger, timed rehearsal and final evidence package | Open |
-| T13 | Submission | P0 / lead | T01, T10, T12 | <=180-second video, accessible links, correct fields and successful receipt | Open |
-| T14 | Proxy weakness investigation | P2 / model owner | T07, appropriate holdout/data review | Reproduced failure analysis and evaluated improvement or documented use restriction | Open |
-| T15 | Observed-outcome experiment | P2 / research/data owner | Suitable independently reviewed labels and forecasts | Coverage-backed labels, leakage checks and held-out outcome evaluation | Open |
-| T16 | Missing physical/context inputs | P2 / GIS + domain reviewer | Defined research target and source access | Validated features, provenance and evaluation of incremental value | Open |
-| T17 | Current forecast and lead time | P2 / data/integration | Storage plan, budgets, explicit acquisition/operation scope | Repeated fresh coherent runs, expiry behavior and measured availability latency | Open |
-| T18 | Official NWS alert integration | P2 / backend/data | Coverage contract and current API review | Verified coverage, lifecycle handling and distinct empty/stale/error states | Open |
-| T19 | Reliable operation and adoption | P2 / product/runtime | T08/T09; relevant live/data work and approved scope | Owners, monitored objectives, recovery test and actual pilot feedback | Open |
-| T20 | Innovation Excellence evidence | P1 evidence review; P2 experiments / research + presenter | T07/T11 and selected research results | Supported original contribution and technical/impact evidence | Open |
+| T01 | Eligibility, labs, team/title and deadline | P0 / lead | Organizer/member evidence | Private receipts and resolved prerequisite/cutoff questions | Excluded — Isaac said to skip administration |
+| T02 | Artifact transfer and audit | P0 / developer + supplier | Existing artifact owner | File/hash manifest, matched lineage and authoritative county-validation evidence | Blocked — paths/hashes documented; no artifact bytes here. Transfer verifier implemented; Isaac/model owner supplies bundle |
+| T03 | Local/research baseline | P0 / developer | Source; T02 for actual data | Logs, versions, required checks and relevant optional-test results | Verified locally — 209 core tests (8 optional skips), 209 optional tests (no skips), 75 JS; npm install/check/build pass |
+| T04 | Actual LinuxONE inference | P0 / runtime + developer | T02, T03, authorized host access | Real `s390x` run, complete output, parity comparison, benchmark and redacted captures | Blocked — no real artifacts/authorized host connection. Full-parcel parity tool and operator runbook ready |
+| T05 | Activate and verify app path | P0 / integrator | T04, authorized changes | Same model/run/window in host, proxy, API and app; rollback evidence | Blocked — T04 and actual host/config review. Candidate settings/rollback prepared; nothing activated |
+| T06A | Honest single-window demo | P0 / developer | T05 | Supported hour works; unsupported hour clears scores and remains unknown | Ready for review — existing exact-window/unknown and JS race tests pass; real app/Isaac acceptance pending |
+| T06B | Complete replay coverage | P2 / developer | T06A, agreed contract | Catalog/orchestrator, exact per-window provenance, bounded memory, tests and coverage report | Ready for review — catalog, dry-run 25-position batch, checksums, bounded caches, synthetic production/rollback tests done; real coverage/host measurement pending |
+| T07 | Reproducible model summary | P0 / model owner | T02; T04 for host claims | Verified metric lineage, baselines, exclusions, weak groups and limitations | Ready for review — recorded model summary and saved-metric verifier implemented; actual bundle needed for recomputation |
+| T08 | Functional and human acceptance | P0 / developer + Isaac | T05, chosen T06 path | Test matrix, actual visual/accessibility checklist and fixes | Ready for review — code/API regression suite passes; Isaac checklist and real-data walkthrough pending |
+| T09 | Runtime performance/security evidence | P0 for claimed capabilities; P1 for broader testing / runtime owner | T04, T05, approved test scope | Measured production/API limits and proof for platform/control claims | In progress — auth/failure tests and synthetic local capacity evidence; real host/API timings and recovery unverified |
+| T10 | Attribution, originality and code link | P0 / developer + lead | Source inventory, T01 | Reviewed resource/terms list, contribution record and accessible final source | In progress — checked resource list and 278-entry locked inventory prepared; UI/account/source-sharing permissions unresolved |
+| T11 | Community value and novelty | P0 brief; P1 external measurement / presenter + lead | Theme, sources, usable demo for study | Sourced problem/comparison; separately labeled actual user evidence | Ready for review — sourced analyst problem/comparison and evaluation protocol; no external user results |
+| T12 | Docs and pitch package | P0 / presenter + developer | T07–T11 | Current architecture, claim ledger, timed rehearsal and final evidence package | Ready for review — current docs, architecture, model/claim/attribution package and 175-second script; recording/rehearsal absent |
+| T13 | Submission | P0 / lead | T01, T10, T12 | <=180-second video, accessible links, correct fields and successful receipt | Excluded — Isaac said to skip administration/submission |
+| T14 | Proxy weakness investigation | P2 / model owner | T07, appropriate holdout/data review | Reproduced failure analysis and evaluated improvement or documented use restriction | Blocked — protocol/use restriction prepared; actual residuals/source records absent |
+| T15 | Observed-outcome experiment | P2 / research/data owner | Suitable independently reviewed labels and forecasts | Coverage-backed labels, leakage checks and held-out outcome evaluation | Blocked — protocol prepared; independently reviewed outcomes/coverage-backed negatives absent |
+| T16 | Missing physical/context inputs | P2 / GIS + domain reviewer | Defined research target and source access | Validated features, provenance and evaluation of incremental value | Open — source/question/datum inventory prepared; acquisition and incremental evaluation require selected target/source access |
+| T17 | Current forecast and lead time | P2 / data/integration | Storage plan, budgets, explicit acquisition/operation scope | Repeated fresh coherent runs, expiry behavior and measured availability latency | Open — current window/budget and operation scope not supplied; replay preserved, no new cloud queries |
+| T18 | Official NWS alert integration | P2 / backend/data | Coverage contract and current API review | Verified coverage, lifecycle handling and distinct empty/stale/error states | Ready for review — separate county importer/current API with lifecycle/coverage/error tests; live source/current UI acceptance pending |
+| T19 | Reliable operation and adoption | P2 / product/runtime | T08/T09; relevant live/data work and approved scope | Owners, monitored objectives, recovery test and actual pilot feedback | Open — acceptance/recovery protocol ready; named operations owners, measured objectives/recovery/pilot absent |
+| T20 | Innovation Excellence evidence | P1 evidence review; P2 experiments / research + presenter | T07/T11 and selected research results | Supported original contribution and technical/impact evidence | Open — explicit differentiation experiment ready; no measured research/user benefit claimed |
 
 Assign a named owner and due/check-in time to each active item. Estimates and deadline buffers are in plan section 4; do not turn them into promises before checking actual access, artifacts and available hours.
 
@@ -71,7 +71,7 @@ Rollback or last proven state:
 
 ## Demonstration gate
 
-- [ ] Required participation/lab questions have actual receipts or organizer disposition.
+- [ ] Required participation/lab questions — excluded from this implementation by Isaac; no receipt claim.
 - [ ] Correct data/model release is transferred and audited.
 - [ ] Actual LinuxONE model inference and aggregation are recorded.
 - [ ] Source, proxy, API and app agree on run/model/inventory/window.
@@ -82,6 +82,8 @@ Rollback or last proven state:
 - [ ] Final architecture and attribution match the actual demo revision.
 
 ## Submission gate
+
+Excluded from this implementation by Isaac. Historical checklist retained below; no row is certified.
 
 - [ ] Team name appears in the actual title; track/theme are correct.
 - [ ] Video is accessible, understandable and <=180 seconds including all extras.
@@ -95,3 +97,17 @@ Rollback or last proven state:
 ## After submission
 
 Record which outcome was reached: submission complete, demonstration complete, or deeper research/operation complete. Move unfinished work to a dated follow-up with an owner. Keep T06B and T14–T20 open/deferred unless their actual acceptance evidence exists. Share the plan, audit, updated workboard, source revision, transfer manifest, access owner and last working demo state with the next developer; a Git link alone does not transfer ignored artifacts.
+
+## Local implementation checkpoint — October 17 Central / October 18 UTC
+
+Owner: Codex. Existing branch: `iamisaacberg/datathon-rubric-handoff-v1`; no rename.
+Public deliverables are indexed in [the demonstration package](datathon-submission/README.md).
+
+- T06B: bounded exact-window catalog/root configuration; selected artifact hash/model/forecast/inventory checks; one decoded artifact and summary-only caches; explicit dry-run batch, per-window source gaps/counts/benchmarks, immutable release and atomic catalog marker. Synthetic production covers all 25 starts; no real county coverage claim.
+- T02/T04/T07: private producer-hash transfer check, all-parcel numerical comparison and saved model/native/dataset/evaluation/ledger/residual verification, with ridge arithmetic explicitly recorded-only. No retraining or test-ledger reset.
+- T18: official NWS county UGC query importer and separate saved current-alert API. Pagination, lifecycle, unknown/failure/expiry and archive separation are fixture-tested. No actual NWS fetch/refresh job or current UI activation.
+- T10–T12: checked source/dependency attribution, analyst comparison, current onboarding/architecture, model summary, limitations/claim ledger, 175-second script, manual review and operations/research protocols. No source-sharing permission, recording, user study or submission proof invented.
+
+Validation: Python 3.14.7 core suite **209 run, OK, 8 optional skips**; isolated Python 3.12.14 ML/GIS suite **209 run, OK, no skips**. Clean npm install, TypeScript/JS checks, **75 JS tests**, and production build pass. Existing large-chunk build warning remains; generated UI assets are unchanged. Private logs/versions/checksums are indexed in `.context/datathon-evidence/manifest.json`.
+
+Remaining dependencies: the real bundle at the documented paths must be supplied or transferred through approved access; actual host inference/activation/benchmark/API checks need the runtime owner; Isaac owns rendered acceptance. Protocols do not finish T14–T20 experiments. No other workspace, shared host, deployment, running app, new forecast acquisition, real contacts or notification delivery was used. See [operations](datathon-submission/operations.md) for the exact next commands and reviewable activation candidate.

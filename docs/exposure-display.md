@@ -119,3 +119,22 @@ model explanations remain separate. Invalid diagnostics fail closed. Parcel
 inspection labels the mapping proxy, visualization rule, instability and source
 times explicitly. None of these values establish flood depth, probability,
 confidence intervals or safety.
+
+## Multiple exact-window artifacts
+
+The optional server-only catalog and artifact root select immutable schema-1
+single-window files without changing the exposure API. Catalog beats the legacy
+single-file setting; failures/missing windows never substitute prior results.
+All selected files must match the catalog county, inventory, model hash, forecast
+hash, mode and exact six-hour interval. Absolute/traversing/escaping-symlink paths,
+duplicate keys, invalid hashes and corrupt files fail closed. Source provenance
+stays inside each artifact, rather than combining different windows under one
+shared top-level record. One decoded artifact is retained; cached H3 summaries
+contain counts/statistics, not additional full parcel maps.
+
+The offline `assess-replay` command lists the actual 25 saved archive windows and
+requires `--execute` for production into a new release directory. Its coverage
+report distinguishes produced windows and genuine source gaps; a producer error
+prevents catalog publication. Code/fixture acceptance does not establish real
+all-hour coverage, target-host resources or activation. See the [catalog contract](data-contract.md#exact-window-exposure-catalog-server-only-version-1) and
+[operations/rollback](datathon-submission/operations.md).
