@@ -18,7 +18,7 @@ Scope: Okaloosa County, Florida, FIPS `12091`. This package accompanies the impl
 | [Research protocols](research-protocols.md) | Remaining experiments, source gaps and decisions that require new evidence |
 | [Limitations and claims](limitations.md) | Claims allowed by existing evidence and claims still unsupported |
 
-The [workboard](../DATATHON-WORKBOARD.md) records task status. The starting base was `507de03`, reconciled with `preview` through `d920a8d`; use the feature branch's final commit for a code handoff. The code reference is [this branch](https://github.com/iamisaacberg/Quasar/tree/iamisaacberg/datathon-rubric-handoff-v1), which requires a separate authorized push before it contains this local work. Judge access has not been checked. No `main` update is needed.
+The [workboard](../DATATHON-WORKBOARD.md) records task status. The starting base was `507de03`, reconciled with `preview` through `d920a8d`; use the feature branch's final commit for a code handoff. The code reference is [draft PR #33](https://github.com/iamisaacberg/Quasar/pull/33), targeting `preview` from [this branch](https://github.com/iamisaacberg/Quasar/tree/iamisaacberg/datathon-rubric-handoff-v1). Intended judge access has not been checked. No `main` update is needed.
 
 ## Available locally
 
