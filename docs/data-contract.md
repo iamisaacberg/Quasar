@@ -1,5 +1,22 @@
 # Application data contract
 
+V2 adds an optional, validated lineage group to `model_metadata`:
+`training_dataset_id`, `evaluation_sha256`, `evaluation_protocol`, and
+`evaluation_summary` (macro subgroup MAE, fully mapped MAE, parcel/equal-block
+RMSE, feature support). The complete group is required for v2 identities; legacy
+assessments without it remain readable. `model_details` can include
+`fema_mapped_area_fraction`, null when the authoritative reference is incomplete.
+These are mapping metrics and reference fractions, not flood probabilities.
+The [v2 guide](modeling-v2.md) defines qualification and exact-version pinning.
+
+`GET /api/exposure` accepts optional `model=v1|v2` for explicit Tools selection.
+Ready selected-version responses echo `model_choice` and carry the corresponding
+pinned `model_metadata`. Both summary and parcel requests include the choice;
+the proxy forwards and verifies it. Per-choice files/directories and identity
+pins are configured separately, with no fallback to another version or the
+legacy source. Requests without `model` keep the original behavior. See
+[Tools model selection](exposure-display.md#tools-v1--v2-model-selection).
+
 Optional promoted mapping-proxy model metadata, forecast provenance and signed
 raw-model diagnostics extend schema-1 assessments additively; see
 [the exposure additions](exposure-display.md#optional-modeling-fields-schema-1-additive)
@@ -207,6 +224,16 @@ separate matching exposure assessment exists. H3 does not replace native forecas
 polygons. Application forecast endpoints require schema 3; schemas 1/2 remain
 available only in offline research adapters. FIPS 12086 inputs are rejected.
 
+## Conditional model population
+
+The revised positive-overlap protocol uses optional model metadata field
+`inference_population: "positive_fema_overlap"`, required for model identities
+starting `mapped-susceptibility-v3-positive-` or `mapped-susceptibility-v4-positive-`. Those models train and evaluate
+only verified positive FEMA SFHA overlap. Assessment production returns null
+scores for zero overlap (`excluded_zero_fema_overlap`) and unknown/incomplete
+overlap (`verified_positive_fema_overlap_required`). These records remain in the
+county inventory and aggregation coverage denominator. Existing v1/v2 metadata
+and assessments retain their original population and remain schema-compatible.
 ## Exact-window exposure catalog (server-only, version 1)
 
 `QUASAR_EXPOSURE_CATALOG` optionally names a bounded JSON catalog and requires

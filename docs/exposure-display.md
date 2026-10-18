@@ -1,5 +1,53 @@
 # Experimental relative exposure display
 
+## Tools: V1 / V2 model selection
+
+Tools contains an **Exposure model** selector. V1 explicitly selects the original
+served mapping model. V2 selects the revised model trained only on parcels with
+positive verified FEMA overlap; its internal v4 identity records the later
+user-requested qualification-policy change. Product labels and full artifact
+identities are separate. Calculation details retain exact model/evaluation IDs.
+
+The app requests `model=v1` or `model=v2` on summary and parcel API calls.
+Changing selection pauses playback, invalidates pending responses and all score
+caches, and loads the selected version for the same hour and geography. Geometry
+and archive data are retained. A late response for the old choice cannot recolor
+the new selection. Missing, stale, unconfigured or mismatched versions stay
+unavailable; the app never substitutes the other choice.
+
+On the inventory host configure `QUASAR_EXPOSURE_V1_DIRECTORY` and
+`QUASAR_EXPOSURE_V2_DIRECTORY`. The service pins the reviewed V1 and V2 release
+identities in code, so these environment variables are optional. Set
+`QUASAR_EXPOSURE_V1_MODEL_VERSION` or `QUASAR_EXPOSURE_V2_MODEL_VERSION` only
+when deliberately serving a different reviewed identity; the proxy and inventory
+host must use the same override. Each choice also supports its own `_DATABASE`
+(prepared indexed serving), `_CATALOG`/`_ARTIFACT_ROOT` (verified immutable
+release), or optional `_FILE` for one window; `_FILE` and `_DIRECTORY` are
+mutually exclusive within a choice. The hosted proxy uses the same built-in
+pins. Its authenticated upstream request forwards `model`, verifies
+the response's `model_choice` and exact identity, and keeps errors explicit.
+Only the whitelist `v1`/`v2` is accepted; user input never supplies filesystem
+paths. Legacy requests without `model` retain their previous configuration. Explicit choices never borrow the generic indexed database or catalog.
+
+The prepared local comparison has both 25-hour bundles, a verified original-v1
+download receipt, and the newly generated V2 assessments. Ignored
+`.context/exposure-comparison.env` records local paths and identities for review;
+it contains no credentials. No service was started or deployed to create it.
+Switching these models is a method comparison on different training populations,
+not flood-outcome validation or proof that one is more accurate countywide.
+
+The [positive-overlap model](modeling-positive.md) additionally declares its
+conditional population in metadata. Zero or unverified FEMA overlap stays
+unscored, with the full county retained in H3 coverage denominators. Both local
+artifact loading and the proxy reject known scores outside that model's scope.
+
+For the retrained FEMA proxy, see the [v2 protocol](modeling-v2.md). V2 exposes
+dataset/evaluation identity and summary mapping errors in the existing calculation
+details. Actual FEMA mapped fraction stays separate from the model estimate.
+`QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION` optionally pins either the inventory
+service or proxy to the reviewed exact model identity; a mismatch is unavailable,
+with no fallback to the archived v1. Source changes alone do not activate v2.
+
 The map uses fixed green/yellow/orange/red anchors for experimental exposure
 indices. It is not a trained parcel flood model, flood probability, depth, or
 safety assessment. **Green does not establish safety.** Existing real-parcel

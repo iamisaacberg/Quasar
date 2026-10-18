@@ -1,6 +1,7 @@
 """Explicit local modeling commands. Never imports data or queries cloud services automatically."""
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -18,6 +19,21 @@ def main():
     train = sub.add_parser("train")
     train.add_argument("--dataset", type=Path, required=True)
     train.add_argument("--output", type=Path, required=True)
+    for name in ("train-v2", "train-positive"):
+        train_cmd = sub.add_parser(name, help="Frozen nested geographic experiment; train-positive excludes zero FEMA overlap")
+        for key in ("dataset", "database", "inputs", "boundary", "inspection", "output"):
+            train_cmd.add_argument("--"+key, type=Path, required=True)
+    review = sub.add_parser("review", help="Local artifact inventory, lineage and exposure sensitivity; never accesses a host")
+    qualify = sub.add_parser("qualify-positive", help="Explicit revised qualification policy; ridge comparison is advisory")
+    qualify.add_argument("--experiment", type=Path, required=True)
+    qualify.add_argument("--output", type=Path, required=True)
+    for key in ("dataset", "experiment", "database", "inputs", "boundary", "inspection", "weather", "assessments"):
+        review.add_argument("--"+key, type=Path)
+    review.add_argument("--output", type=Path, required=True)
+    review.add_argument("--research-sensitivity", action="store_true", help="Non-serveable summary comparisons for the research pool, including rejected candidates")
+    replay = sub.add_parser("assess-model-replay", help="Prepare 25 qualified model windows; never activates them")
+    for key in ("database", "inputs", "boundary", "inspection", "model", "evaluation", "weather", "output"):
+        replay.add_argument("--"+key, type=Path, required=True)
     export = sub.add_parser("export")
     export.add_argument("--experiment", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
@@ -59,6 +75,23 @@ def main():
         elif args.command == "train":
             from .training import train
             result = train(args.dataset, args.output)
+        elif args.command == "train-v2":
+            from .v2 import train_v2
+            result = train_v2(args.dataset, args.database, args.inputs, args.boundary, args.inspection, args.output)
+        elif args.command == "train-positive":
+            from .v2 import train_positive
+            result = train_positive(args.dataset, args.database, args.inputs, args.boundary, args.inspection, args.output)
+        elif args.command == "qualify-positive":
+            from .v2 import qualify_positive
+            result = qualify_positive(args.experiment, args.output)
+        elif args.command == "review":
+            from .review import review
+            result = review(args.output, research_sensitivity=args.research_sensitivity, **{k: getattr(args, k) for k in
+                ("dataset", "experiment", "database", "inputs", "boundary", "inspection", "weather", "assessments")})
+        elif args.command == "assess-model-replay":
+            from .production import produce_replay
+            result = produce_replay(args.database, args.inputs, args.boundary, args.inspection, args.model,
+                                    args.evaluation, args.weather, args.output)
         elif args.command == "export":
             from .training import export
             result = export(args.experiment, args.output)
@@ -91,8 +124,8 @@ def main():
             else:
                 _, result = prepare_outcomes(args.dataset, args.observations, args.inspection, args.weather)
         print(json.dumps(result, indent=2, allow_nan=False))
-        return 0 if result.get("status") not in ("missing", "insufficient_evidence", "mismatch", "incomplete", "failed", "source_gap") else 2
-    except (ValueError, OSError, KeyError, TypeError, StopIteration, ImportError) as exc:
+        return 0 if result.get("status") not in ("missing", "insufficient_evidence", "mismatch", "incomplete", "failed", "source_gap", "research_only") else 2
+    except (ValueError, OSError, KeyError, TypeError, StopIteration, ImportError, sqlite3.Error) as exc:
         print(json.dumps({"status": "unavailable", "message": str(exc)}), file=sys.stderr)
         return 2
 

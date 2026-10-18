@@ -80,7 +80,7 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
         const params=new URLSearchParams(url.split("?")[1]), resolution=Number(params.get("resolution"));
         const cell=h3.latLngToCell(30.55,-86.485,resolution), runId=exposureRunId;
         const score=id=>runId==="second" ? (id===1?30:100) : (id===1?0:90);
-        const page=exposureTransform({status:"ready",county_fips:"12091",run_id:runId,inventory_id:"snapshot",method_version:"synthetic-test-only",aggregation:"parcel_p90_linear",aggregation_architecture:"s390x",computed_at:new Date(clock).toISOString(),valid_to:new Date(clock+6*3600000).toISOString(),cells:{[cell]:{parcel_count:3,scored_count:2,unknown_count:1,coverage:2/3,incomplete:true,elevated_count:1,p90_score:runId==="second"?93:81}},parcels:Object.fromEntries((params.get("parcel_ids")||"").split(",").filter(Boolean).map(id=>[id,{score:score(Number(id)),factors:[{name:"synthetic_factor",value:score(Number(id)),contribution:score(Number(id))}],missing:[]}]))},params);
+        const page=exposureTransform({status:"ready",model_choice:params.get("model"),county_fips:"12091",run_id:runId,inventory_id:"snapshot",method_version:"synthetic-test-only",aggregation:"parcel_p90_linear",aggregation_architecture:"s390x",computed_at:new Date(clock).toISOString(),valid_to:new Date(clock+6*3600000).toISOString(),cells:{[cell]:{parcel_count:3,scored_count:2,unknown_count:1,coverage:2/3,incomplete:true,elevated_count:1,p90_score:runId==="second"?93:81}},parcels:Object.fromEntries((params.get("parcel_ids")||"").split(",").filter(Boolean).map(id=>[id,{score:score(Number(id)),factors:[{name:"synthetic_factor",value:score(Number(id)),contribution:score(Number(id))}],missing:[]}]))},params);
         if(holdExposure) await holdExposure(params);
         return {ok:true,json:async()=>page};
       }
@@ -430,6 +430,45 @@ test("unknown parcels and cells have transparent interiors and no hatch layers",
   assert.ok(map.layers['selected-parcel-outline'].paint['line-width']>map.layers['parcel-outline'].paint['line-width']);
 });
 
+test('Tools switches model summaries and parcels without reloading geometry or the archive',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true,exposureTransform:(page,params)=>{
+    const v1=params.get('model')==='v1',score=v1?40:80;
+    return {...page,run_id:v1?'v1-run':'v2-run',cells:Object.fromEntries(Object.entries(page.cells).map(([id,r])=>[id,{...r,p90_score:score}])),
+      parcels:Object.fromEntries(Object.entries(page.parcels).map(([id,r])=>[id,{...r,score,factors:[{name:'synthetic',value:score,contribution:score}]}]))};
+  }});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===80));
+  const geometryCount=geometryRequests(app).length,archiveCount=app.requests.filter(url=>url.includes('/api/archive')).length;
+  app.get('exposure-model').value='v1';await app.get('exposure-model').onchange();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===40));
+  assert.equal(geometryRequests(app).length,geometryCount);
+  assert.equal(app.requests.filter(url=>url.includes('/api/archive')).length,archiveCount);
+  app.get('exposure-model').value='v2';await app.get('exposure-model').onchange();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===80));
+  assert.match(app.get('exposure-model-note').textContent,/Excluded properties stay unscored/);
+});
+
+test('a late response from the previous model cannot recolor the selected model',async()=>{
+  let release;
+  const app=await boot({configured:true,mixed:true,exposureScores:true,
+    holdExposure:params=>params.get('model')==='v2'&&params.has('parcel_ids')?new Promise(resolve=>{release=resolve;}):Promise.resolve(),
+    exposureTransform:(page,params)=>({...page,parcels:Object.fromEntries(Object.entries(page.parcels).map(([id,r])=>[id,{...r,score:params.get('model')==='v1'?40:80,factors:[{name:'synthetic',value:40,contribution:40}]}]))})});
+  app.map.handlers['load:']();parcelClick(app);await until(()=>release);
+  app.get('exposure-model').value='v1';await app.get('exposure-model').onchange();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===40));
+  release();await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===40));
+});
+
+test('an unavailable selected model clears the previous model scores',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true,
+    exposureTransform:(page,params)=>params.get('model')==='v1'?{status:'unavailable',cells:{},parcels:{},message:'V1 unavailable'}:page});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  app.get('exposure-model').value='v1';await app.get('exposure-model').onchange();
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+});
+
 test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{
   const app=await boot({configured:true,mixed:true,exposureScores:true});const {map,get}=app;map.handlers['load:']();
   await new Promise(resolve=>setImmediate(resolve));
@@ -643,6 +682,44 @@ test(`model inspection separates susceptibility and rainfall with ${forecastMode
   }
 });
 }
+
+for (const positive of [false,true]) {
+test(`${positive ? 'positive-only' : 'v2'} inspection traces actual FEMA, model evaluation, and the uncalibrated formula`,async()=>{
+  const app=await boot({configured:true,forecastMode:'county_archive',mixed:true,exposureScores:true,exposureTransform:page=>({
+    ...page,model_metadata:{model_version:positive?'mapped-susceptibility-v3-positive-synthetic':'mapped-susceptibility-v2-synthetic',model_sha256:'a'.repeat(64),
+      ...(positive?{inference_population:'positive_fema_overlap'}:{}),
+      training_dataset_id:'b'.repeat(64),evaluation_sha256:'c'.repeat(64),evaluation_protocol:positive?'mapping-proxy-positive-nested-spatial-v3':'mapping-proxy-nested-spatial-v2',
+      evaluation_summary:{macro_subgroup_mae:.12,fully_mapped_mae:.2,parcel_rmse:.1,equal_block_rmse:.15,coverage:.96}},
+    parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,record.score===null?record:{...record,score:81,
+      model_details:{susceptibility:.9,fema_mapped_area_fraction:.4,rainfall_6h_mm:450,rainfall_stress:.9,
+        model_instability:.02,baseline:.6,attributions:{terrain_min_m:.1,terrain_mean_m:.2}}}]))
+  })});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===81));
+  app.get('selection-content').children[1].onclick();
+  const text=app.get('selection-exposure').children.map(node=>node.textContent).join('\n');
+  assert.match(text,/Actual FEMA mapped fraction: 0.400 · Estimated fraction: 0.900/);
+  assert.match(text,/rainfall \/ \(rainfall \+ 50\)/);
+  assert.match(text,/original test excluded/);
+  assert.match(text,/Fully mapped MAE 0.200/);
+  assert.match(text,/96.0%/);
+  if (positive) assert.match(text,/zero or unknown overlap are excluded and unscored/);
+  assert.ok(text.includes('a'.repeat(64)) && text.includes('b'.repeat(64)) && text.includes('c'.repeat(64)));
+});
+}
+
+test('excluded zero-overlap parcels show an unscored explanation',async()=>{
+  const app=await boot({configured:true,forecastMode:'county_archive',mixed:true,exposureScores:true,exposureTransform:page=>({
+    ...page,parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,
+      {...record,score:null,factors:[],missing:['excluded_zero_fema_overlap']}]))
+  })});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.get('selection-content').children[1]?.onclick);
+  app.get('selection-content').children[1].onclick();
+  await until(()=>app.get('selection-assessment').textContent.includes('Excluded from this model'));
+  assert.equal(app.get('selection-score').textContent,'Unscored');
+  assert.match(app.get('selection-assessment').textContent,/no FEMA hazard-area overlap/);
+});
 
 test('H3 rainfall survives missing parcel context and refresh recovers prepared inputs',async()=>{
   const app=await boot({configured:true,rainfall:86.4});app.map.handlers['load:']();
