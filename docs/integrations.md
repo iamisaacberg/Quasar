@@ -31,7 +31,7 @@ Set `QUASAR_WEATHERNEXT_FILE=data/processed/weathernext.json` after importing, a
 
 ## Mapbox and H3
 
-Use only a public `pk.` Mapbox token in `MAPBOX_PUBLIC_TOKEN`; secret `sk.` tokens are rejected. `MAPBOX_STYLE` defaults to `mapbox://styles/mapbox/light-v11`; set another Mapbox style URL to override it. Google credentials and bridge tokens stay server-side. H3 R4–R7 supports county browsing, with parcel drill-down at R7. H3 does not increase forecast resolution; rainfall polygons retain WeatherNext's native geometry. Real parcel scores remain unknown.
+Use only a public `pk.` Mapbox token in `MAPBOX_PUBLIC_TOKEN`; secret `sk.` tokens are rejected. `MAPBOX_STYLE` defaults to `mapbox://styles/mapbox/light-v11`; set another Mapbox style URL to override it. Google credentials and bridge tokens stay server-side. H3 R4–R7 supports county browsing, with parcel drill-down at R7. Displayed H3 cells are clipped to the county boundary and summarize the maximum overlapping native forecast, with incomplete or unavailable coverage transparent. H3 does not increase forecast resolution; API payloads and exports retain WeatherNext's native geometry. Real parcel scores remain unknown.
 
 [WeatherNext schema and query guidance](https://developers.google.com/weathernext/guides/bigquery).
 
