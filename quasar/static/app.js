@@ -152,7 +152,7 @@ function selectedExposureSummary() {
 }
 
 function renderExposureInspection() {
-  if(!selectedCell || $("map-layer").value !== "exposure") return;
+  if(!selectedCell) return;
   const content=$("selection-exposure");
   let score = null;
   let assessmentNote;
@@ -160,7 +160,7 @@ function renderExposureInspection() {
     const summary=selectedExposureSummary(); score=summary?.p90_score ?? null;
     assessmentNote=summary ? `Upper-end parcel index (90th percentile). ${summary.scored_count.toLocaleString()}/${summary.parcel_count.toLocaleString()} parcels assessed${summary.incomplete ? "; coverage is incomplete" : ""}.` : "No matching parcel assessment is available for this hour.";
     content.replaceChildren(element("p",summary ? `${summary.scored_count}/${summary.parcel_count} parcels scored · ${(summary.coverage*100).toFixed(1)}% coverage · P90 ${score ?? "Unknown"}${summary.incomplete ? " · Incomplete coverage" : ""}` : "No matching parcel assessment is available. Prepared reference inputs are shown below.","detail-note"));
-    void refreshExposure(selectedResolution);
+    if($("map-layer").value === "exposure") void refreshExposure(selectedResolution);
   } else {
     const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
     score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
