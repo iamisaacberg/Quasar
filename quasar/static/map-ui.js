@@ -79,7 +79,7 @@
     let kind="none", times=[], index=0, timer=null, busy=false, generation=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
-      get("replay-play").setAttribute("aria-label",timer===null?"Play forecast or archive":"Pause playback");
+      get("replay-play").setAttribute("aria-label",timer===null?"Play Isaias timeline":"Pause playback");
       get("replay-play").setAttribute("aria-pressed",String(timer!==null));
       get("replay-prev").disabled=!available || busy || index===0;
       get("replay-next").disabled=!available || busy || index>=times.length-1;
@@ -87,7 +87,7 @@
       get("replay-hour").disabled=!available || busy || times.length<2;
       get("replay-hour").max=String(Math.max(0,times.length-1));get("replay-hour").value=String(index);
       get("replay-hour").setAttribute("aria-valuetext",times[index]?localTime(times[index]):"Unavailable");
-      get("playback-clock").textContent=times[index] ? `${kind==="archive"?"Archive":"Forecast"} · ${localTime(times[index])}` : "Select a forecast or archive";
+      get("playback-clock").textContent=times[index] ? `${kind==="archive"?"Isaias":"Forecast"} · ${localTime(times[index])}` : "Isaias archive unavailable";
       get("playback-status").textContent=busy?"Loading selected hour…":note;
     }
     function pause() {if(timer!==null)stop(timer);timer=null;draw();}

@@ -1,4 +1,4 @@
-"""Keep app content out of static output; routing must precede file lookup."""
+"""Serve only allowlisted app routes, never private deployment files."""
 
 from pathlib import Path
 
@@ -9,4 +9,4 @@ if any(path != placeholder or path.is_dir() for path in directory.iterdir()):
     raise SystemExit("Refusing a deployment with public files outside the team gate.")
 # Vercel rejects empty output directories. No app content goes in this file.
 # The unconditional route in vercel.json runs before filesystem lookup.
-placeholder.write_text("All requests must go through the Quasar team access gate.\n")
+placeholder.write_text("All requests must go through the Quasar application route allowlist.\n")

@@ -85,7 +85,7 @@ test('failed and superseded playback keep the last displayed timestamp',async()=
   const failed=playback(async()=>false),clock=failed.get('playback-clock').textContent;
   await failed.get('replay-next').onclick();assert.equal(failed.get('playback-clock').textContent,clock);assert.match(failed.get('playback-status').textContent,/Previous results/);
   let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));const old=app.get('replay-next').onclick();
-  app.controller.configure('archive',times,2);finish(true);await old;assert.equal(app.get('replay-hour').value,'2');assert.match(app.get('playback-clock').textContent,/Archive/);
+  app.controller.configure('archive',times,2);finish(true);await old;assert.equal(app.get('replay-hour').value,'2');assert.match(app.get('playback-clock').textContent,/Isaias/);
   app.controller.configure('none',[],0,false);assert.equal(app.get('replay-play').disabled,true);
   app.controller.configure('forecast',times,0,false,'Imported forecast is stale.');assert.equal(app.get('replay-play').disabled,true);assert.match(app.get('playback-status').textContent,/stale/);
 });

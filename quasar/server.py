@@ -159,10 +159,12 @@ class Handler(BaseHTTPRequestHandler):
                 from .forecast_timeline import timeline as forecast_timeline
                 if set(query) - {"source", "county_fips"}:
                     raise ValueError("Only current or archive source selection is supported")
-                return self.send(200, forecast_timeline(source=query.get("source", ["current"])[0]))
+                return self.send(200, forecast_timeline(source=query.get("source", ["archive"])[0]))
             if url.path == "/api/data/weather":
                 from .data_dashboard import weather_data
-                return self.send(200, weather_data())
+                if set(query) - {"source", "county_fips"}:
+                    raise ValueError("Only current or archive source selection is supported")
+                return self.send(200, weather_data(source=query.get("source", ["archive"])[0]))
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
             if url.path == "/api/exposure" or url.path.startswith(("/api/parcels", "/api/cells/")):
@@ -194,11 +196,11 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/reports":
                 if set(query) - {"source", "frame", "county_fips"}:
                     raise ValueError("Reports support imported county sources only")
-                return self.send(200, report(query.get("source", ["current"])[0], query.get("frame", [None])[0]))
+                return self.send(200, report(query.get("source", ["archive"])[0], query.get("frame", [None])[0]))
             if url.path == "/api/exports":
                 if set(query) - {"source", "frame", "format", "county_fips"}:
                     raise ValueError("Exports support imported county sources only")
-                body, content_type, filename = export(query.get("source", ["current"])[0], query.get("frame", [None])[0],
+                body, content_type, filename = export(query.get("source", ["archive"])[0], query.get("frame", [None])[0],
                                                       query.get("format", ["csv"])[0])
                 return self.send(200, body, content_type, filename=filename)
             if url.path == "/api/official-alerts":

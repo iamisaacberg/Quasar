@@ -7,7 +7,7 @@ import zipfile
 from .forecast_timeline import timeline
 
 
-def report(source="current", frame=None):
+def report(source="archive", frame=None):
     data = timeline(source=source)
     if frame is not None and (not str(frame).isascii() or not str(frame).isdigit()):
         raise ValueError("Frame must be a nonnegative index")
@@ -26,11 +26,13 @@ def report(source="current", frame=None):
                          "available_hours": p["available_hours"],
                          "init_time": p.get("init_time") or collection["forecast"].get("init_time"),
                          **{k: data[k] for k in ("retrieved_at", "source_table", "native_resolution", "statistic")}})
-    return {k: v for k, v in {**data, "rows": rows, "selected_index": index,
+    windows = [{"at": f["at"], "valid_to": f["collection"]["scenario"]["valid_to"]} for f in data["frames"]]
+    return {k: v for k, v in {**data, "rows": rows, "selected_index": index, "windows": windows,
+                             "init_time": collection["forecast"].get("init_time") if collection else None,
                              "collection": collection}.items() if k != "frames"}
 
 
-def export(source="current", frame=None, format="csv"):
+def export(source="archive", frame=None, format="csv"):
     if format not in ("csv", "geojson", "zip"):
         raise ValueError("Format must be csv, geojson or zip")
     data = report(source, frame)

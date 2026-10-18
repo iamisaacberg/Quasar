@@ -51,3 +51,6 @@
   .reports-page h2, .reports-page h3, .reports-page caption { break-after: avoid; }
   .report-print-map { display: inline; }
 }
+.report-cell-id { display: block; max-width: 160px; overflow-wrap: anywhere; font: 10px monospace; color: var(--muted-foreground); margin-top: 4px; }
+.report-source-id { overflow-wrap: anywhere; }
+.report-downloads { display: flex; flex-wrap: wrap; gap: 8px; }

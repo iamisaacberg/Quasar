@@ -27,15 +27,18 @@ snapshots, or use the authenticated LinuxONE snapshot bridge. Set
 host for prepared parcel inputs. Missing settings never load synthetic data.
 
 The Python runtime is dependency-free. Optional GIS preparation stays separate.
-Use `npm run dev:wifi` for temporary password-protected Wi-Fi sharing; see
+The hosted app is public without a sign-in screen. `npm run dev:wifi` remains
+a separate optional password-protected laptop-sharing utility; see
 [hosted access](docs/vercel.md) and [real-data activation](docs/real-data-rollout.md).
 Do not start a deployment or restart shared services without authorization.
 
 ## County sources
 
 The map, Data tab and Reports use imported native county forecast cells only.
-The map opens with current rainfall; Tools also offers the retained October 9
-archive. Archive rainfall is a forecast reconstruction, not an observation.
+The map opens directly on the Isaias October 9 archive, with 25 hourly
+positions, native rainfall polygons and an interactive maximum-cell rainfall trend.
+Map, Data and Reports share the selected hour. The current forecast is absent
+from the application controls. Archive rainfall is a forecast reconstruction, not an observation.
 Source initialization, retrieval, validity, resolution and mm / 6h remain visible.
 Missing, stale or invalid imports remain unavailable. No serving request starts
 cloud queries. Old site-only imports are rejected by these views.

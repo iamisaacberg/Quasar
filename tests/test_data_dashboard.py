@@ -17,7 +17,7 @@ from quasar.bridge import BridgeUnavailable
 class DataWeatherTests(unittest.TestCase):
     def read(self, data=None, now=NOW):
         with patch.object(data_dashboard, 'read_snapshot', return_value=data if data is not None else current()) as read:
-            result = data_dashboard.weather_data(now=now)
+            result = data_dashboard.weather_data(source="current", now=now)
         read.assert_called_once_with('weathernext')
         return result
 
@@ -32,7 +32,7 @@ class DataWeatherTests(unittest.TestCase):
         for frame in result['frames']:
             self.assertEqual(frame['rows'], [{
                 'native_cell_id': current()['native_cells'][0]['id'], 'status': 'ready',
-                'rainfall_6h_mm': 12, 'available_hours': 6}])
+                'rainfall_6h_mm': 12, 'available_hours': 6, 'init_time': iso(INIT)}])
         self.assertNotIn('demo-00', json.dumps(result))
         self.assertNotIn('score', json.dumps(result))
 
