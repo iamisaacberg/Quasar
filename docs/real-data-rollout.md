@@ -1,5 +1,42 @@
 # Real-data runtime activation
 
+## Exposure activation
+
+On October 18 UTC (October 17 Central), authorized activation switched Quasar
+to `/opt/quasar/releases/edmonton-exposure-20261018`. The existing staged model
+under `/home/linux1/quasar-stage1` was present but disconnected from the running
+service; public `/api/exposure` returned `not_configured`.
+
+The active `QUASAR_EXPOSURE_DIRECTORY` is
+`/srv/quasar/data/processed/okaloosa/modeling/edmonton-20261018/replay`.
+All 25 hourly positions from October 9 05:00 UTC through October 10 05:00 UTC
+have separate, exact six-hour assessments. Every window represents 113,818
+parcels: **112,120 scored, 1,698 unknown** (1,538 incomplete terrain inputs and
+160 outside training ranges). Parcel 19144 has complete inputs and a known score.
+Missing inputs remain unknown; there was no imputation, retraining or cloud query.
+
+The staged artifact uses model version `mapped-susceptibility-v1-7673922e5dca`,
+portable hash `5fbfe10500f05e1b5fbd16ebc622b52596489aa19aea479ab063cf872d0535a7`
+and training dataset ID `8ab0884720f21ce9fe492b8c1aabe317e28850f82857ab0dff880a3a1c057179`.
+Its matching evaluation is retained; these identities differ from the earlier
+local artifact report and must not be substituted into that historical record.
+The inventory and boundary match the audited Marseille inspection inputs.
+
+The first window used repository inference. The existing host producer's faster
+numeric-tree evaluator agreed across all 112,120 eligible parcels, with maximum
+static prediction/explanation difference `8.881784197001252e-16`. Every artifact
+passed the new serving validator and R4–R7 aggregation benchmark on `s390x`:
+approximately 25–93 seconds per window, under 276 MiB peak RSS per benchmark.
+These are execution checks, not observed-flood validation.
+
+The environment/service backup and previous release pointer are under
+`/etc/quasar/backups/edmonton-exposure-20261018`. Only Quasar was restarted;
+credentials, Caddy/TLS and Vercel settings were preserved. The systemd service
+and saved assessments operate independently of Conductor workspaces and PRs.
+Reload an already-open map to discard cached `not_configured` responses.
+Host manifests and benchmarks live beside the replay directory; local verification
+receipts are ignored under `.context/activation/`.
+
 ## October 18 activation
 
 The Marseille activation replaced the older standalone Miami-Dade bridge with

@@ -55,8 +55,9 @@ Real parcel scores remain unknown unless separately produced matching exposure
 assessments exist. Optional offline modeling implements an experimental FEMA
 mapping proxy and rainfall interaction. A real-data model has now been trained
 locally and passed the pipeline's mapping-proxy promotion gates; see the
-[training report](docs/modeling-run-v1.md). It has not been activated on LinuxONE,
-and no observed-flood validation is established.
+[training report](docs/modeling-run-v1.md). LinuxONE now serves matching assessments
+for all 25 archive positions; see [activation](docs/real-data-rollout.md#exposure-activation).
+No observed-flood validation is established.
 Exposure colors are not flood probability or depth, and green does not establish safety.
 
 Fictional sites, synthetic scenarios, what-if additions, notification previews and
@@ -88,5 +89,6 @@ evaluates a FEMA mapping proxy, exports portable trees and produces experimental
 rainfall/exposure assessments, with a separate gated observed-outcome experiment.
 The [first real-data run](docs/modeling-run-v1.md) produced a trained portable
 model and a local archived-rainfall assessment. Training artifacts stay under
-ignored `data/processed/`; cloning this repo does not include them. Server
-activation and actual LinuxONE performance remain separate, uncompleted steps.
+ignored `data/processed/`; cloning this repo does not include them. The
+[LinuxONE activation](docs/real-data-rollout.md#exposure-activation) records the
+separately verified serving artifact and host benchmarks.

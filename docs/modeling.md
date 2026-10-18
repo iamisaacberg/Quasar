@@ -4,8 +4,10 @@ These commands prepare, train, evaluate, export and score an experimental FEMA
 mapping proxy. PR #17 supplied the pipeline without trained weights. The
 [first real-data run](modeling-run-v1.md), completed October 18, 2026 UTC
 (October 17 Central), trained and exported a model locally from verified
-LinuxONE inputs and passed the unchanged promotion gates. It has not been
-installed or activated on LinuxONE. Ignored datasets and trained artifacts are
+LinuxONE inputs and passed the unchanged promotion gates. The subsequent
+[LinuxONE activation](real-data-rollout.md#exposure-activation) serves all 25
+archive positions using the host's checksum-matched staged model and evaluation.
+Ignored datasets and trained artifacts are
 not included in a repository clone. This mapping-proxy evaluation does not
 establish observed-flood accuracy or actual LinuxONE performance.
 County scope is Okaloosa, FIPS `12091`.
