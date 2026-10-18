@@ -1,6 +1,8 @@
 import json
 import threading
 import unittest
+from unittest.mock import patch
+from test_county_weather import current
 from http.client import HTTPConnection
 
 from quasar.server import make_server
@@ -31,7 +33,7 @@ class ApiTests(unittest.TestCase):
             connection.close()
 
     def test_api_routes(self):
-        for path in ["/health", "/api/config", "/api/scenarios", "/api/weather/status", "/api/weather/timeline", "/api/properties?scenario=peak"]:
+        for path in ["/health", "/api/config", "/api/weather/status", "/api/weather/timeline", "/api/reports"]:
             with self.subTest(path=path):
                 status, body, content_type = self.request(path)
                 self.assertEqual(status, 200)
@@ -52,37 +54,28 @@ class ApiTests(unittest.TestCase):
 
     def test_bad_scope_scenario_and_route(self):
         for path, expected in [("/api/properties?county_fips=12011",400),
-                               ("/api/properties?scenario=invalid",400),
+                               ("/api/properties?scenario=invalid",410),
                                ("/../README.md",404), ("/.env",404), ("/components.json",404),
                                ("/ui/../.env",404), ("/unknown",404)]:
             with self.subTest(path=path):
                 self.assertEqual(self.request(path)[0], expected)
 
-    def test_notification_preview_endpoint(self):
-        status, body, _ = self.request("/api/notifications/preview", {
-            "opt_in":True, "property_ids":["demo-001"], "scenario":"peak"})
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["sent_count"], 0)
-        self.assertEqual(json.loads(body)["preview_count"], 1)
+    def test_simulation_endpoints_are_retired(self):
+        for path in ("/api/properties", "/api/scenarios", "/api/timeline", "/api/routes", "/api/replay/context"):
+            self.assertEqual(self.request(path)[0], 410)
+        for path in ("/api/routes", "/api/notifications/preview"):
+            self.assertEqual(self.request(path, payload={})[0], 410)
 
-    def test_invalid_json_body_and_content_type(self):
-        for raw, content_type, expected in [("{", "application/json", 400),
-                                             ("[]", "application/json",400),
-                                             ("{}", "text/plain",415),
-                                             (" "*17000,"application/json",413)]:
-            with self.subTest(expected=expected):
-                self.assertEqual(self.request("/api/notifications/preview", raw=raw, content_type=content_type)[0], expected)
-
-
-    def test_reports_and_export_routes(self):
-        for scenario, count in [("baseline", 6), ("compare", 18)]:
-            status, body, _ = self.request(f"/api/reports?scenario={scenario}")
+    @patch("quasar.forecast_timeline.read_snapshot", side_effect=lambda name: current() if name == "weathernext" else None)
+    def test_reports_and_export_routes(self, read):
+        for scenario, count in [("current", 1)]:
+            status, body, _ = self.request(f"/api/reports?source={scenario}")
             self.assertEqual(status, 200)
             self.assertEqual(len(json.loads(body)["rows"]), count)
             for fmt, mime in [("csv", "text/csv; charset=utf-8"), ("geojson", "application/geo+json"), ("zip", "application/zip")]:
                 connection = HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
                 try:
-                    connection.request("GET", f"/api/exports?scenario={scenario}&format={fmt}")
+                    connection.request("GET", f"/api/exports?source={scenario}&format={fmt}")
                     response = connection.getresponse()
                     self.assertEqual(response.status, 200)
                     self.assertEqual(response.getheader("Content-Type"), mime)
@@ -101,3 +94,25 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertEqual(mime, "application/json")
                 self.assertIn("error", json.loads(body))
+
+    def test_map_timeline_rejects_synthetic_parameters(self):
+        for query in ('source=what_if', 'source=current&preset=plus-5', 'source=archive&mode=what_if'):
+            self.assertEqual(self.request('/api/weather/timeline?' + query)[0], 400)
+
+    @patch("quasar.forecast_timeline.read_snapshot", side_effect=lambda name: current())
+    def test_real_exports_preserve_unknown_values_source_and_geometry(self, read):
+        import csv, io
+        data = current()
+        data['runs'][0]['rows'][0]['rainfall_1h_mm'] = None
+        read.side_effect = lambda name: data
+        status, body, _ = self.request('/api/exports?source=current&frame=0&format=csv')
+        self.assertEqual(status, 200)
+        row = next(csv.DictReader(io.StringIO(body.decode())))
+        self.assertEqual(row['rainfall_6h_mm'], '')
+        self.assertEqual(row['units'], 'mm / 6h')
+        self.assertEqual(row['county_fips'], '12091')
+        self.assertEqual(row['native_resolution'], '0.1 degree')
+        status, body, _ = self.request('/api/exports?source=current&frame=0&format=geojson')
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['features'][0]['geometry'], data['native_cells'][0]['geometry'])
+        self.assertNotIn('demo-00', body.decode())

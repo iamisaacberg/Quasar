@@ -76,7 +76,7 @@
   }
   const localTime=value=>new Date(value).toLocaleString("en-US",{timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",timeZoneName:"short"});
   function createPlayback({get, select, every=setInterval, stop=clearInterval}) {
-    let kind="none", times=[], index=0, timer=null, busy=false, generation=0, available=false, note="Playback unavailable for static exercise windows.";
+    let kind="none", times=[], index=0, timer=null, busy=false, generation=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
       get("replay-play").setAttribute("aria-label",timer===null?"Play forecast or archive":"Pause playback");

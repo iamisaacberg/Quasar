@@ -1,0 +1,15 @@
+# Substitute the existing public host. Retain its current TLS issuer configuration.
+{$QUASAR_PUBLIC_HOST} {
+    tls {
+        issuer acme {
+            profile shortlived
+        }
+    }
+    @county_data path /bridge/v1/snapshots/* /api/parcels /api/parcels/manifest /api/parcels/*/context /api/cells/*/summary /api/exposure
+    handle @county_data {
+        reverse_proxy 127.0.0.1:8000
+    }
+    handle {
+        respond "Not found" 404
+    }
+}

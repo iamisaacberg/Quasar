@@ -11,89 +11,34 @@ const {execFileSync} = require('node:child_process');
 const source = ts.transpileModule(fs.readFileSync('frontend/reports.tsx', 'utf8'), {
   compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022}
 }).outputText;
-function render(preset, data, {loading = false, error = '', site = 'demo-006'} = {}) {
-  let index = 0;
-  const values = [preset, 'baseline', [], site, data, error, loading];
-  const exports = {};
-  const context = {exports, window: {location: {origin: 'http://localhost:8000'}},
-    require: name => name === 'react' ? {
-      useState: () => [values[index++], () => {}], useEffect: () => {},
-    } : name === './reports.css' ? {} : require(name)};
-  vm.runInNewContext(source, context);
-  return renderToStaticMarkup(React.createElement(exports.Reports, {active: true}));
+function render(data, {sourceName='current',error=''}={}) {
+  let index=0;
+  const values=[sourceName,data,error], exported={};
+  vm.runInNewContext(source,{exports:exported,window:{},require:name=>name==='react'?{useState:()=>[values[index++],()=>{}],useEffect:()=>{}}:name==='./reports.css'?{}:require(name)});
+  return renderToStaticMarkup(React.createElement(exported.Reports,{active:true}));
 }
-const data = JSON.parse(execFileSync('python3', ['-c', 'import json; from quasar.analysis import report; print(json.dumps(report("compare")))'], {encoding:'utf8'}));
-const baseline = {...data, ...data.scenarios[0], scenarios: undefined, rows: data.rows.filter(row => row.scenario === 'baseline')};
+const data={source:'current',status:'incomplete',selected_index:2,init_time:'2026-10-17T12:00:00Z',retrieved_at:'2026-10-17T12:30:00Z',source_table:'test-only.native-forecast',rows:[
+  {native_cell_id:'native-test-zero',rainfall_6h_mm:0,available_hours:6,status:'ready',valid_from:'2026-10-17T12:00:00Z',valid_to:'2026-10-17T18:00:00Z'},
+  {native_cell_id:'native-test-unknown',rainfall_6h_mm:null,available_hours:5,status:'incomplete',valid_from:'2026-10-17T12:00:00Z',valid_to:'2026-10-17T18:00:00Z'}]};
 
-test('overview renders accessible charts, unknown rows, context and downloads', () => {
-  const html = render('overview', baseline);
-  assert.match(html, /Scenario overview/);
-  assert.match(html, /role="img"/);
-  assert.match(html, /<caption>Relative scores and input completeness/);
-  assert.match(html, /Missing terrain exercise site · Shalimar/);
-  assert.match(html, /Unknown/);
-  assert.match(html, /SYNTHETIC DEMO/);
-  assert.match(html, /Generated/);
-  assert.match(html, /Central time/);
-  assert.match(html, /scenario=baseline&amp;format=zip/);
-  assert.match(html, /not trained AI/);
-  assert.match(html, /not an all-clear/);
+test('reports preserve native source identity, zero and unknown values and exports',()=>{
+  const html=render(data);
+  assert.match(html,/native-test-zero/);assert.match(html,/>0.00</);assert.match(html,/>Unknown</);
+  assert.match(html,/source=current&amp;frame=2&amp;format=zip/);
+  assert.match(html,/test-only.native-forecast/);assert.match(html,/Initialized/);assert.match(html,/Imported/);
+  assert.doesNotMatch(html,/fictional|synthetic|demo-00/i);
 });
 
-test('comparison renders all three windows with gaps explicitly unknown', () => {
-  const html = render('compare', data);
-  assert.match(html, /Exercise hour 0/);
-  assert.match(html, /Exercise hour 6/);
-  assert.match(html, /Exercise hour 12/);
-  assert.match(html, /Missing terrain exercise site · Shalimar<\/th><td>Unknown<\/td><td>Unknown<\/td><td>Unknown/);
-  assert.match(html, /scenario=compare&amp;format=csv/);
-  assert.match(html, /18 site\/window rows/);
-});
-
-test('site explainer does not manufacture factor contributions for unknown sites', () => {
-  const html = render('site', baseline);
-  assert.match(html, /No factor contributions are assigned/);
-  assert.doesNotMatch(html, /<caption>Factors behind the illustrative score/);
-  assert.match(html, /Terrain elevation/);
-  assert.match(html, /Model: illustrative-baseline-v1/);
-});
-
-test('unavailable and loading reports do not offer downloads or printing', () => {
-  for (const state of [{error: 'Invalid forecast snapshot'}, {loading: true}]) {
-    const html = render('overview', null, state);
-    assert.doesNotMatch(html, /href="\/api\/exports/);
-    assert.match(html, /disabled=""/);
-    assert.match(html, state.loading ? /Loading report/ : /role="alert"/);
+test('source changes and absent imports cannot show old reports or offer exports',()=>{
+  for(const [report,options] of [[data,{sourceName:'archive'}],[null,{error:'Source offline'}],[{...data,rows:[]},{}]]){
+    const html=render(report,options);
+    assert.doesNotMatch(html,/href="\/api\/exports/);assert.match(html,/disabled=""/);
   }
 });
 
-test('mixed reports retain forecast status, source, native resolution and separate times', () => {
-  const html = render('overview', {...baseline, mode:'mixed_forecast_demo', forecast: {
-    status:'stale', source_table:'project.dataset.table', init_time:'2026-10-17T12:00:00Z',
-    retrieved_at:'2026-10-17T12:30:00Z', native_resolution:'0.1 degree', statistic:'ensemble_mean',
-  }});
-  assert.match(html, /MIXED DEMO/);
-  assert.match(html, /Forecast status: stale/);
-  assert.match(html, /project.dataset.table/);
-  assert.match(html, /Initialized/);
-  assert.match(html, /Imported/);
-  assert.match(html, /Native resolution: 0.1 degree/);
-});
-
-
-test('known site explanation renders actual pipeline contributions', () => {
-  const html = render('site', baseline, {site:'demo-001'});
-  assert.match(html, /<caption>Factors behind the illustrative score/);
-  for (const factor of baseline.rows.find(row => row.property_id === 'demo-001').factors) {
-    assert.ok(html.includes(String(factor.contribution)));
-  }
-});
-
-test('changing preset never labels the previous window data as the requested comparison', () => {
-  const html = render('compare', baseline);
-  assert.doesNotMatch(html, /href="\/api\/exports/);
-  assert.doesNotMatch(html, /class="report-document"/);
-  assert.match(html, /disabled=""/);
+test('expired current reports clear numeric rainfall before rendering',()=>{
+  const html=render({...data,expires_at:'2000-01-01T00:00:00Z'});
+  assert.doesNotMatch(html,/>0.00</);assert.match(html,/stale/);assert.match(html,/>Unknown</);
 });
 
 for (const initialView of ['#reports', '#data']) test(`returning from ${initialView} restores the map and signals Mapbox to resize`, () => {

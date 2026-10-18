@@ -1,63 +1,74 @@
-"""Map playback from retained forecast rows. Reads one snapshot; never imports."""
+"""Native county forecast playback. Never loads fixture sites or computes scores."""
 from datetime import datetime, timedelta, timezone
 
 from .adapters import county_weather as county
 from .adapters.weathernext import iso, timestamp, summarize
 from .bridge import BridgeUnavailable, read_snapshot
-from .config import COUNTY_FIPS
-from .pipeline import weather_collection
+from .config import COUNTY_FIPS, TIMEZONE
 
 
-def timeline(*, now=None):
+def timeline(*, source="current", now=None, reader=None):
+    if source not in ("current", "archive"):
+        raise ValueError("Source must be current or archive")
     now = now or datetime.now(timezone.utc)
     base = {"county_fips": COUNTY_FIPS, "frames": [], "default_index": 0,
-            "units": "mm / 6h", "timezone": "America/Chicago"}
+            "units": "mm / 6h", "timezone": TIMEZONE, "source": source}
     try:
-        data = read_snapshot("weathernext")
+        data = (reader or read_snapshot)("weathernext" if source == "current" else "isaias-2026")
         if data is None:
-            return {**base, "status": "not_configured", "message": "Import a forecast snapshot to enable playback."}
+            return {**base, "status": "not_configured", "message": "No imported county forecast is configured."}
         if data.get("schema_version") != 3:
-            # Older imports retain a single six-hour window, not a multi-hour run.
-            forecast = summarize(data, now=now)
-            return {**base, "status": forecast["status"],
-                    "frames": [{"at": data["valid_from"], "collection": weather_collection(forecast)}]}
+            return {**base, "status": "unavailable", "message": "A county native-cell snapshot is required. Site-only imports are not used."}
         county.validate(data, now=now)
-        if data["kind"] != "current_county_forecasts":
-            raise ValueError("Current forecast required")
-        ids = {c["id"] for c in data["native_cells"]}
-        original = summarize(county.current_snapshot(data), allowed=ids, now=now)
-        # Global freshness is tied to the imported snapshot, never the slider clock.
-        stale = original["status"] == "stale"
-        rows = data["runs"][0]["rows"]
-        if not rows:
-            raise ValueError("No retained hourly rows")
-        start = timestamp(data["init_time"])
-        last = max(timestamp(r["forecast_time"]) for r in rows) - timedelta(hours=6)
+        expected = "current_county_forecasts" if source == "current" else "historical_county_forecasts"
+        if data["kind"] != expected:
+            raise ValueError("Wrong forecast kind")
+        ids = {cell["id"] for cell in data["native_cells"]}
+        stale = False
+        if source == "current":
+            original = summarize(county.current_snapshot(data), allowed=ids, now=now)
+            stale = original["status"] == "stale"
+            start = timestamp(data["init_time"])
+            last = max(timestamp(row["forecast_time"]) for row in data["runs"][0]["rows"]) - timedelta(hours=6)
+        else:
+            from .replay import START, END
+            start, last = START, END
         frames = []
         clock = start
         while clock <= last:
             window = {**data, "valid_from": iso(clock), "valid_to": iso(clock + timedelta(hours=6))}
-            cells = county.collection(window, now=now)
-            forecast = summarize(county.for_sites(window, now=now), now=now)
-            forecast["coverage"] = "County native forecast cells; site scores still use fictional inputs"
-            if stale:
-                forecast["status"] = "stale"
-                for record in forecast["records"].values():
-                    record.update(status="stale", rainfall_6h_mm=None)
-                for feature in cells["features"]:
+            cells = county.collection(window, at=iso(clock) if source == "archive" else None, now=now)
+            for feature in cells["features"]:
+                # The archive adapter also supports research what-if experiments. This
+                # public path fixes archived rainfall and exposes no synthetic additions.
+                feature["properties"].pop("synthetic_increment_mm_per_hour", None)
+                if stale:
                     feature["properties"].update(status="stale", rainfall_6h_mm=None)
-            forecast["county_cells"] = cells
-            frames.append({"at": iso(clock), "collection": weather_collection(forecast)})
+            metadata = {key: data[key] for key in ("source_table", "retrieved_at", "native_resolution", "statistic")}
+            metadata["init_time"] = data.get("init_time") if source == "current" else next(
+                (f["properties"].get("init_time") for f in cells["features"] if f["properties"].get("init_time")), None)
+            status = "stale" if stale else "ready" if all(f["properties"]["status"] == "ready" for f in cells["features"]) else "incomplete"
+            notice = "Imported native forecast rainfall; not observed rain, parcel flood risk, depth or probability. Follow official NWS/local guidance."
+            collection = {"type": "FeatureCollection", "county_fips": COUNTY_FIPS, "features": [],
+                          "mode": "county_forecast" if source == "current" else "county_archive",
+                          "scenario": {"id": "weathernext" if source == "current" else "isaias-2026",
+                                       "valid_from": cells["valid_from"], "valid_to": cells["valid_to"]},
+                          "forecast": {**metadata, "status": status}, "weather_cells": cells, "notice": notice}
+            frames.append({"at": iso(clock), "collection": collection})
             clock += timedelta(hours=1)
         if not frames:
-            raise ValueError("Fewer than six retained forecast hours")
-        default = next((i for i, f in enumerate(frames) if f["at"] == data["valid_from"]), 0)
-        metadata = {k: data[k] for k in ("init_time", "retrieved_at", "source_table", "native_resolution", "statistic")}
-        return {**base, **metadata, "status": original["status"], "frames": frames, "default_index": default,
-                "expires_at": min(iso(timestamp(data["retrieved_at"]) + timedelta(hours=2)),
-                                  iso(start + timedelta(hours=12)), data["valid_to"]),
-                "notice": "Imported forecast rainfall with fictional site inputs; real parcel scores remain unknown."}
+            raise ValueError("No six-hour forecast windows")
+        metadata = {key: data[key] for key in ("retrieved_at", "source_table", "native_resolution", "statistic")}
+        result = {**base, **metadata, "status": "stale" if stale else "ready" if all(
+            f["collection"]["forecast"]["status"] == "ready" for f in frames) else "incomplete",
+                  "frames": frames, "default_index": next((i for i, f in enumerate(frames) if f["at"] == data.get("valid_from")), 0),
+                  "notice": notice}
+        if source == "current":
+            result.update(init_time=data["init_time"], expires_at=min(
+                iso(timestamp(data["retrieved_at"]) + timedelta(hours=2)),
+                iso(start + timedelta(hours=12)), data["valid_to"]))
+        return result
     except BridgeUnavailable:
-        return {**base, "status": "unavailable", "message": "Forecast bridge unavailable. No new import was started."}
+        return {**base, "status": "unavailable", "message": "Forecast bridge unavailable. No substitute data or new import was used."}
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
-        return {**base, "status": "invalid", "message": "Forecast snapshot invalid or unavailable. No new import was started."}
+        return {**base, "status": "invalid", "message": "Forecast snapshot invalid or unavailable. No substitute data or new import was used."}

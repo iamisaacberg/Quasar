@@ -44,36 +44,29 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
       </header>
       <div className="dashboard">
         <section className="page-heading">
-          <div><p className="eyebrow"><Radar aria-hidden="true" />EXPOSURE WORKSPACE</p><h1>A clearer view of changing conditions.</h1><p>Explore Okaloosa exercise sites, rainfall scenarios, and the factors behind each score.</p></div>
+          <div><p className="eyebrow"><Radar aria-hidden="true" />EXPOSURE WORKSPACE</p><h1>A clearer view of changing conditions.</h1><p>Explore county parcels, prepared reference inputs and native forecast rainfall.</p></div>
           <div className="county-tag"><MapPin aria-hidden="true" /><span>Okaloosa, FL<small>County FIPS 12091</small></span></div>
         </section>
-        <aside className="notice"><TriangleAlert aria-hidden="true" /><p id="data-notice">Unvalidated demonstration estimates. These are not flood depths, probabilities, or official warnings. All sites and attributes are synthetic.</p></aside>
+        <aside className="notice"><TriangleAlert aria-hidden="true" /><p id="data-notice">Imported county source data. Missing inputs remain unknown. Forecast rainfall is not flood depth, probability or an official warning.</p></aside>
         <p id="error" role="alert" hidden />
-        <section className="stats" aria-label="Scenario summary">
-          <div><div className="stat-label">Exercise sites<MapPin aria-hidden="true" /></div><strong id="site-count">—</strong><p>Fictional locations in the county</p></div>
-          <div><div className="stat-label">Elevated relative score<TriangleAlert aria-hidden="true" /></div><strong id="elevated-count">—</strong><p>Illustrative score of 65 or above</p></div>
-          <div><div className="stat-label">Insufficient data<CircleHelp aria-hidden="true" /></div><strong id="unknown-count">—</strong><p>Unknown inputs remain unscored</p></div>
-        </section>
         <div className="map-workspace">
-          <section className="map-card" id="map-overview" tabIndex={-1} aria-label="Okaloosa exercise map">
-            <div className="panel-header"><div><h2 id="map-heading"><MapPin aria-hidden="true" />County map</h2><p>County grid · parcel browsing · fictional exercise sites</p></div><span id="grid-resolution" className="subtle-tag">H3 · RES 6</span></div>
+          <section className="map-card" id="map-overview" tabIndex={-1} aria-label="Okaloosa county map">
+            <div className="panel-header"><div><h2 id="map-heading"><MapPin aria-hidden="true" />County map</h2><p>County grid · parcel browsing · native forecast rainfall</p></div><span id="grid-resolution" className="subtle-tag">H3 · RES 6</span></div>
             <div className="map-viewport">
-              <div id="map"><p className="map-fallback">Map loading. Use Tools to inspect exercise sites.</p></div>
+              <div id="map"><p className="map-fallback">Map loading. County source tables remain available in Data.</p></div>
               <div className="map-search map-float" role="search">
                 <div className="map-search-input"><Search aria-hidden="true" /><input id="map-search" type="text" disabled placeholder="Search Okaloosa addresses and places…" aria-label="Search Okaloosa County" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="map-search-results" aria-describedby="map-search-status" autoComplete="off" /><button id="map-search-clear" type="button" disabled aria-label="Clear search"><X aria-hidden="true" /></button></div>
                 <ul id="map-search-results" role="listbox" aria-label="County search results" hidden />
                 <p id="map-search-status" role="status">Search requires a configured map and an available county boundary.</p>
               </div>
-              <div className="map-state map-float"><span className="demo-badge" id="mode-badge">SYNTHETIC DEMO</span><span id="map-display-label">Loading map data…</span></div>
+              <div className="map-state map-float"><span className="demo-badge" id="mode-badge">COUNTY SOURCES</span><span id="map-display-label">Loading map data…</span></div>
               <p id="map-status" className="map-message map-float" role="status" />
               <div className="map-tool-dock map-float">
                 <div className="map-zoom"><button id="map-zoom-in" type="button" aria-label="Zoom in"><Plus /></button><button id="map-zoom-out" type="button" aria-label="Zoom out"><Minus /></button></div>
                 <details id="map-tools"><summary aria-label="Map tools"><SlidersHorizontal aria-hidden="true" /><span>Tools</span></summary><div className="map-tools-panel"><h2>Map tools</h2>
                   <section className="exercise-toolbar" aria-label="Map toolbar">
                     <label htmlFor="scenario"><CloudRain aria-hidden="true" /><span>Data source</span><select id="scenario" disabled aria-label="Map data source and time window" /></label>
-                    <label htmlFor="map-layer"><Layers3 aria-hidden="true" /><span>Display</span><select id="map-layer" defaultValue="exposure"><option value="rainfall">Rainfall · mm / 6h</option><option value="exposure">Relative exposure · /100</option></select></label>
-                    <button id="replay-toggle" type="button" disabled aria-pressed="false" aria-controls="map-sidebar"><Radar aria-hidden="true" /><span>Isaias simulation</span></button>
-                    <button id="map-inspect-toggle" type="button" aria-expanded="false" aria-controls="map-sidebar"><MapPin aria-hidden="true" />Inspect sites</button>
+                    <label htmlFor="map-layer"><Layers3 aria-hidden="true" /><span>Display</span><select id="map-layer" defaultValue="rainfall"><option value="rainfall">Rainfall · mm / 6h</option><option value="exposure">Relative exposure · /100</option></select></label>
                   </section>
                   <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />County H3 grid</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
                 </div></details>
@@ -81,7 +74,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
               <section className="map-playback map-float" aria-label="Forecast and archive playback">
                 <p id="playback-clock">Select a forecast or archive</p>
                 <div className="playback-main"><button id="replay-prev" type="button" disabled aria-label="Previous hour"><ChevronLeft /></button><button id="replay-play" type="button" disabled aria-label="Play forecast or archive" aria-pressed="false">▶</button><button id="replay-next" type="button" disabled aria-label="Next hour"><ChevronRight /></button><input id="replay-hour" type="range" min="0" max="0" step="1" defaultValue="0" disabled aria-label="Forecast or archive hour" /></div>
-                <p id="playback-status" role="status">Playback unavailable for static exercise windows.</p>
+                <p id="playback-status" role="status">Waiting for imported forecast data.</p>
               </section>
               <details className="map-legend map-float" id="map-legend" open><summary><Layers3 aria-hidden="true" />Legend</summary><div className="map-legend-content">
                 <div id="exposure-legend" className="legend exposure-legend" aria-label="Experimental relative exposure">
@@ -91,51 +84,28 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                 <span><i className="dot moderate" />35–64 · Moderate relative exposure</span>
                 <span><i className="dot elevated" />65–84 · Elevated relative exposure</span>
                 <span><i className="dot highest" />85–100 · Highest relative exposure</span>
-                <span><i className="dot unknown" />Unknown · Insufficient data</span>
-                <span>Hatched · Incomplete scoring coverage</span>
+                <span>Transparent · Unknown or unavailable assessment</span>
                 <strong>Green does not establish safety.</strong>
               </div>
-                <div id="rainfall-legend" className="legend" hidden aria-label="Rainfall legend"><span><i className="dot rain-light" />0–25</span><span><i className="dot rain-medium" />25–75</span><span><i className="dot rain-heavy" />75+ mm / 6h</span><span><i className="dot unknown" />Unavailable</span></div>
+                <div id="rainfall-legend" className="legend" hidden aria-label="Rainfall legend"><span><i className="dot rain-light" />0–25</span><span><i className="dot rain-medium" />25–75</span><span><i className="dot rain-heavy" />75+ mm / 6h</span><span>Transparent · Unavailable</span></div>
                 <p>Rainfall: mm / 6h · Exposure: score / 100</p>
                 <details className="map-info" id="map-source-info"><summary><Info aria-hidden="true" />Source &amp; interpretation</summary>
-                  <div className="map-data-summary" aria-live="polite"><strong id="map-data-title">Loading map data…</strong><p id="window">Loading exercise clock…</p><p id="map-data-values" /><p id="map-data-source" /></div>
-                  <p id="map-layer-note" className="detail-note">Hexagons summarize exercise sites. They are not flood extents, county boundaries, or higher-resolution forecasts.</p>
-                  <p id="map-demo-notice">Unvalidated demonstration. Follow official NWS/local guidance.</p>
+                  <div className="map-data-summary" aria-live="polite"><strong id="map-data-title">Loading map data…</strong><p id="window">Loading source window…</p><p id="map-data-values" /><p id="map-data-source" /></div>
+                  <p id="map-layer-note" className="detail-note">H3 outlines support parcel browsing. Native rainfall cells retain their original resolution.</p>
+                  <p id="map-demo-notice">Forecasts supplement official NWS/local guidance.</p>
                 </details>
               </div></details>
               <button id="map-sheet-backdrop" className="map-sheet-backdrop" type="button" aria-label="Close map details" tabIndex={-1} hidden />
               <MapSelectionPanel />
-              <aside id="map-sidebar" className="map-sidebar" aria-label="Map inspection and simulation">
-                <div className="map-sidebar-header"><strong>Map details</strong><button id="map-sidebar-close" type="button" aria-label="Close map inspection"><X /></button></div>
-                <section id="isaias-replay" className="replay-panel" hidden aria-labelledby="replay-heading">
-                  <div className="panel-header"><div><p className="eyebrow">HISTORICAL CONTEXT · FICTIONAL SITE INPUTS</p><h2 id="replay-heading">Isaias simulation · 2026</h2><p>Oct 9 archive reconstruction and simulated routes. Select a site on the map to update the trend.</p></div><strong id="replay-clock" /></div>
-                  <div className="replay-options">
-                    <label>Scenario mode<select id="replay-mode" defaultValue="archive"><option value="archive">Archive reconstruction</option><option value="what_if">What-if exercise</option></select></label>
-                    <label>Rainfall preset<select id="replay-preset" defaultValue="archived"><option value="archived">Archived rainfall</option><option value="plus-5">Archived +5 mm/hour · synthetic</option><option value="plus-10">Archived +10 mm/hour · synthetic</option></select></label>
-                  </div>
-                  <button id="replay-reset" type="button">Reset simulation</button>
-                  <p id="replay-loading" role="status" /><p id="replay-source-status" className="detail-note" />
-                  <details><summary>NHC storm context</summary><p id="advisory-context" className="advisory-text" /><a id="advisory-link" href="https://www.nhc.noaa.gov/archive/2026/ISAIAS.shtml" target="_blank" rel="noopener noreferrer">Open original NHC advisory</a></details>
-                </section>
-                <section className="details" id="site-details" aria-labelledby="detail-heading"><label className="site-selector">Exercise site<select id="map-site" aria-label="Inspect an exercise site" /></label><div className="detail-title"><p className="eyebrow">SITE EXPLAINER</p><Waves aria-hidden="true" /></div><h2 id="detail-heading">Choose an exercise site</h2><div id="detail" aria-live="polite">Select a map point or inspect a site below.</div></section>
-                <section id="replay-results" className="replay-results" hidden aria-label="Hourly exposure and evacuation exercise">
-                  <section className="replay-panel"><h2 id="timeline-heading">Illustrative exposure for the next six hours</h2><p id="timeline-change" role="status" /><svg id="risk-chart" viewBox="0 0 650 150" role="img" aria-label="Hourly relative score; missing data appears as gaps" /><p className="detail-note">Oct 9, midnight Central – Oct 10, midnight Central · Missing data creates gaps. Scores are unvalidated relative estimates.</p><details><summary>Hourly values and source status</summary><div className="table-wrap"><table><thead><tr><th>Central time</th><th>Score / 100</th><th>Hourly change</th><th>Rainfall status</th></tr></thead><tbody id="timeline-rows" /></table></div></details></section>
-                  <section className="replay-panel"><h2>Resident evacuation route exercise</h2><p id="route-summary" role="status" /><p id="route-comparison" className="detail-note" /><p id="route-notice" className="detail-note" /><p className="detail-note">Map: gray dashed = unrestricted comparison; teal = chosen exercise route; orange = closed; gray = unknown; dashed connectors = simulated access.</p>
-                    <div className="road-overrides"><label>Exercise segment<select id="road-select" /></label><label>Override state<select id="road-state" defaultValue="closed"><option value="closed">Closed</option><option value="unknown">Unknown</option><option value="open">Assumed open</option></select></label><button id="road-apply" type="button">Apply override</button></div>
-                    <div id="destination-controls" className="destination-controls" /><p id="routing-overrides" className="detail-note" />
-                  </section>
-                </section>
-              </aside>
             </div>
           </section>
         </div>
-        <section className="sites" id="exercise-sites" aria-labelledby="sites-heading"><div className="panel-header"><div><h2 id="sites-heading">Prioritized exercise sites</h2><p>Fictional points, not a parcel inventory. Lower relative scores do not mean safe conditions.</p></div><span className="subtle-tag">OKALOOSA</span></div><div className="table-wrap"><table><thead><tr><th scope="col">Exercise site</th><th scope="col">Relative score / 100</th><th scope="col">Band</th><th scope="col">Rainfall · mm / 6h</th><th scope="col"><span className="sr-only">Details</span></th></tr></thead><tbody id="sites" /></table></div></section>
         <section className="source-grid" id="data-sources" aria-label="Forecast and official source status">
           <section className="source-card" aria-labelledby="forecast-heading"><CloudRain aria-hidden="true" /><div><h2 id="forecast-heading">WeatherNext 3</h2><p id="weather-status" role="status">Checking imported forecast status…</p></div></section>
           <section className="source-card" aria-labelledby="official-heading"><Radar aria-hidden="true" /><div><h2 id="official-heading">Official NWS alerts</h2><p id="official-status">Official feed is not connected. This is not an all-clear.</p><a href="https://www.weather.gov/mob/" target="_blank" rel="noopener noreferrer">Open NWS Mobile/Pensacola <ArrowUpRight aria-hidden="true" /></a></div></section>
         </section>
-        <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read this exercise</summary><p>Choose a time window, then inspect a site on the map or in the table. The explainer shows how each input contributes to an illustrative relative score. Unknown sites are missing required data and receive no score. Synthetic exercise dates are a fictional clock, not current weather.</p><p>WeatherNext mode uses imported forecast rainfall with fictional site inputs and is labeled MIXED DEMO. H3 cells summarize occupied sites; they do not represent flood depth or probability. Follow official NWS and local guidance for real decisions.</p></details>
-        <footer className="dashboard-footer"><span><Waves aria-hidden="true" />Quasar · IBM Z Datathon</span><p>Okaloosa only · Fictional sites and unvalidated scores · No notifications are sent</p></footer>
+        <details className="exercise-guide" id="exercise-guide"><summary><CircleHelp aria-hidden="true" />How to read the map</summary><p>Choose current or archived forecast rainfall in Tools, then select a county cell and parcel to inspect prepared terrain, FEMA and native rainfall overlaps. Thin outlines remain visible when a score is unavailable; transparent interiors do not indicate low risk.</p><p>Archived rainfall is a forecast reconstruction, not observed rain. Missing and stale values remain unknown. H3 does not increase forecast resolution. Follow official NWS and local guidance for real decisions.</p></details>
+        <footer className="dashboard-footer"><span><Waves aria-hidden="true" />Quasar · IBM Z Datathon</span><p>Okaloosa only · Source dates and coverage retained · Follow official guidance</p></footer>
       </div>
     </div>
   );

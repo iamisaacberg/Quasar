@@ -15,22 +15,15 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from .access import SESSION_COOKIE, SESSION_TTL, access_page, safe_return_to
 
-from .config import COUNTY_FIPS, COUNTY_NAME, NOTICE, TIMEZONE, map_settings, require_county
-from .adapters.weathernext import load_forecast
-from .notifications import preview
-from .pipeline import collection, scenarios
-from .replay import timeline, advisory_context
-from .routing import route
-from .analysis import report
-from .exports import export
+from .config import COUNTY_FIPS, COUNTY_NAME, TIMEZONE, map_settings, require_county
+from .source_exports import report, export
 from .parcels import county_boundary, parcel_page, parcel_manifest, remote_inspection, SourceUnavailable
 from .parcel_context import inspection
 from .bridge import serve_snapshot
 from .exposure import exposure, SCALE as EXPOSURE_SCALE
 
 STATIC = Path(__file__).parent / "static"
-ASSETS = {"/replay.js": ("replay.js", "text/javascript; charset=utf-8"),
-          "/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
+ASSETS = {"/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.css": ("ui/app-shell.css", "text/css; charset=utf-8"),
           "/": ("index.html", "text/html; charset=utf-8"),
@@ -149,22 +142,24 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(status, payload, "application/json; charset=utf-8")
                 return self.send(status, payload)
             require_county(query.get("county_fips", [COUNTY_FIPS])[0])
-            replay_args = {key: query[key][0] for key in ("at", "preset", "mode") if key in query}
             if url.path in ASSETS:
                 filename, content_type = ASSETS[url.path]
                 return self.send(200, (STATIC / filename).read_bytes(), content_type)
             if url.path == "/health":
-                return self.send(200, {"status": "ok", "mode": "synthetic_demo", "county_fips": COUNTY_FIPS})
+                return self.send(200, {"status": "ok", "mode": "county_sources", "county_fips": COUNTY_FIPS})
             if url.path == "/api/config":
                 return self.send(200, {"county_fips": COUNTY_FIPS, "county_name": COUNTY_NAME,
-                                       "timezone": TIMEZONE, "notice": NOTICE, "mode": "synthetic_demo",
+                                       "timezone": TIMEZONE, "notice": "County source data; missing inputs remain unknown. Follow official NWS/local guidance.", "mode": "county_sources",
                                        "map": map_settings(), "exposure_scale": EXPOSURE_SCALE})
             if url.path == "/api/weather/status":
-                forecast = load_forecast()
-                return self.send(200, {k: v for k, v in forecast.items() if k not in ("records", "county_cells")})
+                from .data_dashboard import weather_data
+                forecast = weather_data()
+                return self.send(200, {k: v for k, v in forecast.items() if k != "frames"})
             if url.path == "/api/weather/timeline":
                 from .forecast_timeline import timeline as forecast_timeline
-                return self.send(200, forecast_timeline())
+                if set(query) - {"source", "county_fips"}:
+                    raise ValueError("Only current or archive source selection is supported")
+                return self.send(200, forecast_timeline(source=query.get("source", ["current"])[0]))
             if url.path == "/api/data/weather":
                 from .data_dashboard import weather_data
                 return self.send(200, weather_data())
@@ -194,20 +189,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(404, {"error": "Route not found"})
                 return self.send(200, parcel_page(query.get("ring", [""])[0], query.get("offset", ["0"])[0],
                                                  query.get("inventory_id", [None])[0], query.get("cell", [None])[0]))
-            if url.path == "/api/scenarios":
-                return self.send(200, {"scenarios": scenarios(), "historical_replay": True})
-            if url.path == "/api/properties":
-                return self.send(200, collection(query.get("scenario", ["baseline"])[0], **replay_args))
-            if url.path == "/api/timeline":
-                return self.send(200, timeline(query.get("site", [""])[0], **replay_args))
-            if url.path == "/api/routes":
-                return self.send(200, route(query.get("site", [""])[0], **replay_args))
-            if url.path == "/api/replay/context":
-                return self.send(200, advisory_context())
+            if url.path in ("/api/scenarios", "/api/properties", "/api/timeline", "/api/routes", "/api/replay/context"):
+                return self.send(410, {"status": "unavailable", "error": "Exercise endpoints are retired. Use native county forecast and parcel APIs."})
             if url.path == "/api/reports":
-                return self.send(200, report(query.get("scenario", ["baseline"])[0]))
+                if set(query) - {"source", "frame", "county_fips"}:
+                    raise ValueError("Reports support imported county sources only")
+                return self.send(200, report(query.get("source", ["current"])[0], query.get("frame", [None])[0]))
             if url.path == "/api/exports":
-                body, content_type, filename = export(query.get("scenario", ["baseline"])[0],
+                if set(query) - {"source", "frame", "format", "county_fips"}:
+                    raise ValueError("Exports support imported county sources only")
+                body, content_type, filename = export(query.get("source", ["current"])[0], query.get("frame", [None])[0],
                                                       query.get("format", ["csv"])[0])
                 return self.send(200, body, content_type, filename=filename)
             if url.path == "/api/official-alerts":
@@ -223,25 +214,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if urlsplit(self.path).path == "/_team/access" and self._team_login():
             return
-        if self.path not in ("/api/notifications/preview", "/api/routes"):
-            return self.send(404, {"error": "Route not found"})
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 16384:
-                return self.send(413, {"error": "Body must be 1-16384 bytes"})
-            if self.headers.get_content_type() != "application/json":
-                return self.send(415, {"error": "Use application/json"})
-            payload = json.loads(self.rfile.read(length))
-            if not isinstance(payload, dict):
-                raise ValueError("Expected a JSON object")
-            if self.path == "/api/routes":
-                if "site" not in payload:
-                    raise ValueError("site is required")
-                self.send(200, route(**payload))
-            else:
-                self.send(200, preview(payload))
-        except (ValueError, UnicodeDecodeError) as exc:
-            self.send(400, {"error": str(exc)})
+        if self.path in ("/api/notifications/preview", "/api/routes"):
+            return self.send(410, {"status": "unavailable", "error": "Simulation endpoints are retired. No messages or routes are generated."})
+        return self.send(404, {"error": "Route not found"})
 
 
 def make_server(host="127.0.0.1", port=8000, *, access_gate=None):

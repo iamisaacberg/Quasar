@@ -11,7 +11,7 @@ safety assessment. **Green does not establish safety.** Existing real-parcel
 | 35–64 | Moderate relative exposure | Yellow `#eab308` at 35 |
 | 65–84 | Elevated relative exposure | Orange `#f97316` at 65 |
 | 85–100 | Highest relative exposure | Red `#dc2626` at 85 and 100 |
-| Unknown | Insufficient data | Gray `#9ca3af`, hatched |
+| Unknown | Insufficient data | Transparent interior; thin outline |
 
 Colors interpolate in RGB between fixed anchors. Labels change at 35, 65 and
 85, including fractional indices. Hour and zoom never renormalize the scale.
@@ -27,8 +27,7 @@ authentication also protects `/api/exposure`; set `QUASAR_PARCEL_API_TOKEN` to
 32+ characters. Never expose that token to the browser.
 
 This change adds no scoring formula or training dataset. Missing assessments
-stay gray/unknown. Fictional site points use the same palette but remain labelled
-exercise sites and never supply real parcel or county-cell indices.
+stay unknown with transparent interiors. Fictional sites are not served by the application.
 
 Schema 1 example (**synthetic format documentation**, not real parcel data):
 
@@ -70,9 +69,9 @@ pagination never changes a cell's color.
 
 - Color value: linear-interpolated P90 at sorted position `(n-1)*0.9`, using
   eligible indices. Zero is valid; no eligible indices produce null.
-- Coverage: scored / full parcel count. Incomplete cells retain hatching.
+- Coverage: scored / full parcel count. Incomplete coverage is reported in inspection details.
 - Elevated count: number of parcel indices >=65, including highest indices.
-- Unoccupied or unassessed cells remain gray and hatched.
+- Unoccupied or unassessed cells have transparent interiors and thin outlines.
 - Memberships use intersecting polygons: a parcel can occur in several cells.
   Do not sum cell counts as a distinct county parcel count.
 
@@ -84,8 +83,7 @@ window, computation time, scale version and actual aggregation host architecture
 Current results expire at window end or after two hours since computation.
 Future computation timestamps are invalid. Replay permits deliberate past
 windows without today's freshness cutoff. Missing exact windows and invalid or
-stale artifacts return explicit status without indices. Synthetic and what-if
-modes never reuse real parcel artifacts.
+stale artifacts return explicit status without indices. Retired synthetic and what-if application routes cannot consume these artifacts.
 
 ## LinuxONE and hosted behavior
 
