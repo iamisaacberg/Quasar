@@ -307,6 +307,12 @@ The container runs as a non-root user. The base image tag, container runtime, ou
 
 ## Next milestones
 
+The optional [modeling pipeline](docs/modeling.md) now prepares spatially split
+datasets, evaluates a FEMA mapping proxy, exports portable trees and produces
+experimental rainfall/exposure assessments. It also gates an observed-outcome
+experiment. No real trained model or LinuxONE benchmark is established by adding
+this code; absent datasets and failed promotion gates remain explicit.
+
 1. Use the locally acquired authoritative county polygon to validate and clip residential parcels/building footprints. Review source terms and keep owner/address fields out of the modeling dataset.
 2. Normalize the locally acquired FEMA NFHL and USGS 3DEP inputs with CRS, vertical datum, missing-data flags, source timestamps, and county clipping. Evaluate coastal/tidal and canal conditions specific to Okaloosa.
 3. Select hydrologically relevant USGS stations and acquire observations; ingest NWS official alerts. Implement caching, staleness, expired-alert handling and outage states before wiring a live feed into the UI.

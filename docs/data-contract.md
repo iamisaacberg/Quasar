@@ -5,6 +5,12 @@ explicit parcel assessment artifacts, complete-inventory server-side P90 summari
 coverage, factor explanations and the fixed map scale. Geometry-only risk fields
 remain null/unknown; exposure assessments are separate and optional.
 
+Optional promoted mapping-proxy model metadata, forecast provenance and signed
+raw-model diagnostics extend schema-1 assessments additively; see
+[the exact exposure additions](exposure-display.md#optional-modeling-fields-schema-1-additive)
+and [offline modeling](modeling.md). Legacy assessment factors and unknown semantics
+remain unchanged. Signed raw-model attribution never enters nonnegative index factors.
+
 ## Pilot boundary
 
 Okaloosa County is fixed to FIPS `12091`, timezone `America/Chicago`. API coordinates are WGS84 (EPSG:4326), `[longitude, latitude]`. The fixture loader checks county tags and coordinate validity. **It does not yet perform a county polygon intersection** and must not be used as an external-data import path without that check.

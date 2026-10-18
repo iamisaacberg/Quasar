@@ -75,7 +75,20 @@ def validate_assessment(record):
     if score is not None and (not valid_score(score) or missing or not factors
             or not math.isclose(sum(f["contribution"] for f in factors), score, abs_tol=.11)):
         raise ValueError("Exposure score requires complete, matching factor contributions")
-    return {"parcel_id": record.get("parcel_id"), "score": score, "factors": factors, "missing": missing}
+    result = {"parcel_id": record.get("parcel_id"), "score": score, "factors": factors, "missing": missing}
+    if "model_details" in record:
+        from .modeling.contracts import details
+        result["model_details"] = details(record["model_details"], score)
+    return result
+
+
+def model_context(data):
+    """Whitelist optional modeling context, preserving legacy schema-1 artifacts."""
+    if "model_metadata" not in data and "forecast_provenance" not in data:
+        return {}
+    from .modeling.contracts import metadata, forecast
+    return {"model_metadata": metadata(data.get("model_metadata")),
+            "forecast_provenance": forecast(data.get("forecast_provenance"))}
 
 
 @lru_cache(maxsize=2)
@@ -90,12 +103,16 @@ def _artifact(path, size, modified):
             or not isinstance(data.get("windows"), list)):
         raise ValueError("Invalid exposure artifact identity")
     windows = {}
+    context = model_context(data)
     for window in data["windows"]:
         start, end = timestamp(window["valid_from"]), timestamp(window["valid_to"])
         timestamp(window["computed_at"])
         if end - start != timedelta(hours=6) or (start, end) in windows:
             raise ValueError("Duplicate or invalid six-hour exposure window")
         records = {}
+        if context and (timestamp(context["forecast_provenance"]["valid_from"]) != start
+                        or timestamp(context["forecast_provenance"]["valid_to"]) != end):
+            raise ValueError("Model forecast provenance/window mismatch")
         if not isinstance(window.get("parcels"), list):
             raise ValueError("Exposure parcels must be a list")
         for record in window["parcels"]:
@@ -103,6 +120,9 @@ def _artifact(path, size, modified):
             if type(parcel_id) is not int or parcel_id < 0 or parcel_id in records:
                 raise ValueError("Duplicate or invalid exposure parcel ID")
             records[parcel_id] = validate_assessment(record)
+            if context and score is not None and ("model_details" not in records[parcel_id]
+                    or context["forecast_provenance"]["status"] != "ready"):
+                raise ValueError("Model scores require diagnostics and ready source data")
         windows[start, end] = {**window, "records": records}
     return {**data, "windows": windows}
 
@@ -134,6 +154,7 @@ def _aggregate(database, db_size, db_modified, artifact_path, size, modified, st
                 "JOIN county_cells c USING(cell_id) WHERE c.resolution=?", (resolution,)):
             groups.setdefault(cell_id, []).append(window["records"].get(parcel_id, {}).get("score"))
     return {"status": "ready", "county_fips": COUNTY_FIPS, "run_id": data["run_id"],
+            **model_context(data),
             "method_version": data["method_version"], "inventory_id": data["inventory_id"],
             "valid_from": window["valid_from"], "valid_to": window["valid_to"],
             "computed_at": window["computed_at"], "scale_version": SCALE["version"],
@@ -174,6 +195,10 @@ def exposure(query):
             return _unavailable("invalid", "Exposure computation time is in the future.")
         if mode == "current" and (end <= now or now - computed > timedelta(hours=2)):
             return _unavailable("stale", "Parcel exposure results are stale; scores remain unknown.")
+        if mode == "current" and result.get("forecast_provenance") and (
+                result["forecast_provenance"]["mode"] != "current"
+                or timestamp(result["forecast_provenance"]["expires_at"]) <= now):
+            return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
         if query.get("run_id") not in (None, result["run_id"]):
             return _unavailable("changed", "Exposure run changed; refresh this selection.")
         return {**{k: v for k, v in result.items() if k != "records"},
@@ -204,6 +229,14 @@ def _remote(query):
                 or not isinstance(data.get("cells"), dict) or not isinstance(data.get("parcels"), dict)):
             raise ValueError()
         if data.get("status") == "ready":
+            context = model_context(data)
+            if context:
+                source = context["forecast_provenance"]
+                if (timestamp(source["valid_from"]) != timestamp(query["from"])
+                        or timestamp(source["valid_to"]) != timestamp(query["to"])
+                        or (query.get("mode", "current") == "current" and
+                            (source["mode"] != "current" or timestamp(source["expires_at"]) <= datetime.now(timezone.utc)))):
+                    raise ValueError("Expired or mismatched model forecast source")
             if (timestamp(data["valid_from"]) != timestamp(query["from"])
                     or timestamp(data["valid_to"]) != timestamp(query["to"])
                     or query.get("run_id", data["run_id"]) != data["run_id"]):
@@ -233,7 +266,12 @@ def _remote(query):
                         or (scored == 0 and cell.get("p90_score") is not None)
                         or (scored > 0 and not valid_score(cell.get("p90_score")))):
                     raise ValueError()
+                if context and context["forecast_provenance"]["status"] != "ready" and scored:
+                    raise ValueError("Unavailable model source cannot supply known summaries")
             data["parcels"] = {key: validate_assessment(record) for key, record in data["parcels"].items()}
+            if context and any(r["score"] is not None and ("model_details" not in r
+                    or context["forecast_provenance"]["status"] != "ready") for r in data["parcels"].values()):
+                raise ValueError("Missing model diagnostics or unavailable source")
         return data
     except Exception as exc:
         raise SourceUnavailable("LinuxONE exposure service unavailable; scores remain unknown.") from exc

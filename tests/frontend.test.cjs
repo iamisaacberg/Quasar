@@ -95,6 +95,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     }};
   await vm.runInNewContext(fs.readFileSync("quasar/static/app.js","utf8"),context);
   return {get,map,data,events,requests,setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
+    exposureTimerDelays:()=>[...exposureTimers.values()].map(t=>t.delay),
     expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
     start:()=>context.window.Quasar.start(),
@@ -464,4 +465,22 @@ test('summary failure clears parcel indices before a different run recovers',asy
   await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===100));
   assert.deepEqual(Array.from(app.map.sources.parcels.data.features,f=>f.properties.exposure_score),[30,100]);
   assert.equal(geometryRequests(app).length,before);
+});
+
+test('model inspection separates learned susceptibility, rainfall rule and signed attribution',async()=>{
+  const app=await boot({configured:true,mixed:true,exposureScores:true,exposureTransform:page=>({
+    ...page,forecast_provenance:{init_time:'synthetic-init',retrieved_at:'synthetic-import',native_resolution:'0.1 degree',availability_basis:'initialization-based reconstruction',expires_at:new Date(Date.parse(page.computed_at)+60000).toISOString()},
+    parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,{...record,
+      model_details:{susceptibility:.7,rainfall_6h_mm:50,rainfall_stress:.5,model_instability:.02,baseline:.6,attributions:{terrain_min_m:-.1,terrain_mean_m:.2}}}]))
+  })});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  app.get('selection-content').children[1].onclick();
+  const text=app.get('selection-exposure').children.map(node=>node.textContent).join('\n');
+  assert.match(text,/Learned mapped susceptibility: 0.700/);
+  assert.match(text,/FEMA mapping proxy, not observed flood skill/);
+  assert.match(text,/Forecast rainfall: 50.0 mm/);
+  assert.match(text,/not a confidence interval/);
+  assert.match(text,/terrain_min_m: -0.1000/);
+  assert.ok(app.exposureTimerDelays().some(delay=>delay>0 && delay<=60001));
 });
