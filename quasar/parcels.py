@@ -33,7 +33,11 @@ def parcel_manifest():
         from .parcel_context import inventory_metadata
         meta = inventory_metadata()
         source = meta["source_provenance"]
+        count = meta.get("parcel_count")
+        if count is not None and (type(count) is not int or count < 0):
+            raise SourceUnavailable("Invalid indexed parcel count.")
         return {"status": "ready", "county_fips": COUNTY_FIPS, "source_mode": "indexed",
+                "parcel_count": count,
                 "source_url": source["source_url"], "dataset_version": indexed_version(meta),
                 "inventory_id": source["output_sha256"],
                 "boundary_version": source["county_boundary"]["sha256"],
@@ -72,6 +76,9 @@ def remote_inspection(path, inventory_id=None):
             if (data.get("source_mode") != "indexed" or not all(isinstance(data.get(k), str) and data[k]
                     for k in ("dataset_version", "inventory_id", "boundary_version", "source_url", "crs"))):
                 raise ValueError("Invalid inventory manifest")
+            count = data.get("parcel_count")
+            if count is not None and (type(count) is not int or count < 0):
+                raise ValueError("Invalid indexed parcel count")
         elif (data.get("risk_score") is not None or data.get("risk_band") != "unknown"
               or (inventory_id and data.get("inventory_id") != inventory_id)):
             raise ValueError("Unsupported score or mismatched inventory")

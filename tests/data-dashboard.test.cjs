@@ -1,4 +1,4 @@
-// Exercise data selection, nulls and failure states in Node. Isaac reviews visuals.
+// Native forecast selection, nulls and failure states; no browser or cloud queries.
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,7 +7,6 @@ const ts = require('typescript');
 const path = require('node:path');
 const React = require('react');
 const {renderToStaticMarkup} = require('react-dom/server');
-const {execFileSync} = require('node:child_process');
 
 // Load the real UI blocks and primitives without a browser or a dev server.
 // Only the dashboard's request/state lifecycle is controlled by this harness.
@@ -26,10 +25,17 @@ function loadComponent(name, parent = process.cwd()) {
   return exported;
 }
 
-const comparison = JSON.parse(execFileSync('python3', ['-c', 'import json; from quasar.analysis import report; print(json.dumps(report("compare")))'], {encoding: 'utf8'}));
-const reports = Object.fromEntries(comparison.scenarios.map(item => [item.scenario.id, {
-  ...comparison, ...item, scenarios: undefined, rows: comparison.rows.filter(row => row.scenario === item.scenario.id),
-}]));
+// Synthetic API responses test the real-source contract; never production data.
+const cells = [
+  {native_cell_id: 'native-a', rainfall_6h_mm: 0, available_hours: 6, status: 'ready'},
+  {native_cell_id: 'native-b', rainfall_6h_mm: 12, available_hours: 6, status: 'ready'},
+  {native_cell_id: 'native-c', rainfall_6h_mm: null, available_hours: 5, status: 'incomplete'},
+];
+const forecast = {county_fips: '12091', status: 'incomplete', generated_at: '2026-10-17T20:00:00Z', default_index: 0,
+  source_table: 'test.project.forecast', init_time: '2026-10-17T18:00:00Z', retrieved_at: '2026-10-17T19:00:00Z', native_resolution: '0.1 degree', statistic: 'ensemble_mean',
+  frames: [{at: '2026-10-17T20:00:00Z', valid_to: '2026-10-18T02:00:00Z', rows: cells},
+    {at: '2026-10-17T21:00:00Z', valid_to: '2026-10-18T03:00:00Z', rows: cells.map(row => ({...row, rainfall_6h_mm: null, status: 'stale'}))}],
+};
 const source = ts.transpileModule(fs.readFileSync('frontend/data-dashboard.tsx', 'utf8'), {
   compilerOptions: {jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
 }).outputText;
@@ -41,13 +47,12 @@ function mount({active = true, reply} = {}) {
   const states = [], effects = [], calls = [];
   let stateCursor, effectCursor, queued, tree;
   const exported = {};
-  const context = {exports: exported, AbortController, fetch: async (url, options) => {
+  const context = {exports: exported, AbortController, setTimeout, clearTimeout, fetch: async (url, options) => {
     calls.push({url, ...options});
     const body = reply ? await reply(url, options) : undefined;
-    const data = body ?? (url === '/api/scenarios' ? {scenarios: [...comparison.scenarios.map(item => item.scenario), {id: 'isaias-2026'}, {id: 'weathernext', label: 'WeatherNext 3 + fictional site inputs'}]} :
-      url === '/api/weather/status' ? {status: 'not_configured', message: 'Access confirmed; no snapshot configured.'} :
-      url === '/api/official-alerts' ? {status: 'not_connected', message: 'Official feed is not connected. This is not an all-clear.'} :
-      reports[new URL(url, 'http://localhost').searchParams.get('scenario')]);
+    const data = body ?? (url === '/api/data/weather' ? forecast :
+      url === '/api/parcels/manifest' ? {county_fips: '12091', status: 'ready', source_mode: 'indexed', parcel_count: 1234} :
+      {status: 'not_connected', message: 'Official feed is not connected. This is not an all-clear.'});
     return {ok: !data?.error, json: async () => data || {error: 'No snapshot'}};
   }, require: name => name === 'react' ? {
     useState: initial => {
@@ -77,109 +82,105 @@ function mount({active = true, reply} = {}) {
   };
 }
 
-test('Data starts only when active, uses shared pipeline values, and excludes replay from choices', async () => {
+test('Data loads real-source endpoints only when active, with zero and unknown distinct', async () => {
   const app = mount({active: false});
   assert.match(app.render(), /hidden=""/);
   assert.equal(app.calls.length, 0);
   app.setActive(true);
   const html = await app.settle();
-  assert.match(html, /SYNTHETIC DEMO/);
-  assert.match(html, /5 scored · 1 unknown/);
-  assert.ok(html.includes(String(reports.baseline.summary.mean_score)));
-  assert.match(html, /Missing terrain exercise site/);
-  assert.match(html, /<meter[^>]*min="0"[^>]*max="6"[^>]*value="5"[^>]*aria-label="Terrain elevation available sites"/);
-  assert.match(html, /role="img"/);
-  assert.match(html, /View band counts/);
-  assert.match(html, /scenario=baseline&amp;format=csv/);
-  const timeWindow = app.find(node => typeof node.props?.onValueChange === 'function')[0];
-  assert.doesNotMatch(JSON.stringify(timeWindow.props.children), /isaias-2026/);
-  assert.equal(app.calls.length, 4);
-  assert.ok(app.calls.every(call => call.url.startsWith('/api/') && call.cache === 'no-store'));
+  assert.match(html, /1,234/);
+  assert.match(html, /Real source data/);
+  assert.match(html, /Six-hour rainfall in millimeters. Cell 1: 0; Cell 2: 12; Cell 3: Unknown/);
+  assert.match(html, /test.project.forecast/);
+  assert.match(html, /0.1 degree/);
+  assert.doesNotMatch(html, /demo-00|Exercise hour|SYNTHETIC DEMO|Mean relative score|api\/exports/);
+  assert.equal(app.calls.length, 3);
+  assert.deepEqual(app.calls.map(call => call.url).sort(), ['/api/data/weather', '/api/official-alerts', '/api/parcels/manifest']);
+  assert.ok(app.calls.every(call => call.cache === 'no-store'));
 });
 
-test('search and band filters affect only the table; CSV keeps the selected window', async () => {
+test('search and status filters affect only the native-cell table', async () => {
   const app = mount(); app.render(); await app.settle();
-  app.find(node => node.props?.['aria-label'] === 'Find a fictional site')[0].props.onChange({target: {value: 'demo-006'}});
+  app.find(node => node.props?.['aria-label'] === 'Find a native forecast cell')[0].props.onChange({target: {value: 'native-c'}});
   let html = app.render();
-  assert.match(html, /1 of 6 sites/);
-  assert.match(html, /5 scored · 1 unknown/);
-  assert.match(html, /scenario=baseline&amp;format=csv/);
-  const siteRows = () => app.find(node => node.props?.id === 'data-explorer')[0];
-  assert.doesNotMatch(renderToStaticMarkup(siteRows()), /Destin exercise site/);
-  app.find(node => typeof node.props?.onValueChange === 'function')[1].props.onValueChange('elevated');
-  html = app.render();
-  assert.match(html, /No sites match these filters/);
+  assert.match(html, /1 of 3 cells/);
+  const table = () => renderToStaticMarkup(app.find(node => node.props?.id === 'data-explorer')[0]).split('<tbody')[1].split('</tbody>')[0];
+  assert.doesNotMatch(table(), /native-a/);
+  app.find(node => typeof node.props?.onValueChange === 'function')[1].props.onValueChange('ready');
+  assert.match(app.render(), /No native cells match/);
+  assert.equal(app.find(node => node.type?.name === 'ChartGroup6')[0].props.rainfall.length, 3);
 });
 
-test('switching windows hides old data immediately and ignores aborted responses', async () => {
-  let release;
-  const app = mount({reply: url => url.includes('scenario=heavy-rain') ? new Promise(resolve => {release = resolve;}) : undefined});
-  app.render(); await app.settle();
-  app.select('heavy-rain');
-  assert.doesNotMatch(app.render(), /scenario=heavy-rain&amp;format=csv/);
-  await new Promise(setImmediate);
-  app.select('peak'); app.render();
-  let html = await app.settle();
-  assert.match(html, /scenario=peak&amp;format=csv/);
-  const old = app.calls.find(call => call.url.includes('scenario=heavy-rain'));
-  assert.equal(old.signal.aborted, true);
-  release(reports['heavy-rain']);
-  html = await app.settle();
-  assert.match(html, /scenario=peak&amp;format=csv/);
-  assert.doesNotMatch(html, /scenario=heavy-rain&amp;format=csv/);
-});
-
-test('unavailable status endpoints stay independent of available exercise data', async () => {
-  const app = mount({reply: url => {if (['/api/weather/status', '/api/official-alerts'].includes(url)) throw new Error('offline');}});
-  app.render(); const html = await app.settle();
-  assert.match(html, /5 scored · 1 unknown/);
-  assert.match(html, /Could not check the imported forecast/);
-  assert.match(html, /Official feed status unavailable. This is not an all-clear/);
-  assert.doesNotMatch(html, /data-status="ready"/);
-});
-
-test('stale rainfall stays unknown even with six hourly inputs and retains provenance', async () => {
-  const stale = {...reports.baseline, mode: 'mixed_forecast_demo', scenario: {...reports.baseline.scenario, id: 'weathernext'},
-    summary: {site_count: 6, scored_count: 0, unknown_count: 6, mean_score: null, bands: {unknown: 6}},
-    forecast: {status: 'stale', source_table: 'project.dataset.forecast', init_time: '2026-10-17T12:00:00Z', retrieved_at: '2026-10-17T12:30:00Z', valid_from: '2026-10-17T12:00:00Z', valid_to: '2026-10-17T18:00:00Z', native_resolution: '0.1 degree', statistic: 'ensemble_mean'},
-    rows: reports.baseline.rows.map(row => ({...row, score: null, rainfall_6h_mm: null, band: 'unknown', factors: [], missing: [...row.missing, 'rainfall_6h_mm'], forecast_status: 'stale', available_hours: 6})),
-  };
-  const app = mount({reply: url => url.includes('scenario=weathernext') ? stale : undefined});
-  app.render(); await app.settle(); app.select('weathernext'); app.render();
-  const html = await app.settle();
-  assert.match(html, /MIXED DEMO/);
-  assert.match(html, /0 scored · 6 unknown/);
-  assert.match(html, /Mean relative score.*?Unknown/s);
-  assert.match(html, /data-status="stale"/);
-  assert.match(html, /0\/6<\/div><\/td><td[^>]*>6<\/td><td[^>]*>Imported forecast/);
-  assert.match(html, /6\/6 hourly inputs/);
-  assert.match(html, /project.dataset.forecast/);
+test('retained window selection uses native cells and preserves stale unknowns', async () => {
+  const app = mount(); app.render(); await app.settle();
+  app.select(forecast.frames[1].at);
+  const html = app.render();
+  assert.match(html, /Unknown/);
   const chart = app.find(node => node.type?.name === 'ChartGroup6')[0];
   assert.ok(chart.props.rainfall.every(row => row.value === null));
-  assert.equal(chart.props.bands.find(row => row.name === 'Unknown').value, 6);
-  for (const label of ['Initialized', 'Imported', 'Valid from', 'Valid to', '0.1 degree']) assert.ok(html.includes(label));
+  assert.equal(chart.props.bands.find(row => row.name === 'Stale').value, 3);
+  assert.equal(app.calls.length, 3);
 });
 
-test('report failure clears metrics and download; recheck retries local endpoints', async () => {
-  let failed = false;
-  const app = mount({reply: url => failed && url.includes('/api/reports?') ? {error: 'Invalid snapshot'} : undefined});
-  app.render(); await app.settle(); failed = true;
-  app.find(node => typeof node.props?.onClick === 'function')[0].props.onClick();
-  app.render();
-  const html = await app.settle();
-  assert.match(html, /role="alert"/);
-  assert.match(html, /Invalid snapshot/);
-  assert.doesNotMatch(html, /href="\/api\/exports|5 scored · 1 unknown/);
-  assert.equal(app.calls.length, 8);
-  app.setActive(false);
-  assert.ok(app.calls.slice(4).every(call => call.signal.aborted));
-});
-
-test('a valid zero rainfall value renders as zero rather than unknown', async () => {
-  const zero = {...reports.baseline, rows: reports.baseline.rows.map(row => ({...row, rainfall_6h_mm: 0}))};
-  const app = mount({reply: url => url.includes('/api/reports?') ? zero : undefined});
+test('source failures stay independent and never load demo fallbacks', async () => {
+  const app = mount({reply: url => {if (url !== '/api/data/weather') throw new Error('offline');}});
   app.render(); const html = await app.settle();
-  assert.match(html, /Six-hour rainfall in millimeters\. Destin: 0/);
-  const chart = app.find(node => node.type?.name === 'ChartGroup6')[0];
-  assert.ok(chart.props.rainfall.every(row => row.value === 0));
+  assert.match(html, /native-a/);
+  assert.match(html, /Could not verify the parcel inventory/);
+  assert.match(html, /Official feed status unavailable. This is not an all-clear/);
+  const stats = app.find(node => node.type?.name === 'DashboardStats')[0];
+  assert.equal(stats.props.parcelCount, null);
+});
+
+test('absent county weather and legacy parcel counts remain unknown', async () => {
+  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, status: 'not_configured', frames: [], message: 'No imported county forecast is configured.'} :
+    url === '/api/parcels/manifest' ? {county_fips: '12091', status: 'ready', source_mode: 'indexed'} : undefined});
+  app.render(); const html = await app.settle();
+  assert.match(html, /County rainfall unavailable/);
+  assert.doesNotMatch(html, /data-explorer/);
+  const stats = app.find(node => node.type?.name === 'DashboardStats')[0];
+  for (const key of ['parcelCount', 'cellCount', 'availableCount', 'meanRainfall']) assert.equal(stats.props[key], null);
+});
+
+test('expired snapshots cannot display rainfall even if the response says ready', async () => {
+  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, expires_at: '2000-01-01T00:00:00Z'} : undefined});
+  app.render(); const html = await app.settle();
+  assert.match(html, /data-status="stale"/);
+  assert.ok(app.find(node => node.type?.name === 'ChartGroup6')[0].props.rainfall.every(row => row.value === null));
+});
+
+test('recheck clears failed forecast metrics and aborted old responses cannot replace new data', async () => {
+  let release, pending = false;
+  const app = mount({reply: url => pending && url === '/api/data/weather' ? new Promise(resolve => {release = resolve;}) : undefined});
+  app.render(); await app.settle(); pending = true;
+  const recheck = () => app.find(node => typeof node.props?.onClick === 'function')[0].props.onClick();
+  recheck(); app.render(); await new Promise(setImmediate);
+  const old = app.calls[3];
+  pending = false; recheck(); app.render(); await app.settle();
+  assert.equal(old.signal.aborted, true);
+  release({...forecast, frames: []});
+  assert.match(await app.settle(), /native-a/);
+  app.setActive(false);
+  assert.ok(app.calls.slice(6).every(call => call.signal.aborted));
+});
+
+test('wrong county responses fail closed', async () => {
+  const app = mount({reply: url => url === '/api/data/weather' ? {...forecast, county_fips: '12086'} : undefined});
+  app.render(); const html = await app.settle();
+  assert.match(html, /Could not read the county forecast/);
+  assert.doesNotMatch(html, /native-a/);
+});
+
+test('CSV keeps every selected native cell, provenance, valid zero and blank unknowns', async () => {
+  const app = mount(); app.render(); await app.settle();
+  app.find(node => node.props?.['aria-label'] === 'Find a native forecast cell')[0].props.onChange({target: {value: 'native-c'}});
+  app.render();
+  const link = app.find(node => node.props?.download === 'quasar-native-forecast.csv')[0];
+  const csv = decodeURIComponent(link.props.href.split(',').slice(1).join(','));
+  const lines = csv.split('\r\n');
+  assert.equal(lines.length, 4);
+  assert.match(lines[1], /"native-a".*,"0","mm \/ 6h","ready"/);
+  assert.match(lines[3], /"native-c".*,,"mm \/ 6h","incomplete"/);
+  assert.ok(lines.slice(1).every(line => line.includes('"test.project.forecast"') && line.includes('"0.1 degree"')));
+  assert.match(csv, /"init_time","retrieved_at"/);
 });

@@ -35,18 +35,18 @@ const ChartGroup6 = ({ className, bands: pieData, rainfall: barData, rainfallDes
   const total = pieData.reduce((sum, item) => sum + item.value, 0);
   // Slice colors are supplied by fill; labels need no generated CSS variables.
   const pieConfig = Object.fromEntries(pieData.map(item => [item.name, { label: item.name }])) satisfies ChartConfig;
-  const rainfallLabel = `Six-hour rainfall in millimeters. ${barData.map(item => `${item.name}: ${item.value === null ? "Unknown" : item.value}`).join("; ")}. Exact values are in the site table.`;
+  const rainfallLabel = `Six-hour rainfall in millimeters. ${barData.map(item => `${item.name}: ${item.value === null ? "Unknown" : item.value}`).join("; ")}. Exact values are in the native-cell table.`;
 
   return (
     <section aria-label="Selected window charts" className={cn("grid gap-4 md:grid-cols-2", className)}>
         <Card>
           <CardHeader>
-            <CardTitle role="heading" aria-level={2}>Relative score distribution</CardTitle>
-            <CardDescription>Fictional sites by score band. Lower relative does not mean safe.</CardDescription>
+            <CardTitle role="heading" aria-level={2}>Native forecast availability</CardTitle>
+            <CardDescription>Native cells by input status for the selected six-hour window.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-center gap-8">
-              <div className="relative size-40" role="img" aria-label={`Sites by relative score band. ${pieData.map(item => `${item.name}: ${item.value}`).join("; ")}. Exact values follow.`}>
+              <div className="relative size-40" role="img" aria-label={`Native cells by input status. ${pieData.map(item => `${item.name}: ${item.value}`).join("; ")}. Exact values follow.`}>
                 <ChartContainer config={pieConfig} className="size-full">
                   <PieChart>
                     <ChartTooltip
@@ -95,9 +95,9 @@ const ChartGroup6 = ({ className, bands: pieData, rainfall: barData, rainfallDes
               </div>
             </div>
             <details className="mt-4 text-sm">
-              <summary className="cursor-pointer text-muted-foreground">View band counts</summary>
+              <summary className="cursor-pointer text-muted-foreground">View cell counts</summary>
               <Table>
-                <TableHeader><TableRow><TableHead scope="col">Band</TableHead><TableHead scope="col">Sites</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead scope="col">Status</TableHead><TableHead scope="col">Native cells</TableHead></TableRow></TableHeader>
                 <TableBody>{pieData.map(item => <TableRow key={item.name}><TableCell>{item.name}</TableCell><TableCell>{item.value}</TableCell></TableRow>)}</TableBody>
               </Table>
             </details>
@@ -106,7 +106,7 @@ const ChartGroup6 = ({ className, bands: pieData, rainfall: barData, rainfallDes
 
         <Card>
           <CardHeader>
-            <CardTitle role="heading" aria-level={2}>Rainfall by fictional site</CardTitle>
+            <CardTitle role="heading" aria-level={2}>Rainfall by native forecast cell</CardTitle>
             <CardDescription>{rainfallDescription} Unknown values have no bar.</CardDescription>
           </CardHeader>
           <CardContent>

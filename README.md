@@ -91,7 +91,7 @@ npm test
 
 ## Data workspace
 
-The **Data** sidebar view provides a separate selected-window summary, charts, input coverage, searchable site values and source readiness. It uses the shared report pipeline; rechecking reads local state and does not start a cloud import. Unknown and stale values remain visible as such.
+The **Data** sidebar view uses imported county-native WeatherNext cells and the verified parcel inventory, separately from the fictional-site reports. Its summary, charts, searchable cell table and CSV preserve six-hour rainfall, missing/stale states and source provenance. Select a retained forecast window to inspect it. Parcel counts come from the indexed inventory manifest; older hosts or live GIS browsing without a verified total show unknown. Real parcels remain unscored. No configured county snapshot means an unavailable state, with no synthetic fallback. Rechecking reads configured local/bridge sources and does not start a cloud import.
 
 ## Map workspace UI
 
@@ -227,6 +227,7 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/parcels/{id}/context` | Verified descriptive parcel inputs and native forecast overlaps; no score |
 | GET | `/api/cells/{h3}/summary` | Distinct indexed parcel counts, input coverage and native overlaps at R4–R7 |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
+| GET | `/api/data/weather` | Native-cell forecast windows for the Data tab, without fictional sites or scores |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |
 | GET | `/api/timeline?site=demo-001` | Isaias hourly forward-six-hour scores and source status |

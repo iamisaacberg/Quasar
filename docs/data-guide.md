@@ -25,6 +25,16 @@ This guide explains how data is used in the reviewed implementation. [data-contr
 
 An acquired file, an integrated feature, and a validated model input are separate milestones.
 
+The **Data** tab now reads current county-native forecast cells directly, rather
+than the fictional-site reporting pipeline. It shows retained six-hour windows,
+native-cell input status, rainfall and source metadata, plus the indexed parcel
+count when available from the verified inventory manifest. Empty/stale sources
+remain unavailable; it never substitutes exercise rainfall. Its cell-average
+rainfall excludes unavailable cells and is not area-weighted county rainfall.
+Parcel counts establish geometry coverage only; terrain/FEMA/gauge coverage and
+parcel flood scores are not inferred. Reports & exports continue to describe
+their explicitly labeled fictional/mixed demonstrations.
+
 ## The committed fixtures
 
 `quasar/fixtures/properties.json` contains six sites: Destin, Fort Walton Beach, Niceville, Crestview, Laurel Hill, and a missing-terrain exercise site in Shalimar. The names locate the exercise conceptually; they do not identify actual parcels or owners. Stable identifiers run from `demo-001` through `demo-006`.
