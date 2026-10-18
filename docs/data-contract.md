@@ -115,6 +115,7 @@ license and processing notes. It is cached in memory for the UTC day. The browse
 fills all intersecting county cells at H3 resolutions 4, 5, 6 and 7, including
 coastal slivers and islands. Displayed hexagons and the selected-cell outline are clipped to the authoritative
 county polygon, retaining holes and islands. H3 IDs and parcel membership remain unchanged.
+Map search accepts a valid H3 cell ID as well as addresses and place names. It opens the existing cell inspector only when the cell intersects the authoritative county boundary.
 Zoom thresholds are 6.75, 8.5 and 10.75, matching TrialSmiles. No site-derived
 score exists for unoccupied cells; their score stays null.
 
