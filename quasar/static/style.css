@@ -114,7 +114,7 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
 .is-map-view > .workspace-header { display: none; }
 .is-map-view > .dashboard { display: flex; flex-direction: column; flex: 1; min-height: 0; max-width: none; margin: 0; padding: 0; position: relative; }
 .is-map-view > .dashboard > :not(.map-workspace):not(#error) { display: none; }
-.is-map-view .map-workspace { display: flex; flex: 1; min-height: 0; gap: 0; }
+.is-map-view .map-workspace { display: flex; flex: 1; min-height: 0; gap: 0; align-items: stretch; }
 .is-map-view .map-card { display: flex; flex: 1; min-width: 0; flex-direction: column; min-height: 0; border: 0; border-radius: 0; }
 .is-map-view .map-card > .panel-header { display: none; }
 .is-map-view .map-viewport { display: block; flex: 1; min-height: 0; }
