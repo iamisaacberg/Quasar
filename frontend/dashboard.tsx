@@ -74,14 +74,15 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                       </section>
                       <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />H3 cell outlines</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
                       <details className="archive-details"><summary>Archive details</summary>
-                        <div className="archive-playback-heading"><strong id="archive-trend-label">Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
-                        <div className="archive-reading"><span id="archive-peak">—</span><span>mm / 6h <small>maximum across native cells</small></span></div>
-                        <div id="archive-trend" className="archive-trend" role="group" aria-label="Hourly maximum forecast rainfall; select an hour" />
-                        <p id="archive-trend-range" />
-                        <input id="replay-hour" type="range" min="0" max="0" step="1" defaultValue="0" disabled aria-label="Isaias replay hour" />
+                        <div className="archive-playback-heading"><strong>Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
                       </details>
                     </div></details>
                   </div>
+                  <section className="map-replay-trend map-float" aria-label="Archived rainfall replay chart">
+                    <div className="archive-playback-heading"><strong id="archive-trend-label">Isaias · October 9, 2026</strong><span className="archive-reading"><strong id="archive-peak">—</strong><span>mm / 6h <small>maximum across native cells</small></span></span></div>
+                    <div id="archive-trend" className="archive-trend" role="group" aria-label="Hourly maximum forecast rainfall; select an hour" />
+                    <div className="archive-trend-footer"><p id="archive-trend-range" /><input id="replay-hour" type="range" min="0" max="0" step="1" defaultValue="0" disabled aria-label="Isaias replay hour" /></div>
+                  </section>
                   <section className="map-playback map-float" aria-label="Isaias archive playback">
                     <div className="playback-main"><button id="replay-prev" type="button" disabled aria-label="Rewind one hour" title="Rewind one hour"><ChevronLeft /></button><button id="replay-play" type="button" disabled aria-label="Play Isaias timeline" aria-pressed="false">▶</button><button id="replay-next" type="button" disabled aria-label="Forward one hour" title="Forward one hour"><ChevronRight /></button></div>
                     <div className="playback-copy"><p id="playback-clock">Loading Isaias archive…</p><p id="playback-status" role="status">Loading archived forecast rainfall.</p></div>
