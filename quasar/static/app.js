@@ -155,14 +155,17 @@ function renderExposureInspection() {
   if(!selectedCell || $("map-layer").value !== "exposure") return;
   const content=$("selection-exposure");
   let score = null;
+  let assessmentNote;
   if(selectedParcel===null) {
     const summary=selectedExposureSummary(); score=summary?.p90_score ?? null;
+    assessmentNote=summary ? `Upper-end parcel index (90th percentile). ${summary.scored_count.toLocaleString()}/${summary.parcel_count.toLocaleString()} parcels assessed${summary.incomplete ? "; coverage is incomplete" : ""}.` : "No matching parcel assessment is available for this hour.";
     content.replaceChildren(element("p",summary ? `${summary.scored_count}/${summary.parcel_count} parcels scored · ${(summary.coverage*100).toFixed(1)}% coverage · P90 ${score ?? "Unknown"}${summary.incomplete ? " · Incomplete coverage" : ""}` : "No matching parcel assessment is available. Prepared reference inputs are shown below.","detail-note"));
     void refreshExposure(selectedResolution);
   } else {
     const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
     score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
-    $("selection-badge").textContent=$("map-layer").value === "rainfall" ? "County parcel · archived inputs" : score===null ? "County parcel · unscored" : "County parcel · experimental index";
+    $("selection-badge").textContent="County parcel · experimental";
+    assessmentNote=score===null ? `Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching result for this hour"}.` : assessment?.model_details ? "Combines mapped susceptibility with forecast rainfall. Not validated against observed flooding." : "Relative index from the supplied assessment. See calculation details below.";
     content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
     if(score===null) content.append(element("p",`Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
     const model = assessment?.model_details;
@@ -180,6 +183,37 @@ function renderExposureInspection() {
     }
   }
   $("selection-score").textContent=score===null ? "Unscored" : score.toFixed(1)+" / 100";
+  $("selection-band").textContent=score===null ? "Experimental relative exposure unavailable" : QuasarSpatial.exposureBand(score).label;
+  $("selection-assessment").textContent=assessmentNote;
+  renderSelectionInsights();
+}
+
+function renderSelectionInsights() {
+  const insights=[];
+  const rain=$("map-layer").value === "rainfall";
+  if(selectedParcel!==null) {
+    const overview=window.QuasarInspection.parcelOverview(parcelContext);
+    panelStats(overview.stats);
+    if(!rain) {
+      const rainfall=window.QuasarInspection.rainfallSummary(parcelContext,current);
+      insights.push(rainfall.value==="Unavailable" ? "Forecast rainfall is unavailable for this parcel." : `Archived forecast rain: ${rainfall.value} mm over six hours. ${rainfall.detail}`);
+    }
+    insights.push(...overview.insights);
+  } else {
+    const summary=selectedExposureSummary();
+    panelStats([[summary?.parcel_count?.toLocaleString() ?? cellContext?.parcel_count?.toLocaleString() ?? (parcelData ? `${parcelData.features.length.toLocaleString()} loaded` : "Unknown"),"Parcels"],
+      [summary?.elevated_count?.toLocaleString() ?? "Unknown","Elevated parcels"],
+      [summary && Number.isFinite(summary.coverage) ? `${(summary.coverage*100).toFixed(0)}%` : "Unknown","Assessed"]]);
+    if(summary) {
+      insights.push(`${summary.elevated_count.toLocaleString()} of ${summary.parcel_count.toLocaleString()} parcels have an elevated experimental index (65+).`);
+      if(summary.incomplete) {
+        const unknown=summary.parcel_count-summary.scored_count;
+        insights.push(`${unknown.toLocaleString()} ${unknown===1 ? "parcel is" : "parcels are"} unassessed. Missing results do not mean low exposure.`);
+      }
+    } else insights.push("Parcel exposure is unavailable for this hour; rainfall alone cannot establish parcel flood risk.");
+    if(cellContext) insights.push(`Terrain inputs complete for ${cellContext.terrain_complete_count?.toLocaleString() ?? "an unknown number of"} parcels; FEMA coverage complete for ${cellContext.fema_complete_count?.toLocaleString() ?? "an unknown number of"}.`);
+  }
+  $("selection-insights").replaceChildren(...insights.map(text=>element("li",text)));
 }
 
 function invalidateExposure(data) {
@@ -383,6 +417,7 @@ function renderInspectionInputs() {
   }
   $("selection-rainfall").textContent=summary.value;
   $("selection-rainfall-note").textContent=summary.detail + (selectedParcel===null ? " Hex color uses the maximum; H3 does not increase forecast resolution." : "");
+  $("selection-window").textContent=current?.scenario?.valid_from ? `${formatForecastTime(current.scenario.valid_from)} → ${formatForecastTime(current.scenario.valid_to)}` : "Forecast window unavailable";
   $("selection-rainfall-meter").hidden=!rain;
   $("selection-exposure-meter").hidden=rain;
   $("selection-exposure-section").hidden=rain;
@@ -392,13 +427,8 @@ function renderInspectionInputs() {
     ["Complete terrain summaries",cellContext?.terrain_complete_count?.toLocaleString() ?? "Unknown"],
     ["Complete / partial FEMA coverage",`${cellContext?.fema_complete_count?.toLocaleString() ?? "Unknown"} / ${cellContext?.fema_partial_count?.toLocaleString() ?? "Unknown"}`]);
   inputRows(rows);
-  if (selectedParcel !== null) {
-    const terrain=context?.inputs?.terrain;
-    panelStats([[typeof terrain?.mean_m === "number" ? `${terrain.mean_m.toFixed(2)} m` : "Unknown","Mean terrain"],
-      [context?.inputs?.fema?.status || "Unknown","FEMA coverage"],
-      [context?.forecast_overlaps?.length ? String(context.forecast_overlaps.length) : "Unknown","Native overlaps"]]);
-  }
   $("context-status").textContent=contextMessage;
+  $("context-status").hidden=Boolean(prepared) && !contextLoading;
   $("context-retry").hidden=Boolean(prepared) || contextLoading;
   $("context-provenance").textContent=window.QuasarInspection.provenance(prepared);
   renderExposureInspection();
@@ -460,14 +490,12 @@ function renderCellPanel() {
   $("selection-badge").textContent = `R${selectedResolution} cell · Okaloosa`;
   $("selection-title").textContent = "Cell overview";
   $("selection-code").textContent = selectedCell;
-  $("selection-subtitle").textContent = "Indexed parcel coverage and native forecast context";
-  $("selection-section-title").textContent = selectedResolution===7 ? "Parcels in this cell" : "Cell coverage";
+  $("selection-subtitle").textContent = "Okaloosa County · archived forecast";
+  $("selection-section-title").textContent = "Browse parcels in this cell";
+  $("selection-records").hidden=selectedResolution!==7;
   $("cell-zoom").hidden=selectedResolution===7;
   $("parcel-refresh").hidden=selectedResolution!==7;
   $("parcel-search-label").hidden=$("parcel-pagination").hidden=selectedResolution!==7;
-  panelStats([[cellContext?.parcel_count?.toLocaleString() ?? (parcelData ? `${parcelData.features.length.toLocaleString()} loaded` : "Unknown"),"Parcels"],
-    [cellContext?.terrain_complete_count?.toLocaleString() ?? "Unknown","Terrain complete"],
-    [cellContext?.fema_complete_count?.toLocaleString() ?? "Unknown","FEMA complete"]]);
   if(selectedResolution===7) renderParcelList();
   else $("selection-content").replaceChildren(element("p","Zoom in to browse parcel outlines. Counts describe indexed parcels, not homes; adjacent cells can share parcels.","selection-note"));
   renderInspectionInputs();
@@ -483,6 +511,8 @@ function inspectParcel(feature) {
   $("selection-subtitle").textContent="Okaloosa County · FIPS 12091";
   panelStats([["Unknown","Exposure"],["Loading","Forecast overlap"],["Loading","Terrain"]]);
   $("selection-section-title").textContent="Property record";
+  $("selection-records").hidden=false;
+  $("selection-records").open=false;
   const records=element("dl",undefined,"selection-factors");
   for(const [label,value] of [["County GIS ID",String(feature.id)],["Geometry","County-validated polygon"],["H3 selection",selectedCell]]) {
     const row=element("div"); row.append(element("dt",label),element("dd",value)); records.append(row);
@@ -497,6 +527,7 @@ function inspectParcel(feature) {
 
 async function inspectCell(cell,resolution=7) {
   closeSelection(); selectedCell=cell; selectedResolution=resolution;
+  $("selection-records").open=false;
   parcelListPage=0; parcelSearch=""; $("parcel-search").value="";
   if (playback) $("map-source-info").open = false;
   const selectionGeometry=county && QuasarSpatial.clipGeometry({type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]},county.features[0].geometry);
