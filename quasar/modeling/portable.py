@@ -21,6 +21,15 @@ def validate(model):
             or not isinstance(model.get("boundary_version"), str)
             or type(model.get("promoted")) is not bool):
         raise ValueError("Unsupported portable model identity/features/objective")
+    positive_protocols = {"mapping-proxy-positive-nested-spatial-v3": "mapped-susceptibility-v3-positive-",
+                          "mapping-proxy-positive-nested-spatial-v4": "mapped-susceptibility-v4-positive-"}
+    if (model["model_version"].startswith(tuple(positive_protocols.values()))
+            or model.get("evaluation_protocol") in positive_protocols
+            or "inference_population" in model):
+        if (model.get("evaluation_protocol") not in positive_protocols
+                or not model["model_version"].startswith(positive_protocols[model["evaluation_protocol"]])
+                or model.get("inference_population") != "positive_fema_overlap"):
+            raise ValueError("Positive-only model population identity mismatch")
     bounds = model.get("feature_ranges")
     if (not isinstance(bounds, list) or len(bounds) != len(FEATURES)
             or any(not isinstance(b, list) or len(b) != 2 or not all(finite(x) for x in b)

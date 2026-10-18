@@ -81,6 +81,8 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                       <section className="exercise-toolbar" aria-label="Map toolbar">
                         <p className="detail-note">Isaias archive · October 9, 2026<br />Each hour shows the following six forecast hours.</p>
                         <label htmlFor="map-layer"><Layers3 aria-hidden="true" /><span>Display</span><select id="map-layer" defaultValue="rainfall"><option value="rainfall">Rainfall · mm / 6h</option><option value="exposure">Relative exposure · /100</option></select></label>
+                        <label htmlFor="exposure-model"><span>Exposure model</span><select id="exposure-model" defaultValue="v2"><option value="v2">V2 · FEMA overlap only</option><option value="v1">V1 · Original model</option></select></label>
+                        <p id="exposure-model-note" className="detail-note">V2 assesses properties with verified FEMA hazard-area overlap. Excluded properties stay unscored.</p>
                       </section>
                       <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />H3 cell outlines</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
                       <details className="archive-details"><summary>Archive details</summary>

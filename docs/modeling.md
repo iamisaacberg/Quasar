@@ -1,5 +1,14 @@
 # Offline parcel modeling
 
+The current requested retrain uses the [positive-overlap protocol](modeling-positive.md)
+and explicit `train-positive` command. Confirmed zero-overlap parcels are excluded
+from that model's training, evaluation and scoring; their map/input records remain.
+
+For the controlled retraining experiment, use the [v2 protocol and handoff](modeling-v2.md).
+Its `review`, `train-v2` and `assess-model-replay` commands retain this FEMA target and
+portable architecture. The original test is excluded from v2 selection and
+evaluation; v2 reports geographic cross-validation on existing research data.
+
 These commands prepare, train, evaluate, export and score an experimental FEMA
 mapping proxy. PR #17 supplied the pipeline without trained weights. The
 [first real-data run](modeling-run-v1.md), completed October 18, 2026 UTC
@@ -29,7 +38,7 @@ meters before `log1p`. Audit accepts either manifest spelling and rejects other 
 
 **Training and promotion are run results, not a property of this source file.**
 Check `evaluation.json` before describing a model as promoted.
-An authorized runtime transfer now supplies county inputs, active weights/evaluation and existing assessments in this workspace; original training data/native members/residuals/test ledger remain absent. Synthetic tests do not
+Ignored county datasets must be obtained separately from a repository clone. This workspace recovered the historical local dataset and trained new native members; original v1 native members and test ledger remain unavailable. Synthetic tests do not
 establish flood accuracy, county coverage, visual acceptance or LinuxONE execution.
 County scope is Okaloosa, FIPS `12091`.
 

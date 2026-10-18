@@ -61,10 +61,12 @@ parcels have a distinct outline. H3 does not sharpen native rainfall forecasts.
 
 Real parcel scores remain unknown unless separately produced matching exposure
 assessments exist. Optional offline modeling implements an experimental FEMA
-mapping proxy and rainfall interaction. A real-data model has now been trained
-locally and passed the pipeline's mapping-proxy promotion gates; see the
-[training report](docs/modeling-run-v1.md). LinuxONE now serves matching assessments
-for all 25 archive positions; see [activation](docs/real-data-rollout.md#exposure-activation).
+mapping proxy and rainfall interaction. The original v1 experiment passed its
+mapping-proxy promotion gates; see the [v1 report](docs/modeling-run-v1.md).
+LinuxONE serves a separately identified, matching v1 bundle for all 25 archive
+positions; see [activation](docs/real-data-rollout.md#exposure-activation).
+The [v2 experiment](docs/modeling-run-v2.md) failed qualification and remains
+research-only; its weights have not replaced that running bundle.
 No observed-flood validation is established.
 Exposure colors are not flood probability or depth, and green does not establish safety.
 
@@ -97,6 +99,24 @@ keys, raw property data or prepared databases. Existing notebooks and importers
 remain optional, explicit research tools; see the documentation index.
 
 ## Offline parcel modeling
+
+The current [revised experiment](docs/modeling-positive.md) follows the request
+to exclude zero FEMA-overlap parcels. It fits/evaluates only verified positive
+overlap, and leaves excluded or unknown-overlap properties unscored. This is a
+conditional mapping model; it does not identify flooding outside FEMA's map.
+**Tools → Exposure model** selects V1 (original) or V2 (the revised model).
+Ridge comparisons are advisory under the user's revised policy. Both versions
+have separately identified 25-hour local replay bundles; runtime configuration
+and activation remain separate from this local implementation.
+
+The [v2 datathon experiment](docs/modeling-v2.md) strengthens this same FEMA
+mapping-proxy task with buffered nested spatial evaluation, target-group-balanced
+training, explicit lineage review and rainfall sensitivity comparisons. V2 must
+pass its frozen engineering gates before assessment production. V1 remains a
+historical comparator; source changes do not activate a new hosted model.
+The [completed v2 experiment](docs/modeling-run-v2.md) failed two frozen gates;
+its candidate remains research-only. The report also inventories acquired storm
+observations and records actual LinuxONE inference separately from activation.
 
 The optional [modeling pipeline](docs/modeling.md) prepares spatially split datasets,
 evaluates a FEMA mapping proxy, exports portable trees and produces experimental
