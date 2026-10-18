@@ -1,0 +1,6 @@
+# Install as a drop-in only after the staged candidate/configuration is approved.
+# Requires QUASAR_EXPOSURE_DATABASE, QUASAR_PARCEL_DATABASE and a complete local
+# archive. Clear FILE, DIRECTORY, CATALOG and ARTIFACT_ROOT exposure selectors.
+[Service]
+ExecStart=
+ExecStart=/usr/bin/python3 -m quasar --host 127.0.0.1 --port 8000 --warm-serving

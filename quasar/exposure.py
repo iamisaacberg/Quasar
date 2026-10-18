@@ -18,6 +18,8 @@ from urllib.request import Request, build_opener
 
 from .config import COUNTY_FIPS
 from .parcels import SourceUnavailable, _NoRedirect
+from .timing import phase
+from .transport import read_body
 
 SCALE = json.loads((Path(__file__).parent / "static/exposure-scale.json").read_text())
 MAX_BYTES = 128 * 1024 * 1024
@@ -274,10 +276,10 @@ def _remote(query):
         raise SourceUnavailable("LinuxONE exposure service is not configured correctly.")
     allowed = {key: query[key] for key in ("from", "to", "mode", "resolution", "parcel_ids", "run_id") if key in query}
     request = Request(base + "/api/exposure?" + urlencode(allowed),
-                      headers={"X-Quasar-Parcel-Token": token, "Accept": "application/json"})
+                      headers={"X-Quasar-Parcel-Token": token, "Accept": "application/json", "Accept-Encoding": "gzip"})
     try:
-        with build_opener(_NoRedirect).open(request, timeout=12) as response:
-            body = response.read(2_000_001)
+        with phase("upstream"), build_opener(_NoRedirect).open(request, timeout=12) as response:
+            body = read_body(response, 2_000_000)
         if len(body) > 2_000_000:
             raise ValueError()
         data = json.loads(body)

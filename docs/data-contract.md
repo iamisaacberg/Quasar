@@ -258,3 +258,9 @@ preparation, cache identity/freshness, worker behavior and benchmark evidence.
 Existing forecast/exposure response shapes are unchanged. Hashed UI/worker files
 are allowlisted by the committed build manifest and immutable; HTML and API
 responses remain no-store. Negotiated gzip preserves original JSON semantics.
+
+Authenticated source proxy reads now negotiate gzip too, enforcing the same
+wire and decoded byte caps before parsing. Invalid compressed responses remain
+unavailable. Request-local `Server-Timing` uses fixed phase names only. Snapshot
+and prepared-database caches include inode and change time so replacements do
+not reuse earlier validation; source failures and expiry still invalidate reads.
