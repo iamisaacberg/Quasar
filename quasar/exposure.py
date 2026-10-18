@@ -91,6 +91,15 @@ def model_context(data):
             "forecast_provenance": forecast(data.get("forecast_provenance"))}
 
 
+def validate_model_population(record, context):
+    """Conditional-model scores require a verified positive reference fraction."""
+    if (record["score"] is not None
+            and context.get("model_metadata", {}).get("inference_population") == "positive_fema_overlap"):
+        value = record.get("model_details", {}).get("fema_mapped_area_fraction")
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 1:
+            raise ValueError("Positive-only model scored an excluded or unknown FEMA population")
+
+
 @lru_cache(maxsize=2)
 def _artifact(path, size, modified):
     if size > MAX_BYTES:
@@ -120,6 +129,7 @@ def _artifact(path, size, modified):
             if type(parcel_id) is not int or parcel_id < 0 or parcel_id in records:
                 raise ValueError("Duplicate or invalid exposure parcel ID")
             records[parcel_id] = validate_assessment(record)
+            validate_model_population(records[parcel_id], context)
             if context and score is not None and ("model_details" not in records[parcel_id]
                     or context["forecast_provenance"]["status"] != "ready"):
                 raise ValueError("Model scores require diagnostics and ready source data")
@@ -170,6 +180,11 @@ def exposure(query):
     mode = query.get("mode", "current")
     if mode not in ("current", "replay"):
         raise ValueError("Exposure mode must be current or replay")
+    choice = query.get("model")
+    if choice is not None and choice not in ("v1", "v2"):
+        raise ValueError("Exposure model must be v1 or v2")
+    prefix = "QUASAR_EXPOSURE_"+choice.upper() if choice else "QUASAR_EXPOSURE"
+    required_model = os.environ.get(prefix+"_MODEL_VERSION") if choice else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
     try:
         start, end = timestamp(query["from"]), timestamp(query["to"])
         resolution = int(query.get("resolution", "7"))
@@ -179,10 +194,12 @@ def exposure(query):
             raise ValueError()
     except (KeyError, TypeError, ValueError):
         raise ValueError("Use a six-hour exposure window, R4–R7 and at most 100 parcel IDs") from None
+    if choice and not required_model:
+        return _unavailable("not_configured", f"{choice.upper()} exposure model identity is not configured.")
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
         return _remote(query)
-    path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
-    directory = os.environ.get("QUASAR_EXPOSURE_DIRECTORY")
+    path, database = os.environ.get(prefix+"_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
+    directory = os.environ.get(prefix+"_DIRECTORY")
     if not (path or directory) or not database:
         missing = []
         if not (path or directory):
@@ -207,7 +224,6 @@ def exposure(query):
                             file_stat.st_mtime_ns, start, end, resolution)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
-        required_model = os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
         if required_model and result.get("model_metadata", {}).get("model_version") != required_model:
             return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
         now = datetime.now(timezone.utc)
@@ -225,6 +241,7 @@ def exposure(query):
         records = (_artifact(path, file_stat.st_size, file_stat.st_mtime_ns)["windows"][start, end]["records"]
                    if ids else {})
         return {**result,
+                **({"model_choice": choice} if choice else {}),
                 "cells": {} if ids else result["cells"],
                 "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
                             "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
@@ -239,7 +256,7 @@ def _remote(query):
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
             or parsed.query or parsed.fragment or parsed.path or len(token) < 32):
         raise SourceUnavailable("LinuxONE exposure service is not configured correctly.")
-    allowed = {key: query[key] for key in ("from", "to", "mode", "resolution", "parcel_ids", "run_id") if key in query}
+    allowed = {key: query[key] for key in ("from", "to", "mode", "resolution", "parcel_ids", "run_id", "model") if key in query}
     request = Request(base + "/api/exposure?" + urlencode(allowed),
                       headers={"X-Quasar-Parcel-Token": token, "Accept": "application/json"})
     try:
@@ -253,7 +270,11 @@ def _remote(query):
             raise ValueError()
         if data.get("status") == "ready":
             context = model_context(data)
-            required_model = os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
+            choice = query.get("model")
+            if choice is not None and data.get("model_choice") != choice:
+                raise ValueError("Source did not return the selected exposure version")
+            required_model = (os.environ.get("QUASAR_EXPOSURE_"+choice.upper()+"_MODEL_VERSION") if choice
+                              else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION"))
             if required_model and context.get("model_metadata", {}).get("model_version") != required_model:
                 return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
             if context:
@@ -295,6 +316,8 @@ def _remote(query):
                 if context and context["forecast_provenance"]["status"] != "ready" and scored:
                     raise ValueError("Unavailable model source cannot supply known summaries")
             data["parcels"] = {key: validate_assessment(record) for key, record in data["parcels"].items()}
+            for record in data["parcels"].values():
+                validate_model_population(record, context)
             if context and any(r["score"] is not None and ("model_details" not in r
                     or context["forecast_provenance"]["status"] != "ready") for r in data["parcels"].values()):
                 raise ValueError("Missing model diagnostics or unavailable source")

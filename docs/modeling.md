@@ -1,5 +1,9 @@
 # Offline parcel modeling
 
+The current requested retrain uses the [positive-overlap protocol](modeling-positive.md)
+and explicit `train-positive` command. Confirmed zero-overlap parcels are excluded
+from that model's training, evaluation and scoring; their map/input records remain.
+
 For the controlled retraining experiment, use the [v2 protocol and handoff](modeling-v2.md).
 Its `review`, `train-v2` and `assess-replay` commands retain this FEMA target and
 portable architecture. The original test is excluded from v2 selection and

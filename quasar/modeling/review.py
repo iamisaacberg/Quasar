@@ -96,7 +96,7 @@ def sensitivity(records, references):
 def write_experiment_summary(root, report, oof):
     """Small committed-source report generator; private parcel rows stay ignored."""
     root = Path(root)
-    lines = ["# V2 FEMA mapping-proxy experiment", "", report["notice"], "",
+    lines = ["# FEMA mapping-proxy experiment", "", report["notice"], "",
              f"Status: **{report['status']}**. Model SHA-256: `{report['model_sha256']}`.",
              f"Dataset: `{report['dataset_manifest']['dataset_id']}`. Protocol: `{report['evaluation_protocol']}`.",
              "", "Original test excluded. Scores measure mapped-area fraction, not event probability or flood depth.",
@@ -107,6 +107,10 @@ def write_experiment_summary(root, report, oof):
     for method, result in report["comparisons"].items():
         lines.append(f"| {method} | {number(result['parcel']['mae'])} | {number(result['parcel']['rmse'])} | "
                      f"{number(result['equal_block']['rmse'])} | {number(result['macro_subgroup_mae'])} | {number(result['target_ranges']['one']['mae'])} |")
+    if report.get("inference_population") == "positive_fema_overlap":
+        lines += ["", f"Positive-overlap population only: {report['research_pool_count']} included; "
+                  f"{report['excluded_zero_count']} original research zero-overlap parcels excluded. "
+                  "Macro MAE averages partial/full only. No countywide or flood-outcome skill is established."]
     from .v2 import target_group
     support = {}
     lines += ["", "## Target-group support", "", "| Group | Held | Supported | Unknown |", "| --- | ---: | ---: | ---: |"]
@@ -271,12 +275,24 @@ def review(output, *, dataset=None, experiment=None, database=None, inputs=None,
             elif export_saved(saved, {k: v for k, v in model.items() if k != "members"}) != model:
                 raise ValueError("Native re-export differs from portable weights")
             if model.get("evaluation_protocol"):
-                from .v2 import PROTOCOL, PROTOCOL_ID, protocol_hash, verify_evaluation
-                if (model["evaluation_protocol"] != PROTOCOL_ID
-                        or evaluation.get("evaluation_protocol") != PROTOCOL_ID
-                        or evaluation.get("protocol_sha256") != protocol_hash()
-                        or read_json(Path(experiment)/"protocol.json") != PROTOCOL):
+                from .v2 import POSITIVE_PROTOCOL, protocol_for, protocol_hash, verify_evaluation
+                protocol = protocol_for(model["evaluation_protocol"])
+                if (evaluation.get("evaluation_protocol") != protocol["id"]
+                        or evaluation.get("protocol_sha256") != protocol_hash(protocol)
+                        or read_json(Path(experiment)/"protocol.json") != protocol):
                     raise ValueError("V2 frozen protocol identity mismatch")
+                if protocol.get("inference_population") == "positive_fema_overlap":
+                    if digest(Path(experiment)/"population.json") != evaluation["population_sha256"]:
+                        raise ValueError("Positive-only population checksum mismatch")
+                    population = read_json(Path(experiment)/"population.json")
+                    from .v2 import research_rows
+                    if dataset:
+                        original = research_rows(dataset)[0]
+                        if (population["parent_dataset_id"] != manifest["dataset_id"]
+                                or population["included_ids"] != [r["parcel_id"] for r in original if r["target"] > 0]
+                                or population["excluded_zero_ids"] != [r["parcel_id"] for r in original if r["target"] == 0]
+                                or len(population["excluded_zero_ids"]) != evaluation["excluded_zero_count"]):
+                            raise ValueError("Positive-only research population mismatch")
                 if model["promoted"]:
                     verify_evaluation(model, evaluation)
                 for name, key in (("folds.json", "folds_sha256"), ("out-of-fold.json", "out_of_fold_sha256")):
@@ -284,6 +300,7 @@ def review(output, *, dataset=None, experiment=None, database=None, inputs=None,
                         raise ValueError("V2 saved evidence checksum mismatch")
             return {"status": "verified", "model_version": model["model_version"], "model_sha256": evaluation["model_sha256"],
                     "training_dataset_id": model["training_dataset_id"], "evaluation_sha256": digest(Path(experiment)/"evaluation.json"),
+                    **({"inference_population": model["inference_population"]} if "inference_population" in model else {}),
                     "promoted": model["promoted"], "evaluation_protocol": evaluation.get("evaluation_protocol", "v1 recorded test")}
         if verify("model_lineage", bundle) is None:
             model = evaluation = None
@@ -296,7 +313,7 @@ def review(output, *, dataset=None, experiment=None, database=None, inputs=None,
         pool_ids = None
         if manifest:
             from .v2 import research_rows
-            pool_ids = {r["parcel_id"] for r in research_rows(dataset)[0]}
+            pool_ids = {r["parcel_id"] for r in research_rows(dataset, positive_only=bool(model and model.get("inference_population") == "positive_fema_overlap"))[0]}
         with closing(readonly(Path(inputs)/"parcel-inputs.sqlite3")) as db:
             for identifier, raw in db.execute("SELECT parcel_id,inputs_json FROM parcel_inputs"):
                 if pool_ids is not None and identifier not in pool_ids:

@@ -34,6 +34,7 @@ The guides explain the whole application; the following files retain the detaile
 | [Offline parcel modeling](modeling.md) | Optional dataset preparation, proxy training, promotion gates, portable assessments and conditional outcome research |
 | [First real-data model run](modeling-run-v1.md) | Trained model identity, held-out results, local artifacts and the separate LinuxONE activation status |
 | [V2 protocol](modeling-v2.md) | Frozen nested geographic experiment, explicit commands, qualification and runtime handoff |
+| [Positive-overlap experiment](modeling-positive.md) | Requested exclusion of zero-mapped parcels, conditional training/evaluation, and unscored excluded properties |
 | [Completed v2 experiment](modeling-run-v2.md) | Failed gates, fold variation, observation inventory, rainfall sensitivity and current LinuxONE evidence |
 | [Architecture](architecture.md) | Runtime structure, scoring baseline, browser aggregation, and portability boundaries |
 | [Data contract](data-contract.md) | Record fields, API payloads, forecast schemas, replay additions, and export semantics |

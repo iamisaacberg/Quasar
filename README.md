@@ -88,6 +88,15 @@ remain optional, explicit research tools; see the documentation index.
 
 ## Offline parcel modeling
 
+The current [revised experiment](docs/modeling-positive.md) follows the request
+to exclude zero FEMA-overlap parcels. It fits/evaluates only verified positive
+overlap, and leaves excluded or unknown-overlap properties unscored. This is a
+conditional mapping model; it does not identify flooding outside FEMA's map.
+**Tools → Exposure model** selects V1 (original) or V2 (the revised model).
+Ridge comparisons are advisory under the user's revised policy. Both versions
+have separately identified 25-hour local replay bundles; runtime configuration
+and activation remain separate from this local implementation.
+
 The [v2 datathon experiment](docs/modeling-v2.md) strengthens this same FEMA
 mapping-proxy task with buffered nested spatial evaluation, target-group-balanced
 training, explicit lineage review and rainfall sensitivity comparisons. V2 must

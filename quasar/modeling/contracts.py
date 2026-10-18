@@ -32,19 +32,27 @@ def details(value, score):
 def metadata(value):
     required = {"schema_version", "model_version", "target", "policy", "promoted", "model_sha256", "notice"}
     lineage = {"training_dataset_id", "evaluation_sha256", "evaluation_protocol", "evaluation_summary"}
-    if (not isinstance(value, dict) or not required <= set(value) or set(value)-required-lineage
+    if (not isinstance(value, dict) or not required <= set(value) or set(value)-required-lineage-{"inference_population"}
             or value["schema_version"] != 1 or value["target"] != TARGET or value["policy"] != POLICY
             or value["promoted"] is not True or not isinstance(value["model_version"], str)
             or not 1 <= len(value["model_version"]) <= 200
             or not isinstance(value["model_sha256"], str) or not re.fullmatch("[0-9a-f]{64}", value["model_sha256"])
             or not isinstance(value["notice"], str) or not 1 <= len(value["notice"]) <= 1000):
         raise ValueError("Invalid/unpromoted model metadata")
-    if set(value) & lineage or value["model_version"].startswith("mapped-susceptibility-v2-"):
-        from .v2 import PROTOCOL_ID
-        if (not lineage <= set(value) or value["evaluation_protocol"] != PROTOCOL_ID
+    if (set(value) & (lineage | {"inference_population"})
+            or value["model_version"].startswith(("mapped-susceptibility-v2-", "mapped-susceptibility-v3-positive-", "mapped-susceptibility-v4-positive-"))):
+        from .v2 import protocol_for
+        protocol = protocol_for(value.get("evaluation_protocol"))
+        if (not lineage <= set(value)
                 or any(not isinstance(value[k], str) or not re.fullmatch("[0-9a-f]{64}", value[k])
                        for k in ("training_dataset_id", "evaluation_sha256"))):
             raise ValueError("Incomplete v2 evaluation lineage")
+        positive = protocol.get("inference_population") == "positive_fema_overlap"
+        if (positive != (value.get("inference_population") == "positive_fema_overlap")
+                or (not positive and "inference_population" in value)
+                or positive != value["model_version"].startswith(("mapped-susceptibility-v3-positive-", "mapped-susceptibility-v4-positive-"))
+                or (positive and not value["model_version"].startswith("mapped-susceptibility-"+protocol["id"].rsplit("-", 1)[-1]+"-positive-"))):
+            raise ValueError("Assessment population identity mismatch")
         summary = value["evaluation_summary"]
         if (not isinstance(summary, dict) or set(summary) != {"macro_subgroup_mae", "fully_mapped_mae", "parcel_rmse", "equal_block_rmse", "coverage"}
                 or any(not finite(v) or not 0 <= v <= 1 for v in summary.values())

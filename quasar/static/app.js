@@ -142,7 +142,7 @@ function mapColors(field = "risk_score") {
 function exposureParameters(resolution = 7) {
   if (!current?.scenario.valid_from || !["county_forecast", "county_archive"].includes(current.mode)) return null;
   return {from:current.scenario.valid_from, to:current.scenario.valid_to, resolution:String(resolution),
-    mode:current.mode === "county_archive" ? "replay" : "current"};
+    mode:current.mode === "county_archive" ? "replay" : "current", model:$("exposure-model").value || "v2"};
 }
 
 function selectedExposureSummary() {
@@ -163,11 +163,12 @@ function renderExposureInspection() {
     if($("map-layer").value === "exposure") void refreshExposure(selectedResolution);
   } else {
     const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
+    const missingNotes=assessment?.missing?.map(reason=>reason==="excluded_zero_fema_overlap" ? "Excluded from this model: no FEMA hazard-area overlap" : reason==="verified_positive_fema_overlap_required" ? "Verified FEMA hazard-area overlap is unavailable" : reason).join(", ");
     score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
     $("selection-badge").textContent="County parcel · experimental";
-    assessmentNote=score===null ? `Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching result for this hour"}.` : assessment?.model_details ? "Combines mapped susceptibility with forecast rainfall. Not validated against observed flooding." : "Relative index from the supplied assessment. See calculation details below.";
+    assessmentNote=score===null ? `Assessment unavailable: ${missingNotes || exposureData?.message || "No matching result for this hour"}.` : assessment?.model_details ? "Combines mapped susceptibility with forecast rainfall. Not validated against observed flooding." : "Relative index from the supplied assessment. See calculation details below.";
     content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
-    if(score===null) content.append(element("p",`Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
+    if(score===null) content.append(element("p",`Assessment unavailable: ${missingNotes || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
     const model = assessment?.model_details;
     if (model && score !== null) {
       content.append(element("p", `Model: ${exposureData?.model_metadata?.model_version || exposureData?.method_version || "Unavailable"}`, "detail-note"));
@@ -179,6 +180,7 @@ function renderExposureInspection() {
       if (evidence?.evaluation_protocol) {
         content.append(element("p", `Evaluation: ${evidence.evaluation_protocol} · Geographic cross-validation on existing research data; original test excluded.`, "detail-note"));
         const summary = evidence.evaluation_summary;
+        if (evidence.inference_population === "positive_fema_overlap") content.append(element("p", "Model scope: properties with verified FEMA hazard-area overlap only. Properties with zero or unknown overlap are excluded and unscored.", "detail-note"));
         if (summary) content.append(element("p", `Mapped-fraction errors: mean subgroup MAE ${summary.macro_subgroup_mae.toFixed(3)} · Fully mapped MAE ${summary.fully_mapped_mae.toFixed(3)} · RMSE ${summary.parcel_rmse.toFixed(3)} · Supported ${(100 * summary.coverage).toFixed(1)}%. These measure mapping agreement.`, "detail-note"));
         content.append(element("p", `Model SHA-256: ${evidence.model_sha256} · Dataset: ${evidence.training_dataset_id} · Evaluation SHA-256: ${evidence.evaluation_sha256}`, "detail-note"));
       }
@@ -274,6 +276,7 @@ async function loadExposure(resolution, force=false) {
   try {
     const data=await api(`/api/exposure?${key}`);
     if(request!==exposureRequest) return;
+    if(data.status==="ready" && data.model_choice!==params.model) throw new Error("The source did not return the selected model version");
     if(data.status==="ready" && (!data.cells || data.aggregation!=="parcel_p90_linear")) throw new Error("Invalid exposure summary");
     if(data.status==="ready" && exposureData?.status==="ready"
         && (data.run_id!==exposureData.run_id || data.inventory_id!==exposureData.inventory_id)) {
@@ -318,7 +321,7 @@ async function loadParcelExposure() {
       const batch=ids.slice(offset,offset+100);
       const page=await api(`/api/exposure?${new URLSearchParams({...params,parcel_ids:batch.join(","),run_id:run.run_id})}`);
       if(request!==exposureRequest || selectedCell!==cell) return;
-      if(page.status!=="ready" || page.run_id!==run.run_id || page.inventory_id!==parcelEntry?.inventory_id) throw new Error("Parcel exposure run or inventory changed");
+      if(page.status!=="ready" || page.model_choice!==params.model || page.run_id!==run.run_id || page.inventory_id!==parcelEntry?.inventory_id) throw new Error("Parcel exposure model, run or inventory changed");
       for(const id of batch) parcelAssessments.set(id,page.parcels?.[id] || {score:null,factors:[],missing:["assessment_unavailable"]});
     }
     if(parcelEntry) publishParcels(parcelEntry,true);
@@ -858,6 +861,21 @@ async function start() {
   void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
   $("map-layer").onchange = () => { playback?.pause(); showMapSummary(); updateMap(); if(selectedCell) { if(selectedParcel===null)renderCellPanel(); else renderInspectionInputs(); } };
+  $("exposure-model").value ||= "v2";
+  $("exposure-model").onchange = async() => {
+    if(!["v1","v2"].includes($("exposure-model").value)) return;
+    playback?.pause();
+    window.clearTimeout?.(exposureExpiryTimer);
+    invalidateExposure({status:"loading",cells:{},message:`Loading ${$("exposure-model").value.toUpperCase()} exposure…`});
+    exposureResponses.clear();exposureLoads.clear();parcelExposureLoad=null;
+    $("exposure-model-note").textContent=$("exposure-model").value==="v2"
+      ? "V2 assesses properties with verified FEMA hazard-area overlap. Excluded properties stay unscored."
+      : "V1 is the original mapping model. Both versions use an experimental rainfall rule; neither predicts verified flooding.";
+    if(parcelEntry)publishParcels(parcelEntry,true);
+    updateCountyGrid();showMapSummary();
+    if(selectedCell)renderExposureInspection();
+    if($("map-layer").value==="exposure") await refreshExposure(selectedResolution,true);
+  };
   try {
     const config=await api("/api/config");
     if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);

@@ -19,10 +19,14 @@ def main():
     train = sub.add_parser("train")
     train.add_argument("--dataset", type=Path, required=True)
     train.add_argument("--output", type=Path, required=True)
-    v2 = sub.add_parser("train-v2", help="One frozen nested spatial FEMA-proxy experiment; original test excluded")
-    for key in ("dataset", "database", "inputs", "boundary", "inspection", "output"):
-        v2.add_argument("--"+key, type=Path, required=True)
+    for name in ("train-v2", "train-positive"):
+        train_cmd = sub.add_parser(name, help="Frozen nested geographic experiment; train-positive excludes zero FEMA overlap")
+        for key in ("dataset", "database", "inputs", "boundary", "inspection", "output"):
+            train_cmd.add_argument("--"+key, type=Path, required=True)
     review = sub.add_parser("review", help="Local artifact inventory, lineage and exposure sensitivity; never accesses a host")
+    qualify = sub.add_parser("qualify-positive", help="Explicit revised qualification policy; ridge comparison is advisory")
+    qualify.add_argument("--experiment", type=Path, required=True)
+    qualify.add_argument("--output", type=Path, required=True)
     for key in ("dataset", "experiment", "database", "inputs", "boundary", "inspection", "weather", "assessments"):
         review.add_argument("--"+key, type=Path)
     review.add_argument("--output", type=Path, required=True)
@@ -61,6 +65,12 @@ def main():
         elif args.command == "train-v2":
             from .v2 import train_v2
             result = train_v2(args.dataset, args.database, args.inputs, args.boundary, args.inspection, args.output)
+        elif args.command == "train-positive":
+            from .v2 import train_positive
+            result = train_positive(args.dataset, args.database, args.inputs, args.boundary, args.inspection, args.output)
+        elif args.command == "qualify-positive":
+            from .v2 import qualify_positive
+            result = qualify_positive(args.experiment, args.output)
         elif args.command == "review":
             from .review import review
             result = review(args.output, research_sensitivity=args.research_sensitivity, **{k: getattr(args, k) for k in

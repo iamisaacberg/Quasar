@@ -1,5 +1,9 @@
 # V2 datathon exposure-model experiment
 
+Historical protocol: the completed v2 run failed qualification. The subsequent
+user-requested [positive-overlap experiment](modeling-positive.md) excludes zero
+FEMA overlap under a new identity; the v2 evidence and protocol remain preserved.
+
 V2 builds on the existing FEMA mapping proxy. Its six predictors, squared-error
 XGBoost family, five-member ensemble, portable tree format, county FIPS `12091`,
 and six-hour exposure horizon remain the same. It is the intended next demo
