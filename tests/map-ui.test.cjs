@@ -107,3 +107,11 @@ test('restarting from the end stays paused if the first hour cannot load its sco
   assert.equal(app.timers.size,0);
   assert.match(app.get('playback-status').textContent,/Playback paused.*scores offline/);
 });
+test('pausing during a slow restart prevents playback from starting when scores arrive',async()=>{
+  let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));
+  app.controller.configure('forecast',times,2);
+  const restart=app.get('replay-play').onclick();
+  app.controller.pause();finish(true);await restart;
+  assert.equal(app.timers.size,0);
+  assert.equal(app.get('replay-play').textContent,'▶');
+});

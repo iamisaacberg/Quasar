@@ -76,7 +76,7 @@
   }
   const localTime=value=>new Date(value).toLocaleString("en-US",{timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",timeZoneName:"short"});
   function createPlayback({get, select, every=setInterval, stop=clearInterval}) {
-    let kind="none", times=[], index=0, timer=null, busy=false, selecting=null, generation=0, available=false, note="Waiting for imported forecast data.";
+    let kind="none", times=[], index=0, timer=null, busy=false, selecting=null, generation=0, playGeneration=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
       get("replay-play").setAttribute("aria-label",timer===null?"Play Isaias timeline":"Pause playback");
@@ -90,7 +90,7 @@
       get("playback-clock").textContent=times[index] ? `${kind==="archive"?"Isaias":"Forecast"} · ${localTime(times[index])}` : "Isaias archive unavailable";
       get("playback-status").textContent=busy?"Loading selected hour…":note;
     }
-    function pause() {if(timer!==null)stop(timer);timer=null;draw();}
+    function pause() {playGeneration++;if(timer!==null)stop(timer);timer=null;draw();}
     async function go(next) {
       if(!available || busy || next<0 || next>=times.length)return;
       const ticket=++generation;busy=true;selecting=next;draw();
@@ -109,7 +109,9 @@
     get("replay-play").onclick=async()=>{
       if(timer!==null){pause();return;}
       if(!available || busy || times.length<2)return;
+      const playTicket=playGeneration;
       if(index===times.length-1 && await go(0)!==true)return;
+      if(playTicket!==playGeneration)return;
       if(!available || index===times.length-1)return;
       timer=every(()=>{if(!busy)void go(index+1);},1000);draw();
     };
