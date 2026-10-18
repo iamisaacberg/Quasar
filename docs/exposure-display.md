@@ -18,6 +18,14 @@ Colors interpolate in RGB between fixed anchors. Labels change at 35, 65 and
 The source of truth is `quasar/static/exposure-scale.json`, supplied through
 `/api/config`. Numeric indices, explanations and a gradient legend accompany color.
 
+The selection panel leads with the selected six-hour window and rainfall or
+exposure band. Parcel summaries show mean terrain, mapped special flood hazard
+area fraction and mapped river/stream distance. Cell summaries show full indexed
+parcel count, elevated-index count (65+) and assessment coverage, with unassessed
+parcels called out explicitly. Reference-zone and terrain coverage notes retain
+unknown states. Parcel browsing, model diagnostics, reference inputs and source
+metadata are expandable; loading failures and retry controls remain visible.
+
 ## Explicit assessments
 
 Geometry-only databases contain no exposure assessments. Set
