@@ -231,14 +231,16 @@ def _database_page(cell_id, offset, inventory_id):
             "notice": "County parcel geometry only. Flood inputs and scores unavailable; every parcel score remains unknown."}
 
 
-def _remote_page(cell_id, offset, inventory_id):
+def _remote_page(cell_id, offset, inventory_id, ring):
     base_url = os.environ.get("QUASAR_LINUXONE_API_URL", "").rstrip("/")
     token = os.environ.get("QUASAR_LINUXONE_API_TOKEN", "")
     if not base_url or len(token) < 32:
         raise SourceUnavailable("LinuxONE parcel service is not configured.")
     if urlsplit(base_url).scheme != "https" or not urlsplit(base_url).hostname:
         raise SourceUnavailable("LinuxONE parcel service must use an HTTPS origin.")
-    params = {"cell": cell_id or "", "offset": str(offset)}
+    # The indexed host uses the same parcel API contract as this proxy and
+    # validates the R7 query ring before reading its stored H3 memberships.
+    params = {"cell": cell_id or "", "offset": str(offset), "ring": json.dumps(ring)}
     if inventory_id is not None:
         params["inventory_id"] = inventory_id
     request = Request(f"{base_url}/api/parcels?{urlencode(params)}",
@@ -278,7 +280,7 @@ def parcel_page(ring_value, offset_value="0", inventory_id=None, cell_id=None):
     if offset < 0 or offset % PAGE_SIZE:
         raise ValueError("Invalid parcel offset")
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
-        return _remote_page(cell_id, offset, inventory_id)
+        return _remote_page(cell_id, offset, inventory_id, ring)
     if os.environ.get("QUASAR_PARCEL_DATABASE"):
         return _database_page(cell_id, offset, inventory_id)
     county = county_boundary()

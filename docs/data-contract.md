@@ -162,6 +162,14 @@ Raw/derived research downloads stay in ignored `data/raw/` / `data/processed/`.
 Server runtime reads remain read-only. The browser persists public geometry and
 pagination in IndexedDB under the bounded inspection cache policy above.
 
+The server-only parcel proxy forwards the validated R7 `ring`, `cell`, `offset`
+and optional `inventory_id` together. The indexed host applies the same request
+validation before reading stored memberships; omitting the ring rejects the
+request before any parcel page is read. A replacement inventory invalidates
+in-flight and displayed inspection inputs. A selected parcel is relinked only
+after its ID appears in the replacement geometry page; otherwise the inspector
+returns to the cell until a parcel is selected from that inventory.
+
 Separate offline descriptive-input artifacts are defined in
 [parcel input preparation](parcel-inputs.md). Their terrain/FEMA/reference-distance
 fields enter the opt-in inspection endpoints above, separately from geometry.

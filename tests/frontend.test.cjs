@@ -282,6 +282,38 @@ test('cached shapes display before a slow source version check finishes',async()
   release();await until(()=>!next.get('parcel-status').textContent.includes('Checking source version'));
 });
 
+for(const retainSelected of [true,false]) {
+test(`replacement inventory ${retainSelected ? 'relinks selected parcel inputs' : 'clears an unverified parcel selection'}`,async()=>{
+  const storage=QuasarParcelCache.disk(new IDBFactory());
+  const first=await boot({configured:true,cacheStorage:storage});first.map.handlers['load:']();parcelClick(first);
+  await until(()=>first.get('parcel-status').textContent.includes('All 101'));
+  const cache=QuasarParcelCache.create({storage}), cell=h3.latLngToCell(30.55,-86.485,7);
+  const saved=await cache.get(cell);
+  await cache.clear();
+  await cache.put(cell,{...saved.manifest,inventory_id:'old-snapshot',dataset_version:'old-snapshot:index'},
+    {...saved,inventory_id:'old-snapshot',dataset_version:'old-snapshot:index'});
+  let release;const held=new Promise(resolve=>release=resolve);
+  const app=await boot({configured:true,cacheStorage:storage,holdManifest:()=>held,
+    inspectionContext:{inventory_id:'snapshot',forecast_overlaps:[],inputs:{terrain:{status:'complete',mean_m:9.97}}},
+    pageTransform:page=>retainSelected ? page : {...page,features:page.features.map(f=>({...f,id:f.id+1000,properties:{...f.properties,parcel_id:f.id+1000}}))}});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.length===2);
+  app.get('selection-content').children[0].onclick();
+  await until(()=>app.get('context-status').textContent.includes('unavailable'));
+  assert.match(app.requests.find(url=>url.includes('/parcels/1/context')),/inventory_id=old-snapshot/);
+  release();
+  await until(()=>app.get('parcel-status').textContent.includes('All 101') && app.get('context-status').textContent.includes('Reference inputs only'));
+  if(retainSelected) {
+    assert.equal(app.get('selection-title').textContent,'Parcel details');
+    assert.equal(app.get('selection-stat-one').textContent,'9.97 m');
+    assert.ok(app.requests.some(url=>url.includes('/parcels/1/context?inventory_id=snapshot')));
+  } else {
+    assert.equal(app.get('selection-title').textContent,'Cell overview');
+    assert.equal(app.map.sources['selected-parcel'].data.features.length,0);
+  }
+});
+}
+
 test('a prematurely completed page cannot claim the full inventory was checked',async()=>{
   const app=await boot({configured:true,pageTransform:page=>({...page,next_offset:null})});
   app.map.handlers['load:']();parcelClick(app);

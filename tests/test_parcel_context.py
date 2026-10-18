@@ -115,6 +115,52 @@ class InspectionApiTests(unittest.TestCase):
     tearDownClass=classmethod(test_api.ApiTests.tearDownClass.__func__)
     request=test_api.ApiTests.request
 
+    def test_proxy_pages_reach_authenticated_indexed_host_with_full_query(self):
+        """Only HTTPS transport is redirected; exercise the real host handler/DB."""
+        from urllib.parse import urlsplit, parse_qs
+        from urllib.request import Request, urlopen
+        from test_parcels import RING
+        token = "synthetic-test-token-" * 2
+        with tempfile.TemporaryDirectory() as folder:
+            database, _, _, _ = fixture(Path(folder))
+            with closing(sqlite3.connect(database)) as db:
+                for identifier in range(3, 103):
+                    feature = {"type": "Feature", "id": identifier, "geometry": PARCEL,
+                               "properties": {"parcel_id": identifier, "county_fips": "12091",
+                                              "risk_score": None, "risk_band": "unknown"}}
+                    db.execute("INSERT INTO parcels VALUES (?,?)", (identifier, zlib.compress(json.dumps(feature).encode())))
+                    db.execute("INSERT INTO cell_parcels VALUES (?,?)", (CELL, identifier))
+                db.commit()
+
+            def host(request, timeout):
+                url = urlsplit(request.full_url)
+                query = parse_qs(url.query)
+                self.assertEqual(json.loads(query["ring"][0]), RING)
+                self.assertEqual(query["cell"], [CELL])
+                self.assertEqual(query["inventory_id"], ["parcel-snapshot"])
+                self.assertNotIn(token, request.full_url)
+                forwarded = Request(f"http://127.0.0.1:{self.server.server_port}{url.path}?{url.query}",
+                                    headers=dict(request.header_items()))
+                # The actual source host has a database, not another proxy.
+                with patch.dict(os.environ, {"QUASAR_LINUXONE_API_URL": ""}):
+                    with urlopen(forwarded, timeout=timeout) as response:
+                        return io.BytesIO(response.read())
+
+            with patch.dict(os.environ, {"QUASAR_PARCEL_DATABASE": str(database),
+                    "QUASAR_PARCEL_API_TOKEN": token, "QUASAR_LINUXONE_API_URL": "https://example.test",
+                    "QUASAR_LINUXONE_API_TOKEN": token}), \
+                    patch.object(parcels, "county_boundary", return_value={"features": [{"geometry": GEOMETRY}]}), \
+                    patch.object(parcels, "build_opener") as opener:
+                opener.return_value.open.side_effect = host
+                first = parcels.parcel_page(json.dumps(RING), "0", "parcel-snapshot", CELL)
+                last = parcels.parcel_page(json.dumps(RING), str(first["next_offset"]), "parcel-snapshot", CELL)
+                self.assertEqual(len(first["features"]), 100)
+                self.assertEqual(len(last["features"]), 2)
+                self.assertEqual(last["checked_count"], 102)
+                self.assertIsNone(last["next_offset"])
+                self.assertEqual({f["id"] for page in (first, last) for f in page["features"]}, set(range(1, 103)))
+                self.assertEqual(self.request(f"/api/parcels?cell={CELL}")[0], 401)
+
     def test_missing_inputs_bad_scope_and_ids(self):
         with patch.dict(os.environ,{"QUASAR_PARCEL_CONTEXT_DIRECTORY":"","QUASAR_PARCEL_DATABASE":"","QUASAR_LINUXONE_API_URL":""}):
             for path in ("/api/parcels/1/context",f"/api/cells/{CELL}/summary"):
