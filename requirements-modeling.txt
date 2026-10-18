@@ -1,0 +1,7 @@
+# Optional LOCAL training/preparation only; never part of the server/container.
+# Python 3.12. Mac ARM wheels verified; no s390x wheels in the checked releases.
+xgboost==3.4.1
+scikit-learn==1.9.1
+numpy==2.5.4
+shapely==2.1.2
+pyproj==3.7.2

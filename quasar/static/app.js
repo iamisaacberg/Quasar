@@ -144,6 +144,19 @@ function renderExposureInspection() {
     $("selection-badge").textContent=$("map-layer").value === "rainfall" ? "County parcel · archived inputs" : score===null ? "County parcel · unscored" : "County parcel · experimental index";
     content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p", `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
     if(score===null) content.append(element("p",`Assessment unavailable: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}. Prepared reference inputs are shown below.`,"detail-note"));
+    const model = assessment?.model_details;
+    if (model && score !== null) {
+      content.append(element("p", `Model: ${exposureData?.model_metadata?.model_version || exposureData?.method_version || "Unavailable"}`, "detail-note"));
+      content.append(element("p", `Learned mapped susceptibility: ${model.susceptibility.toFixed(3)} · FEMA mapping proxy, not observed flood skill.`, "detail-note"));
+      content.append(element("p", `Forecast rainfall: ${model.rainfall_6h_mm.toFixed(1)} mm / 6h · Rainfall stress: ${model.rainfall_stress.toFixed(3)} (experimental rule).`, "detail-note"));
+      content.append(element("p", `Model instability: ${model.model_instability.toFixed(3)} · Ensemble spread, not a confidence interval.`, "detail-note"));
+      content.append(element("p", `Raw model baseline: ${model.baseline.toFixed(3)} · Signed tree-path attributions (not physical causes):`, "detail-note"));
+      for (const [name, value] of Object.entries(model.attributions)) {
+        content.append(element("p", `${name}: ${value >= 0 ? "+" : ""}${value.toFixed(4)} raw susceptibility`, "detail-note"));
+      }
+      const source = exposureData?.forecast_provenance;
+      if (source) content.append(element("p", `Forecast initialized ${source.init_time} · Imported ${source.retrieved_at} · ${source.native_resolution} · ${source.availability_basis}`, "detail-note"));
+    }
   }
   $("selection-score").textContent=score===null ? "Unscored" : score.toFixed(1)+" / 100";
 }
@@ -158,7 +171,9 @@ function invalidateExposure(data) {
 function scheduleExposureExpiry() {
   window.clearTimeout?.(exposureExpiryTimer);
   if(exposureData?.status!=="ready" || exposureParameters()?.mode!=="current") return;
-  const expires=Math.min(Date.parse(exposureData.valid_to),Date.parse(exposureData.computed_at)+2*3600000);
+  const sourceExpiry=exposureData.forecast_provenance?.expires_at;
+  const expires=Math.min(Date.parse(exposureData.valid_to),Date.parse(exposureData.computed_at)+2*3600000,
+    sourceExpiry ? Date.parse(sourceExpiry) : Infinity);
   if(!Number.isFinite(expires)) return;
   const request=exposureRequest;
   exposureExpiryTimer=window.setTimeout?.(()=>{

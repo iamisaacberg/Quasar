@@ -66,6 +66,10 @@ def prepare(database, inputs, boundary, weather, output):
         native_values = list(native.values())
         native_shapes = [transform(project.transform, shape(c["geometry"])) for c in native_values]
         tree = STRtree(native_shapes)
+        for i, geom in enumerate(native_shapes):
+            for j in tree.query(geom):
+                if int(j) > i and geom.intersection(native_shapes[int(j)]).area > .001:
+                    raise ValueError("Native forecast cells overlap in area; parcel rainfall would be ambiguous")
 
         def overlaps(geometry):
             if geometry.is_empty or not geometry.is_valid or geometry.area <= 0:

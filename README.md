@@ -50,8 +50,9 @@ is configured. Unknown interiors are transparent with thin outlines; selected
 parcels have a distinct outline. H3 does not sharpen native rainfall forecasts.
 
 Real parcel scores remain unknown unless separately produced matching exposure
-assessments exist. No new scoring method is implemented. Exposure colors are not
-flood probability or depth, and green does not establish safety.
+assessments exist. Optional offline modeling implements an experimental FEMA
+mapping proxy and rainfall interaction; no validated flood model is established.
+Exposure colors are not flood probability or depth, and green does not establish safety.
 
 Fictional sites, synthetic scenarios, what-if additions, notification previews and
 simulated routes are absent from the application. Their old HTTP endpoints return
@@ -74,3 +75,11 @@ npm run build
 Commit rebuilt assets with their source. Do not commit `.env`, credentials,
 keys, raw property data or prepared databases. Existing notebooks and importers
 remain optional, explicit research tools; see the documentation index.
+
+## Offline parcel modeling
+
+The optional [modeling pipeline](docs/modeling.md) prepares spatially split datasets,
+evaluates a FEMA mapping proxy, exports portable trees and produces experimental
+rainfall/exposure assessments, with a separate gated observed-outcome experiment.
+No real trained model or LinuxONE benchmark is established by adding this code;
+absent datasets and failed promotion gates remain explicit.

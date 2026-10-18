@@ -26,8 +26,10 @@ results from a separately documented scoring method. Existing parcel API
 authentication also protects `/api/exposure`; set `QUASAR_PARCEL_API_TOKEN` to
 32+ characters. Never expose that token to the browser.
 
-This change adds no scoring formula or training dataset. Missing assessments
-stay unknown with transparent interiors. Fictional sites are not served by the application.
+The original display change adds no scoring formula or training dataset. Optional
+[offline modeling](modeling.md) can produce FEMA mapping proxy assessments after
+promotion gates pass, separately from any validated flood predictor. Missing assessments stay unknown
+with transparent interiors. Fictional sites are not served by the application.
 
 Schema 1 example (**synthetic format documentation**, not real parcel data):
 
@@ -98,3 +100,22 @@ do not establish IBM Z execution, configured real assessments or visual acceptan
 Changing scenario/hour retains cached parcel geometry and the selected cell/parcel
 while clearing previous exposure indices until matching assessments arrive. Late
 responses cannot repopulate closed or superseded selections.
+
+## Optional modeling fields (schema 1, additive)
+
+Legacy artifacts remain supported. Model artifacts add validated `model_metadata`
+(schema/version, proxy target, policy, promoted flag, model hash and notice) and
+`forecast_provenance` (init/publication/import/valid/expiry times, source table/hash,
+native resolution/statistic/units, mode and availability basis). These fields pass
+through local and authenticated proxy responses. Current source expiry invalidates
+server results and browser colors; recomputation cannot extend source validity.
+
+Known model records require `model_details`: susceptibility, raw susceptibility,
+six-hour rainfall mm, rainfall stress, ensemble instability, raw baseline and six
+signed tree-path attributions. Validators check finite values/ranges, policy
+arithmetic and baseline plus attribution sum. One nonnegative
+`susceptibility_rainfall_interaction` factor accounts for the final index; signed
+model explanations remain separate. Invalid diagnostics fail closed. Parcel
+inspection labels the mapping proxy, visualization rule, instability and source
+times explicitly. None of these values establish flood depth, probability,
+confidence intervals or safety.

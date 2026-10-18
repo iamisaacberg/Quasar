@@ -29,6 +29,7 @@ The guides explain the whole application; the following files retain the detaile
 | [Root README](../README.md) | Local setup, demonstration walkthrough, commands, and project overview |
 | [Teammate exposure handoff](TEAMMATE-HANDOFF.md) | WeatherNext/LinuxONE direction, implemented display, required assessment artifact and remaining integration work |
 | [Exposure display contract](exposure-display.md) | Optional assessment artifacts, fixed palette, complete-inventory P90 summaries and exposure API |
+| [Offline parcel modeling](modeling.md) | Optional dataset preparation, proxy training, promotion gates, portable assessments and conditional outcome research |
 | [Architecture](architecture.md) | Runtime structure, scoring baseline, browser aggregation, and portability boundaries |
 | [Data contract](data-contract.md) | Record fields, API payloads, forecast schemas, replay additions, and export semantics |
 | [Source catalog](data-sources.md) | Source identifiers, access history, acquisition checkpoints, and pending integrations |

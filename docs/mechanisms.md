@@ -41,6 +41,7 @@ Imports and source preparation are deliberate commands. Browser requests read lo
 | Fixed scope and local settings | `quasar/config.py` | County, timezone, model version, non-executing `.env` loader, public Mapbox settings |
 | Scoring | `quasar/scoring.py` | Required inputs, normalization, contributions, bands, null behavior |
 | Optional parcel exposure | `quasar/exposure.py` | Explicit artifact validation, complete-inventory P90 summaries and authenticated LinuxONE proxy; no scoring method |
+| Offline parcel modeling | `quasar/modeling/` | Optional mapping-proxy preparation/training, portable inference, gated assessment production and conditional outcome research; see [modeling](modeling.md) |
 | Main pipeline | `quasar/pipeline.py` | Fixture loading, scenario selection, mixed forecast association, GeoJSON, sorting |
 | Current forecast adapter | `quasar/adapters/weathernext.py` | Query construction, capped CLI import, schema and freshness checks |
 | Historical import/replay | `quasar/adapters/historical.py`, `quasar/replay.py` | Archived runs, temporal selection, forward windows, timeline, provenance |

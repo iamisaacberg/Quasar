@@ -17,7 +17,7 @@ class Element {
   getAttribute(name) { return this[name]; }
 }
 
-async function boot({configured=false, mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
+async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
   const ids = new Map();
   let exposureRunId="synthetic-run", clock=Date.now(), archiveMissing=false;
   const exposureTimers=new Map();
@@ -25,7 +25,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   get("map").parentElement = get("map-viewport");
   get("map-layer").value="rainfall";
-  const data = {type:"FeatureCollection", county_fips:"12091", mode:"county_archive", notice:"Native forecast test fixture",
+  const data = {type:"FeatureCollection", county_fips:"12091", mode:forecastMode, notice:"Native forecast test fixture",
     scenario:{id:"isaias-2026",valid_from:"2026-10-09T05:00:00Z",valid_to:"2026-10-09T11:00:00Z"},
     forecast:{status:forecastStatus,init_time:"2026-10-09T05:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
     weather_cells:{type:"FeatureCollection",retrieved_at:"2026-10-17T12:30:00Z",features:[
@@ -97,6 +97,7 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
     }};
   await vm.runInNewContext(fs.readFileSync("quasar/static/app.js","utf8"),context);
   return {get,map,data,events,requests,setArchiveMissing:value=>{archiveMissing=value;},setExposureRunId:value=>{exposureRunId=value;},setExposureFailure:value=>{exposureFailure=value;},
+    exposureTimerDelays:()=>[...exposureTimers.values()].map(t=>t.delay),
     expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
     start:()=>context.window.Quasar.start(),
@@ -409,3 +410,28 @@ test('summary failure clears parcel indices before a different run recovers',asy
   assert.deepEqual(Array.from(app.map.sources.parcels.data.features,f=>f.properties.exposure_score),[30,100]);
   assert.equal(geometryRequests(app).length,before);
 });
+
+for (const forecastMode of ['county_archive', 'county_forecast']) {
+test(`model inspection separates susceptibility and rainfall with ${forecastMode} expiry`,async()=>{
+  const app=await boot({configured:true,forecastMode,mixed:true,exposureScores:true,exposureTransform:page=>({
+    ...page,forecast_provenance:{init_time:'synthetic-init',retrieved_at:'synthetic-import',native_resolution:'0.1 degree',availability_basis:'initialization-based reconstruction',expires_at:new Date(Date.parse(page.computed_at)+60000).toISOString()},
+    parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,{...record,
+      model_details:{susceptibility:.7,rainfall_6h_mm:50,rainfall_stress:.5,model_instability:.02,baseline:.6,attributions:{terrain_min_m:-.1,terrain_mean_m:.2}}}]))
+  })});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  app.get('selection-content').children[1].onclick();
+  const text=app.get('selection-exposure').children.map(node=>node.textContent).join('\n');
+  assert.match(text,/Model: synthetic-test-only/);
+  assert.match(text,/Learned mapped susceptibility: 0.700/);
+  assert.match(text,/FEMA mapping proxy, not observed flood skill/);
+  assert.match(text,/Forecast rainfall: 50.0 mm/);
+  assert.match(text,/not a confidence interval/);
+  assert.match(text,/terrain_min_m: -0.1000/);
+  if (forecastMode === "county_forecast") {
+    assert.ok(app.exposureTimerDelays().some(delay=>delay>0 && delay<=60001));
+  } else {
+    assert.equal(app.exposureTimerDelays().length,0);
+  }
+});
+}
