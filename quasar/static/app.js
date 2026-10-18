@@ -868,9 +868,25 @@ async function start() {
       $("map-status").textContent = "County boundary unavailable. H3 rainfall cannot be drawn; native forecasts remain available in Data. Reload to retry.";
     }
   }
-  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,select:feature=>{
+  if (window.QuasarMapUI) searchController = window.QuasarMapUI.createSearch({get:$,element,token:mapToken,geometry:county?.features[0]?.geometry,
+    isCellId:value=>h3.isValidCell(value),select:feature=>{
     searchMarker?.remove();searchMarker=null;
     if(!feature || !map)return;
+    if(feature.properties?.h3_index) {
+      const cell=feature.properties.h3_index;
+      const resolution=h3.getResolution(cell);
+      if(resolution<4 || resolution>7) {
+        $("map-search-status").textContent="Search supports Okaloosa H3 cells at resolutions 4 through 7.";return;
+      }
+      const cellGeometry={type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]};
+      if(!county || !QuasarSpatial.clipGeometry(cellGeometry,county.features[0].geometry)) {
+        $("map-search-status").textContent="That hex cell does not overlap Okaloosa County.";return;
+      }
+      const [lat,lon]=h3.cellToLatLng(cell);
+      void inspectCell(cell,resolution);
+      map.flyTo({center:[lon,lat],zoom:Math.max(map.getZoom(),resolution===7?13.5:QuasarSpatial.childZoom(resolution)),padding:{top:90,bottom:150,left:40,right:40},duration:650});
+      return;
+    }
     closeSelection();
     const coordinates=feature.geometry.coordinates;
     searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);

@@ -57,7 +57,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
               <div className="map-layout">
                 <div className="map-topbar map-float">
                   <div className="map-search" role="search">
-                    <div className="map-search-input"><Search aria-hidden="true" /><input id="map-search" type="text" disabled placeholder="Search Okaloosa addresses and places…" aria-label="Search Okaloosa County" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="map-search-results" aria-describedby="map-search-status" autoComplete="off" /><button id="map-search-clear" type="button" disabled aria-label="Clear search"><X aria-hidden="true" /></button></div>
+                    <div className="map-search-input"><Search aria-hidden="true" /><input id="map-search" type="text" disabled placeholder="Search places or paste an H3 cell ID…" aria-label="Search Okaloosa places or H3 cell IDs" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="map-search-results" aria-describedby="map-search-status" autoComplete="off" /><button id="map-search-clear" type="button" disabled aria-label="Clear search"><X aria-hidden="true" /></button></div>
                     <ul id="map-search-results" role="listbox" aria-label="County search results" hidden />
                     <p id="map-search-status" role="status">Search requires a configured map and an available county boundary.</p>
                   </div>
