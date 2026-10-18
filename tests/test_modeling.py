@@ -1,5 +1,6 @@
 """Synthetic modeling fixtures only. No downloads, IBM access or flood validation."""
 import copy
+import gc
 import importlib.util
 import json
 import math
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import weakref
 import zlib
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -78,6 +80,60 @@ class FeatureAndRuntimeTests(unittest.TestCase):
         result = portable.predict(model, [1]*6)
         self.assertLessEqual(result["susceptibility"], 1)
         self.assertGreater(result["raw_susceptibility"], result["susceptibility"])
+
+    def test_compiled_ensemble_matches_current_tree_walk(self):
+        model = portable.validate(model_fixture())
+        samples = ([1]*6, [2]*6, [0, 1, 2, 3, 4, 5])
+        for values in samples:
+            self.assertEqual(portable.predict(model, values), portable.predict_compiled(model, values))
+        model["members"][0]["bias"] = 5
+        edited = portable.predict(model, [1]*6)
+        self.assertEqual(edited, portable.predict_compiled(model, [1]*6))
+        self.assertGreater(edited["raw_susceptibility"], edited["susceptibility"])
+
+    def test_compiled_models_do_not_share_cached_weights(self):
+        first = portable.validate(model_fixture())
+        second = copy.deepcopy(first)
+        second["members"][0]["trees"] = first["members"][0]["trees"]
+        second["members"][1]["trees"][0][1].update(leaf=.9, expected=.9)
+        portable.validate(second)
+        portable.predict_compiled(first, [1]*6)
+        self.assertEqual(portable.predict(second, [1]*6), portable.predict_compiled(second, [1]*6))
+        second["members"][1]["trees"][0][1].update(leaf=.8, expected=.8)
+        portable.validate(second)
+        self.assertEqual(portable.predict(second, [1]*6), portable.predict_compiled(second, [1]*6))
+
+    def test_compiled_cache_releases_discarded_models(self):
+        previous = None
+        for _ in range(3):
+            model = model_fixture()
+            portable.predict_compiled(portable.validate(model), [1]*6)
+            gc.collect()
+            if previous is not None:
+                self.assertIsNone(previous())
+            previous = weakref.ref(portable._ensemble(model)[0])
+
+    def test_compiled_preserves_addition_order_and_unknowns(self):
+        model = model_fixture()
+        for member in model["members"]:
+            member["bias"] = 1.
+            member["trees"] = [[{"leaf": value, "expected": value}] for value in (1e16, -1e16)]
+        portable.validate(model)
+        for values in ([1]*6, [None]*6, [float("nan")]*6, [float("inf")]*6, [101]*6):
+            self.assertEqual(portable.predict(model, values), portable.predict_compiled(model, values))
+
+    def test_assessment_keeps_primary_scorer_and_unknown_results(self):
+        model = portable.validate(model_fixture())
+        overlaps = [{"native_cell_id": "synthetic", "area_fraction": 1}]
+        with patch.object(portable, "predict_compiled", side_effect=AssertionError("fallback invoked")), \
+                patch.object(production, "predict", wraps=portable.predict) as primary:
+            known = production.assessment(1, inputs_record(), overlaps, model, {"synthetic": 12})
+            self.assertIsNotNone(known["score"])
+            primary.assert_called_once()
+            model["feature_ranges"] = [[-10, 0]]*6
+            unknown = production.assessment(1, inputs_record(), overlaps, model, {"synthetic": 12})
+            self.assertIsNone(unknown["score"])
+            self.assertIn("outside_training_ranges", unknown["missing"])
 
     def test_portable_rejects_topology_objectives_categories_and_feature_mismatch(self):
         changes = [lambda m: m.update(objective="binary:logistic"), lambda m: m["features"].reverse(),
@@ -217,7 +273,15 @@ class AuditAndProducerTests(unittest.TestCase):
     def test_audit_checks_hash_units_inventory_and_inspection(self):
         report = dataset.audit(self.database, self.inputs, self.boundary, self.inspection)
         self.assertEqual(report["coverage"]["label_eligible"], 2)
-        parent = read_json(self.inputs/"manifest.json");parent["terrain"]["units"] = "ft"
+        parent = read_json(self.inputs/"manifest.json")
+        parent["terrain"]["units"] = "meters"
+        write_json(self.inputs/"manifest.json", parent)
+        inspection = read_json(self.inspection/"manifest.json")
+        inspection["parent_manifest_sha256"] = digest(self.inputs/"manifest.json")
+        write_json(self.inspection/"manifest.json", inspection)
+        meters = dataset.audit(self.database, self.inputs, self.boundary, self.inspection)
+        self.assertEqual(meters["units"]["manifest_terrain_units"], "meters")
+        parent["terrain"]["units"] = "ft"
         write_json(self.inputs/"manifest.json", parent)
         with self.assertRaises(ValueError):dataset.audit(self.database, self.inputs, self.boundary)
 

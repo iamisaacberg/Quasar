@@ -40,7 +40,8 @@ def audit(database, inputs, boundary, inspection=None):
                 or provenance["county_boundary"]["sha256"] != digest(boundary)
                 or parent["sources"]["boundary_sha256"] != digest(boundary)
                 or parent["terrain"].get("units") not in ("m", "meters")
-                or parent["terrain"].get("vertical_datum") != "North American Vertical Datum of 1988"):
+                or parent["terrain"].get("vertical_datum") != "North American Vertical Datum of 1988"
+                or parent.get("hydrography", {}).get("units") not in (None, "meters")):
             raise ValueError("Incompatible inventory/boundary/terrain references")
         ids = {r[0] for r in source.execute("SELECT parcel_id FROM parcels")}
         seen, counts = set(), Counter()
@@ -62,7 +63,12 @@ def audit(database, inputs, boundary, inspection=None):
               "parcel_count": len(ids), "coverage": dict(counts), "features": FEATURES, "target": TARGET,
               "sources": parent["sources"], "provenance": {k: parent[k] for k in ("terrain", "fema", "hydrography")},
               "checksums": {"database": digest(database), "inputs": expected, "boundary": digest(boundary),
-                            "inputs_manifest": digest(inputs/"manifest.json")}, "notice": NOTICE}
+                            "inputs_manifest": digest(inputs/"manifest.json")},
+              "units": {"terrain_elevation": "meters NAVD88", "parcel_area": "square meters",
+                        "mapped_stream_distance": "meters",
+                        "manifest_terrain_units": parent["terrain"]["units"],
+                        "transformations": ["log1p(area_m2)", "log1p(distance_m)"]},
+              "notice": NOTICE}
     if inspection:
         manifest = read_json(Path(inspection)/"manifest.json")
         if (manifest.get("county_fips") != COUNTY or manifest.get("inventory_id") != result["inventory_id"]

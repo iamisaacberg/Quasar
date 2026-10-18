@@ -1,7 +1,7 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const colors = { unknown: "#9ca3af" };
-const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)" };
+const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)", susceptibility_rainfall_interaction: "Susceptibility-rainfall interaction" };
 let map, mapLoaded = false, current, mapData = {}, requestId = 0, started = false;
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 const countyGrids = new Map();
