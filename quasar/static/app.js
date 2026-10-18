@@ -570,7 +570,9 @@ function renderInspectionInputs() {
   const weather=selectedParcel===null ? weatherContextForCell() : null;
   const context=selectedParcel === null ? {...prepared,forecast_overlaps:weather?.forecast_overlaps || [],forecast_coverage_complete:weather?.forecast_coverage_complete} : prepared;
   const rain=$("map-layer").value === "rainfall";
-  const summary=window.QuasarInspection.rainfallSummary(context,current);
+  const summary=selectedParcel===null
+    ? window.QuasarInspection.rainfallSummary(context,current)
+    : window.QuasarInspection.parcelRainfallSummary(context,current);
   if (selectedParcel===null && !context.forecast_overlaps.length) {
     summary.value=current?.forecast?.status==="loading" ? "Loading…" : "No rainfall data";
     summary.detail="No native forecast geometry covers this selection in the loaded archive.";

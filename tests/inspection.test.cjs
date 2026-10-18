@@ -31,6 +31,12 @@ test('parcel rainfall headline preserves zero, partial overlap and geometry mism
  const {rainfallSummary}=require('../quasar/static/inspection.js');
  const partial=rainfallSummary(context,current());
  assert.equal(partial.value,'0.0');assert.match(partial.detail,/1\/2.*Partial coverage/);
+ assert.match(partial.detail,/reported at native resolution; parcels in the same native cell share its source value/);
+ const oneNativeCell=()=>({forecast_overlaps:[{native_cell_id:'a',geometry,area_fraction:1}]});
+ const sameNativeCell=current('ready',85.6);
+ const parcelValues=[oneNativeCell(),oneNativeCell()].map(parcel=>rainfallSummary(parcel,sameNativeCell));
+ assert.deepEqual(parcelValues.map(summary=>summary.value),['85.6','85.6']);
+ assert.ok(parcelValues.every(summary=>summary.detail.includes('share its source value')));
  const reorderedGeometry={coordinates:geometry.coordinates,type:geometry.type};
  const reordered=current('ready',13);reordered.weather_cells.features[0].geometry=reorderedGeometry;
  assert.equal(rainfallSummary(context,reordered).value,'13.0');
@@ -40,6 +46,24 @@ test('parcel rainfall headline preserves zero, partial overlap and geometry mism
  both.weather_cells.features[1].geometry={type:'Polygon',coordinates:[]};
  assert.equal(rainfallSummary(context,both).value,'0.0');
  assert.equal(rainfallSummary(null,current()).value,'Unavailable');
+});
+
+test('parcel rainfall headline weights native values by the parcel overlap and requires full coverage',()=>{
+ const {parcelRainfallSummary}=require('../quasar/static/inspection.js');
+ const features=[
+  {id:'a',geometry,properties:{status:'ready',rainfall_6h_mm:10}},
+  {id:'b',geometry:{type:'Polygon',coordinates:[[[2,0],[3,0],[3,1],[2,0]]]},properties:{status:'ready',rainfall_6h_mm:20}}
+ ];
+ const current={weather_cells:{native_resolution:'0.1 degree',features}};
+ const context={forecast_overlaps:[
+  {native_cell_id:'a',geometry,area_fraction:.4},
+  {native_cell_id:'b',geometry:features[1].geometry,area_fraction:.6}
+ ]};
+ const summary=parcelRainfallSummary(context,current);
+ assert.equal(summary.value,'16.0');
+ assert.match(summary.detail,/Area-weighted estimate.*2 native forecast cells \(0.1 degree\)/);
+ assert.equal(parcelRainfallSummary({...context,forecast_overlaps:[{...context.forecast_overlaps[0],area_fraction:.4}]},current).value,'Unavailable');
+ assert.equal(parcelRainfallSummary(context,{weather_cells:{...current.weather_cells,features:[{...features[0],properties:{status:'ready',rainfall_6h_mm:10}}, {...features[1],properties:{status:'incomplete',rainfall_6h_mm:null}}]}}).value,'Unavailable');
 });
 
 test('parcel overview distinguishes mapped zero from unknown and flags incomplete coverage',()=>{
