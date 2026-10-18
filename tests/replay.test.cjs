@@ -17,7 +17,7 @@ class Element {
   addEventListener(){}
   focus(){}
 }
-async function boot(hash='#map-overview',defaultIndex=16){
+async function boot(hash='#map-overview',defaultIndex=10){
   const ids=new Map(),timers=new Map(),requests=[],held=[];let hold=null,fail=null;
   const get=id=>{if(!ids.has(id))ids.set(id,new Element(id==='scenario'?'select':'div'));return ids.get(id);};
   get('map-layer').value='rainfall';
@@ -47,10 +47,10 @@ async function boot(hash='#map-overview',defaultIndex=16){
 }
 test('the primary map opens Isaias and playback reuses the loaded archive',async()=>{
   const app=await boot();assert.equal(app.get('replay-hour').max,'24');assert.match(app.get('playback-clock').textContent,/Isaias/);
-  assert.equal(app.get('replay-hour').value,'16');assert.match(app.get('playback-clock').textContent,/4 PM/);
-  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'17');
+  assert.equal(app.get('replay-hour').value,'10');assert.match(app.get('playback-clock').textContent,/10 AM/);
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'11');
   assert.equal(app.requests.filter(url=>url.includes('/api/weather/timeline')).length,1);
-  await app.reload();assert.equal(app.get('replay-hour').value,'17');
+  await app.reload();assert.equal(app.get('replay-hour').value,'11');
   assert.ok(app.requests.every(url=>!url.includes('source=current') && !/^\/api\/(routes|timeline|properties|notifications|replay)/.test(url)));
   app.get('replay-play').onclick();assert.equal(app.timers.size,1);app.navigate('#data');assert.equal(app.timers.size,0);
 });

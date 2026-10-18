@@ -41,7 +41,7 @@ Do not start a deployment or restart shared services without authorization.
 ## County sources
 
 The map, Data tab and Reports use imported native county forecast cells only.
-The map opens at 4 PM Central on the Isaias October 9 archive, with 25 hourly
+The map opens at 10 AM Central on the Isaias October 9 archive, with 25 hourly
 positions, county-clipped H3 rainfall and compact rewind, play/pause and forward
 controls. Tools → Archive details contains the interactive maximum-native-cell
 rainfall trend, hour scrubber and source recheck.

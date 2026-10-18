@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 // One selected archive hour across the map, source tables and downloads.
 export function useReplaySelection() {
-  const [index, setIndex] = useState(() => window.Quasar?.frame?.() ?? 16);
+  const [index, setIndex] = useState(() => window.Quasar?.frame?.() ?? 10);
   useEffect(() => {
     const update = (event: Event) => setIndex((event as CustomEvent<{ index: number }>).detail.index);
     window.addEventListener("quasar:frame", update);
