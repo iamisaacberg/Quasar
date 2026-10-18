@@ -2,7 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const colors = { unknown: "#9ca3af" };
 const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)" };
-let map, mapLoaded = false, selectedId, current, mapData, requestId = 0, started = false, replayController, previousScenario = "baseline";
+let map, mapLoaded = false, current, requestId = 0, started = false, replayController, previousScenario = "baseline";
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 const countyGrids = new Map();
 let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, exposureExpiryTimer;
@@ -33,60 +33,6 @@ function element(tag, text, className) {
   return node;
 }
 
-function choose(id, refresh = true) {
-  if (refresh) closeSelection();
-  if (refresh) $("map-sidebar").removeAttribute?.("data-dismissed");
-  if (refresh) $("map-inspect-toggle").setAttribute("aria-expanded", "true");
-  if (refresh && playback) $("map-tools").open = false;
-  if (refresh && playback) $("map-source-info").open = false;
-  $("map-site").value = id;
-  if (refresh && replayController && replaySelected()) { selectedId = id; void loadScenario(); return; }
-  const feature = current.features.find((item) => item.id === id);
-  if (!feature) return;
-  selectedId = id;
-  const property = feature.properties, risk = property.risk;
-  $("detail-heading").textContent = property.label;
-  const detail = $("detail");
-  detail.replaceChildren(element("p", risk.score === null ? "Unknown" : `${risk.score} / 100`, "score"),
-    element("p", `${QuasarSpatial.exposureBand(risk.score).label} · unvalidated relative estimate`, "detail-note"));
-  for (const factor of risk.factors) {
-    const row = element("div", undefined, "factor");
-    const line = element("p");
-    line.append(element("span", `${names[factor.name]}: ${factor.value}`), element("span", `+${factor.contribution.toFixed(1)}`));
-    const track = element("div", undefined, "track"), fill = element("div", undefined, "fill");
-    fill.style.width = `${factor.contribution / (factor.weight * 100) * 100}%`;
-    track.append(fill); row.append(line, track); detail.append(row);
-  }
-  if (risk.missing.length) detail.append(element("p", `Missing inputs: ${risk.missing.map((key) => names[key]).join(", ")}. No score is assigned.`, "detail-note"));
-  detail.append(element("p", "Factors show points contributed to the score. Weights and thresholds are illustrative.", "detail-note"));
-  if (property.forecast) {
-    detail.append(element("p", `WeatherNext 3: ${property.forecast.status}; ${property.forecast.available_hours}/6 hourly rainfall inputs. Rainfall: ${property.forecast.rainfall_6h_mm ?? "unavailable"} mm / 6h. Native forecast grid: ${property.forecast.native_resolution || current.forecast?.native_resolution}. Other risk inputs are fictional.`, "detail-note"));
-  }
-  if (property.risk.factor_provenance) detail.append(element("p", "Rainfall: historical forecast where available, with any selected synthetic addition. Terrain, FEMA, waterway distance and gauge margin: fictional exercise inputs.", "detail-note"));
-  if (mapData) {
-    const point = mapData.points.features.find((f) => f.id === id);
-    detail.append(element("p", `H3 index: ${point.properties.h3_index} (resolution 7)`, "detail-note"));
-  }
-  if (risk.band === "elevated" && current.mode === "synthetic_demo") {
-    const label = element("label", undefined, "consent"), consent = element("input");
-    consent.type = "checkbox";
-    label.append(consent, document.createTextNode(" Opt in to a simulated notification for this exercise site."));
-    const button = element("button", "Preview simulated email"), result = element("p");
-    result.id = "notification-result"; result.setAttribute("role", "status");
-    button.onclick = async () => {
-      if (!consent.checked) { result.textContent = "Select opt-in to preview a simulated notification."; return; }
-      button.disabled = true;
-      try {
-        const data = await api("/api/notifications/preview", { method: "POST", headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({property_ids:[id], scenario:current.scenario.id, channel:"email", opt_in:true}) });
-        result.textContent = `${data.messages[0]?.text || "No elevated-score preview for this scenario."}\nSent: ${data.sent_count}`;
-      } catch (error) { result.textContent = error.message; }
-      finally { button.disabled = false; }
-    };
-    detail.append(label, button, result);
-  }
-}
-
 function render(data) {
   const changedScenario = current?.scenario.id !== data.scenario.id;
   ++exposureRequest;
@@ -104,27 +50,11 @@ function render(data) {
   $("mode-badge").textContent = data.mode === "what_if_exercise" ? "WHAT-IF EXERCISE" : data.mode === "historical_mixed_demo" ? "ARCHIVE · MIXED DEMO" : data.mode === "mixed_forecast_demo" ? "MIXED DEMO" : "SYNTHETIC DEMO";
   $("data-notice").textContent = data.notice;
   if ($("map-demo-notice")) $("map-demo-notice").textContent = data.notice;
-  if (window.h3 && window.QuasarSpatial) mapData = QuasarSpatial.aggregate(data, h3, 7);
-  $("site-count").textContent = data.features.length;
-  $("elevated-count").textContent = data.features.filter((f) => f.properties.risk.band === "elevated").length;
-  $("unknown-count").textContent = data.features.filter((f) => f.properties.risk.band === "unknown").length;
   const time = (value) => new Date(value).toLocaleString("en-US", {timeZone:"America/Chicago", month:"short", day:"numeric", hour:"numeric", timeZoneName:"short"});
   $("window").textContent = `${data.scenario.id === "isaias-2026" ? "Archive forecast window" : data.forecast ? "Forecast window" : "Exercise clock"}: ${time(data.scenario.valid_from)} – ${time(data.scenario.valid_to)}`;
-  $("sites").replaceChildren();
-  $("map-site").replaceChildren();
-  for (const feature of data.features) {
-    const siteOption = element("option", feature.properties.label); siteOption.value = feature.id; $("map-site").append(siteOption);
-    const p = feature.properties, row = element("tr"), button = element("button", "Inspect");
-    button.setAttribute("aria-label", `Inspect ${p.label}`);
-    button.onclick = () => choose(p.id);
-    const action = element("td"); action.append(button);
-    row.append(element("td", p.label), element("td", p.risk.score ?? "Unknown"), element("td", QuasarSpatial.exposureBand(p.risk.score).label), element("td", rainfallValue(feature) === null ? "Unavailable" : rainfallValue(feature).toFixed(1)), action);
-    $("sites").append(row);
-  }
   showMapSummary();
   updateMap();
   if (data.forecast) showWeatherStatus(data.forecast);
-  choose(selectedId || data.features[0]?.id, false);
   if (selectedCell) { if (selectedParcel === null) renderCellPanel(); else renderInspectionInputs(); }
   if (playback) {
     clearTimeout(forecastExpiryTimer);
@@ -150,14 +80,12 @@ function rainfallValue(feature) {
 function showMapSummary() {
   if (!current) return;
   const rain = $("map-layer").value === "rainfall";
-  const synthetic = current.mode === "synthetic_demo";
-  $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Experimental relative exposure · index / 100";
+  $("map-data-title").textContent = rain ? "County forecast rainfall · mm / 6h" : "Experimental parcel exposure · index / 100";
   if ($("map-display-label")) $("map-display-label").textContent = $("map-data-title").textContent;
-  const values = current.features.map(rainfallValue).filter(v => v !== null);
-  $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${values.length}/${current.features.length} sampled sites with rainfall · ${current.features.length-values.length} unavailable` : `Rainfall unavailable at all ${current.features.length} sampled sites. Missing or stale inputs remain unknown.`;
-  const forecast = current.forecast || current.features.find(f => f.properties.forecast)?.properties.forecast;
-  $("map-data-source").textContent = synthetic ? "Fictional rainfall and site inputs. This is a fixed exercise clock." :
-    `${forecast?.status || "unavailable"} · initialized ${forecast?.init_time || "unavailable"} · imported ${forecast?.retrieved_at || "unavailable"} · native grid ${forecast?.native_resolution || "0.1 degree"} · ensemble mean. Fictional sites and other score inputs.${current.mode === "what_if_exercise" ? " Includes selected synthetic rainfall addition." : ""}`;
+  const forecast = current.forecast || null;
+  $("map-data-values").textContent = "Native county forecast cell data is unavailable. Check the Data view for imported source coverage.";
+  $("map-data-source").textContent = current.mode === "synthetic_demo" ? "The synthetic site exercise is not shown on the county map." :
+    `${forecast?.status || "unavailable"} · initialized ${forecast?.init_time || "unavailable"} · imported ${forecast?.retrieved_at || "unavailable"} · native grid ${forecast?.native_resolution || "0.1 degree"} · ensemble mean.`;
   if (rain && current.weather_cells) {
     const cells = current.weather_cells;
     const available = cells.features.filter(f => f.properties.status === "ready" && typeof f.properties.rainfall_6h_mm === "number");
@@ -168,7 +96,7 @@ function showMapSummary() {
   $("exposure-legend").hidden = rain;
   $("rainfall-legend").hidden = !rain;
   $("hex-toggle").disabled = false;
-  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : `Cells show parcel P90; hatching marks incomplete scoring coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel assessments unavailable."} Exercise sites remain fictional. Green does not establish safety.`;
+  $("map-layer-note").textContent = rain ? "Native forecast cells show rainfall. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : `Cells show parcel P90; hatching marks incomplete scoring coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel assessments unavailable."} Green does not establish safety.`;
 }
 
 function mapColors(field = "risk_score") {
@@ -300,11 +228,7 @@ async function hydrateParcelExposure() {
 }
 
 function updateMap() {
-  if (!mapLoaded || !mapData) return;
-  map.getSource("sites").setData({...mapData.points, features:mapData.points.features.map(feature => {
-    const value = rainfallValue(feature);
-    return {...feature, properties:{...feature.properties, rainfall_mm:value, rainfall_label:value === null ? "Unavailable" : `${value.toFixed(1)} mm`}};
-  })});
+  if (!mapLoaded) return;
   const rain = $("map-layer").value === "rainfall";
   const nativeSource = map.getSource("native-rainfall");
   if (nativeSource) {
@@ -314,9 +238,6 @@ function updateMap() {
     map.setLayoutProperty("native-rainfall-fill", "visibility", rain ? "visible" : "none");
     map.setLayoutProperty("native-rainfall-outline", "visibility", rain ? "visible" : "none");
   }
-  map.setPaintProperty("site-points", "circle-color", rain ? ["case", ["==", ["get", "rainfall_mm"], null], colors.unknown,
-    ["step", ["get", "rainfall_mm"], "#b9e2f8", 25, "#509dce", 75, "#3156a6"]] : mapColors());
-  map.setLayoutProperty("rainfall-labels", "visibility", rain ? "visible" : "none");
   toggleHex();
   updateCountyGrid();
   const layers = replayController?.layers() || {};
@@ -327,7 +248,7 @@ function updateMap() {
 }
 
 function updateCountyGrid() {
-  if (!mapLoaded || !mapData) return;
+  if (!mapLoaded) return;
   const resolution = QuasarSpatial.resolutionForZoom(map.getZoom());
   let grid = emptyCollection();
   if (county) {
@@ -450,10 +371,8 @@ function renderCellPanel() {
   $("cell-zoom").hidden=selectedResolution===7;
   $("parcel-refresh").hidden=selectedResolution!==7;
   $("parcel-search-label").hidden=$("parcel-pagination").hidden=selectedResolution!==7;
-  const sites=current.features.filter(f=>h3.latLngToCell(f.geometry.coordinates[1],f.geometry.coordinates[0],selectedResolution)===selectedCell);
-  const scored=sites.filter(f=>f.properties.risk.score!==null);
   panelStats([[cellContext?.parcel_count?.toLocaleString() ?? (parcelData ? `${parcelData.features.length.toLocaleString()} loaded` : "Unknown"),"Parcels"],
-    [String(sites.length),"Fictional sites"],[scored.length ? String(Math.max(...scored.map(f=>f.properties.risk.score))) : "Unknown","Max demo score"]]);
+    [cellContext?.forecast_cell_count?.toLocaleString() ?? "Unknown","Forecast cells"],[cellContext?.assessment_count?.toLocaleString() ?? "Unknown","Assessments"]]);
   if(selectedResolution===7) renderParcelList();
   else $("selection-content").replaceChildren(element("p","Zoom in to browse parcel outlines. Counts describe indexed parcels, not homes; adjacent cells can share parcels.","selection-note"));
   renderInspectionInputs();
@@ -484,7 +403,6 @@ function inspectParcel(feature) {
 async function inspectCell(cell,resolution=7) {
   closeSelection(); selectedCell=cell; selectedResolution=resolution;
   parcelListPage=0; parcelSearch=""; $("parcel-search").value="";
-  $("map-inspect-toggle").setAttribute("aria-expanded","false");
   $("map-sidebar").setAttribute("data-dismissed", "true");
   if (playback) $("map-source-info").open = false;
   map.getSource("selected-cell").setData({type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[h3.cellToBoundary(cell,true)]}}]});
@@ -602,12 +520,12 @@ async function loadParcels(force=false) {
 function setupMap(settings) {
   mapToken = settings.configured ? settings.public_token : null;
   if (!settings.configured) {
-    $("map-status").textContent = "Add MAPBOX_PUBLIC_TOKEN to your local .env and restart the app to enable the map. The site list remains available.";
+    $("map-status").textContent = "Add MAPBOX_PUBLIC_TOKEN to your local .env and restart the app to enable the map. County parcel browsing remains available.";
     $("map").replaceChildren(element("p", "Mapbox token not configured", "map-fallback"));
     return;
   }
   if (!window.mapboxgl || !window.h3 || !window.QuasarSpatial) {
-    $("map-status").textContent = "Map libraries unavailable. Check your network; the site list remains available.";
+    $("map-status").textContent = "Map libraries unavailable. Check your network; county parcel browsing remains available.";
     return;
   }
   try {
@@ -616,13 +534,13 @@ function setupMap(settings) {
       center:[-86.57,30.65], zoom:9, cooperativeGestures:false, attributionControl:false});
     map.addControl(new mapboxgl.NavigationControl(), "bottom-left");
     map.addControl(new mapboxgl.AttributionControl({compact:false, customAttribution:
-      "DEMO · Fictional sites / synthetic site inputs · Unvalidated estimates. Follow official NWS/local guidance."}), "bottom-right");
+      "Experimental estimates · Follow official NWS/local guidance."}), "bottom-right");
     // The shell animates its sidebar width without a window resize event. Observe
     // the visible viewport so Mapbox also gets a resize after its flex layout settles.
     if (window.ResizeObserver) {
       new window.ResizeObserver(() => map.resize()).observe($("map").parentElement);
     }
-    map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. The site list remains available."; });
+    map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. County parcel browsing remains available."; });
     map.on("load", () => {
       const empty = {type:"FeatureCollection", features:[]};
       const hatch = new Uint8Array(8*8*4);
@@ -650,28 +568,16 @@ function setupMap(settings) {
       map.addSource("selected-parcel", {type:"geojson", data:empty});
       map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":0.3}});
       map.addLayer({id:"selected-parcel-outline", type:"line", source:"selected-parcel", paint:{"line-color":"#ffffff","line-width":3}});
-      map.addSource("sites", {type:"geojson", data:empty});
-      map.addLayer({id:"site-points", type:"circle", source:"sites", paint:{"circle-radius":8,
-        "circle-color":mapColors(), "circle-stroke-color":"#ffffff", "circle-stroke-width":1}});
-      map.addLayer({id:"rainfall-labels",type:"symbol",source:"sites",layout:{"text-field":["get","rainfall_label"],"text-size":12,"text-offset":[0,1.5],"text-anchor":"top","text-allow-overlap":true,visibility:"none"},paint:{"text-color":"#102c43","text-halo-color":"#ffffff","text-halo-width":2}});
-      map.on("click", "site-points", (event) => {
-        const id = event.features[0].properties.property_id;
-        choose(id);
-        const point = current.features.find((f) => f.id === id);
-        new mapboxgl.Popup().setLngLat(point.geometry.coordinates)
-          .setDOMContent(element("div", `${point.properties.label}: ${$("map-layer").value === "rainfall" ? (rainfallValue(point) === null ? "Rainfall unavailable" : `${rainfallValue(point).toFixed(1)} mm / 6h`) : `${point.properties.risk.score ?? "Unknown"} / 100 (demo)`}`)).addTo(map);
-      });
       map.on("click", "hotspot-fill", (event) => {
-        if (map.queryRenderedFeatures(event.point, {layers:["site-points", "parcel-fill"]}).length) return;
+        if (map.queryRenderedFeatures(event.point, {layers:["parcel-fill"]}).length) return;
         const p = event.features[0].properties;
         if (selectedCell !== p.h3_index) void inspectCell(p.h3_index,Number(p.resolution));
       });
       map.on("click", "parcel-fill", (event) => {
-        if (map.queryRenderedFeatures(event.point, {layers:["site-points"]}).length) return;
         const feature = parcelData?.features.find(f=>f.id === event.features[0].properties.parcel_id);
         if (feature) inspectParcel(feature);
       });
-      for (const layer of ["site-points", "hotspot-fill", "parcel-fill"]) {
+      for (const layer of ["hotspot-fill", "parcel-fill"]) {
         map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
       }
@@ -689,7 +595,7 @@ function setupMap(settings) {
     });
     $("hex-toggle").onchange = toggleHex;
   } catch {
-    $("map-status").textContent = "Mapbox could not initialize on this browser. The site list remains available.";
+    $("map-status").textContent = "Mapbox could not initialize on this browser. County parcel browsing remains available.";
   }
 }
 
@@ -708,7 +614,7 @@ async function loadScenario(options = {}) {
   const thisRequest = ++requestId;
   const isReplay = replaySelected() && replayController;
   if (!isReplay) replayController?.pause();
-  const site = selectedId || "demo-001";
+  const site = "demo-001";
   const params = isReplay ? replayController.parameters() : {};
   const query = new URLSearchParams({scenario:$("scenario").value,...params});
   try {
@@ -720,7 +626,6 @@ async function loadScenario(options = {}) {
       ]);
       if (thisRequest !== requestId) return false;
       if ([data.replay.at,timeline.at,routes.at].some(at=>at!==params.at)) throw new Error("Replay timestamps do not match");
-      selectedId = site;
       replayController.render(timeline,routes);
       render(data);
     } else {
@@ -758,10 +663,9 @@ async function start() {
   if (window.QuasarMapUI) {
     playback = window.QuasarMapUI.createPlayback({get:$, select:(kind,index)=>kind === "archive" ? replayController.seek(index) : loadScenario({forecastIndex:index})});
     window.addEventListener("hashchange",()=>{
-      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
+      if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
     });
     $("map-sidebar-close").onclick = () => {
-      $("map-inspect-toggle").setAttribute("aria-expanded", "false");
       $("map-sidebar").setAttribute("data-dismissed", "true");
       Promise.resolve().then(()=>$("map-tools").querySelector("summary").focus());
     };
@@ -777,7 +681,7 @@ async function start() {
     function syncSheet() {
       const selection=!$("map-selection-panel").hidden;
       const inspection=$("map-sidebar").getAttribute("data-dismissed")!=="true" &&
-        ($("map-inspect-toggle").getAttribute("aria-expanded")==="true" || $("replay-toggle").getAttribute("aria-pressed")==="true");
+        $("replay-toggle").getAttribute("aria-pressed")==="true";
       const mobile=window.matchMedia("(max-width: 767px)").matches;
       const panel=selection ? $("map-selection-panel") : inspection ? $("map-sidebar") : null;
       for (const node of [$("map-selection-panel"),$("map-sidebar")]) {
@@ -793,14 +697,6 @@ async function start() {
     new MutationObserver(syncSheet).observe(viewport,{subtree:true,attributes:true,attributeFilter:["hidden","aria-expanded","aria-pressed","data-dismissed"]});
     $("map-legend").open=viewport.clientWidth>850;
     window.addEventListener("resize",syncSheet);
-    const inspectLink=()=>{
-      if(window.location.hash==="#site-details"){
-        $("map-sidebar").removeAttribute("data-dismissed");
-        $("map-inspect-toggle").setAttribute("aria-expanded","true");
-      }
-    };
-    window.addEventListener("hashchange",inspectLink);
-    inspectLink();
     $("map-sheet-backdrop").onclick=()=>{if(!$("map-selection-panel").hidden)closeSelection();else $("map-sidebar-close").click();};
     viewport.addEventListener("keydown",event=>{
       const panel=viewport.querySelector('[aria-modal="true"]');
@@ -842,15 +738,6 @@ async function start() {
   void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
   $("map-layer").onchange = () => { showMapSummary(); updateMap(); };
-  $("map-site").onchange = () => choose($("map-site").value);
-  $("map-inspect-toggle").onclick = () => {
-    $("map-sidebar").removeAttribute?.("data-dismissed");
-    const inspecting = $("map-inspect-toggle").getAttribute("aria-expanded") !== "true";
-    if (inspecting) closeSelection();
-    $("map-inspect-toggle").setAttribute("aria-expanded", String(inspecting));
-    if(playback)$("map-tools").open=false;
-    if(playback)$("map-source-info").open=false;
-  };
   $("replay-toggle").onclick = () => {
     playback?.pause();
     $("map-sidebar").removeAttribute?.("data-dismissed");
@@ -863,7 +750,7 @@ async function start() {
   if (window.QuasarReplay) {
     replayController = window.QuasarReplay.create({get:$,element,load:loadScenario,controls:!playback,onPause:()=>{if(replaySelected())playback?.pause();}});
     window.addEventListener("hashchange",()=>{
-      if (!["#map-overview", "#isaias-replay", "#site-details", ""].includes(window.location.hash)) replayController.pause();
+      if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) replayController.pause();
       if (window.location.hash === "#isaias-replay" && $("scenario").children.length) {
         $("scenario").value="isaias-2026";void loadScenario();
       }
@@ -875,7 +762,7 @@ async function start() {
     if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
     setupMap(config.map);
   }
-  catch { $("map-status").textContent = "Map configuration unavailable; the site list remains available."; }
+  catch { $("map-status").textContent = "Map configuration unavailable; county parcel browsing remains available."; }
   if (map) {
     try {
       const data = await api("/api/county");
@@ -892,7 +779,6 @@ async function start() {
     searchMarker?.remove();searchMarker=null;
     if(!feature || !map)return;
     closeSelection();
-    $("map-inspect-toggle").setAttribute("aria-expanded","false");
     $("map-sidebar").setAttribute("data-dismissed","true");
     const coordinates=feature.geometry.coordinates;
     searchMarker=new mapboxgl.Marker({color:"#166b62"}).setLngLat(coordinates).addTo(map);

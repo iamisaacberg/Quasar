@@ -104,21 +104,21 @@ async function boot({configured=false, mixed=false, scenarioFailure=false, mount
   };
 }
 
-test("without a Mapbox token the table, details and synthetic notification controls still work", async () => {
+test("without a Mapbox token the site exercise is not rendered", async () => {
   const {get,map} = await boot();
   assert.equal(map,undefined);
-  assert.equal(get("sites").children.length,1);
-  assert.equal(get("detail-heading").textContent,"Fictional site");
+  assert.equal(get("sites").children.length,0);
+  assert.equal(get("detail").children.length,0);
   assert.match(get("map-status").textContent,/MAPBOX_PUBLIC_TOKEN/);
-  assert.ok(get("detail").children.some((child)=>child.tag==="button"));
 });
 
-test("Mapbox receives current sites and H3 polygons even when map loads after API data", async () => {
+test("Mapbox omits fictional site markers and retains county parcel coverage", async () => {
   const {map,get} = await boot({configured:true});
   map.handlers["load:"]();
-  assert.equal(map.sources.sites.data.features.length,1);
+  assert.equal(Object.hasOwn(map.sources,"sites"),false);
+  assert.equal(Object.hasOwn(map.layers,"site-points"),false);
   assert.equal(map.sources.hotspots.data.features[0].geometry.type,"Polygon");
-  assert.equal(map.layers["site-points"].type,"circle");
+  assert.equal(map.layers["parcel-fill"].type,"fill");
   get("hex-toggle").checked=false;
   get("hex-toggle").onchange();
   assert.equal(map.layers["hotspot-fill"].visibility,"none");
@@ -140,16 +140,16 @@ test("failed scenario fetch restores selector to the displayed scenario", async 
 });
 
 
-test("React shell can mount before starting the controller, and repeated starts do not duplicate sites", async () => {
+test("React shell can mount before starting the controller without restoring site controls", async () => {
   const app = await boot({mounted:false});
   assert.deepEqual(app.events,["quasar:ready"]);
   assert.equal(app.get("sites").children.length,0);
   await app.mount();
-  assert.equal(app.get("sites").children.length,1);
-  assert.equal(app.get("detail-heading").textContent,"Fictional site");
+  assert.equal(app.get("sites").children.length,0);
+  assert.equal(app.get("detail").children.length,0);
   await app.start();
   assert.equal(app.get("scenario").children.length,1);
-  assert.equal(app.get("sites").children.length,1);
+  assert.equal(app.get("sites").children.length,0);
 });
 
 test("changing the shell content width resizes Mapbox without replacing its sources", async () => {
@@ -158,7 +158,7 @@ test("changing the shell content width resizes Mapbox without replacing its sour
   assert.equal(app.observed,app.get("map-viewport"));
   app.resize();
   assert.equal(app.resizeCount,1);
-  assert.equal(app.map.sources.sites.data.features.length,1);
+  assert.equal(Object.hasOwn(app.map.sources,"sites"),false);
 });
 
 
@@ -168,49 +168,44 @@ test("the map uses the configured satellite style, direct gestures and visible d
   assert.equal(map.options.cooperativeGestures,false);
   const attribution=map.controls.find(control=>control.options?.customAttribution);
   assert.equal(attribution.options.compact,false);
-  assert.match(attribution.options.customAttribution,/DEMO.*Fictional sites.*synthetic site inputs/);
+  assert.match(attribution.options.customAttribution,/Experimental estimates.*official NWS/);
 });
 
 
-test("WeatherNext opens as rainfall with units, timing, labels and a neutral browsing grid", async () => {
+test("WeatherNext opens as rainfall with units, timing, and a neutral browsing grid", async () => {
   const {map,get} = await boot({configured:true,mixed:true});
   map.handlers["load:"]();
   assert.equal(get("scenario").value,"weathernext");
   assert.equal(get("map-layer").value,"rainfall");
-  assert.match(get("map-data-title").textContent,/WeatherNext 3.*mm \/ 6h/);
+  assert.match(get("map-data-title").textContent,/County forecast rainfall.*mm \/ 6h/);
   assert.match(get("map-data-source").textContent,/initialized 2026-10-17T12:00:00Z.*imported 2026-10-17T12:30:00Z.*0.1 degree/);
   assert.match(get("window").textContent,/Forecast window/);
-  assert.equal(map.sources.sites.data.features[0].properties.rainfall_label,"15.0 mm");
-  assert.equal(map.layers["rainfall-labels"].visibility,"visible");
+  assert.equal(Object.hasOwn(map.sources,"sites"),false);
+  assert.equal(Object.hasOwn(map.layers,"rainfall-labels"),false);
   assert.equal(map.layers["hotspot-fill"].visibility,"visible");
   assert.equal(map.layers["hotspot-fill"].paint["fill-color"],"#b9c9cd");
   assert.equal(get("rainfall-legend").hidden,false);
   get("map-layer").value="exposure";get("map-layer").onchange();
-  assert.equal(map.layers["rainfall-labels"].visibility,"none");
+  assert.equal(Object.hasOwn(map.layers,"rainfall-labels"),false);
   assert.equal(map.layers["hotspot-fill"].visibility,"visible");
   assert.equal(get("exposure-legend").hidden,false);
 });
 
-test("stale and missing rainfall remain unavailable; zero rain and missing terrain stay separate", async () => {
+test("site rainfall is not rendered; native county rainfall remains separate from parcel scores", async () => {
   for (const args of [{forecastStatus:"stale",rainfall:22},{rainfall:null}]) {
     const {map,get}=await boot({configured:true,mixed:true,...args});map.handlers["load:"]();
-    assert.equal(map.sources.sites.data.features[0].properties.rainfall_mm,null);
-    assert.equal(map.sources.sites.data.features[0].properties.rainfall_label,"Unavailable");
-    assert.match(get("map-data-values").textContent,/Rainfall unavailable at all/);
+    assert.equal(Object.hasOwn(map.sources,"sites"),false);
+    assert.equal(get("map-data-values").textContent,"Native county forecast cell data is unavailable. Check the Data view for imported source coverage.");
   }
   const {map,get}=await boot({configured:true,mixed:true,rainfall:0,riskScore:null});map.handlers["load:"]();
-  assert.equal(map.sources.sites.data.features[0].properties.rainfall_label,"0.0 mm");
-  assert.equal(get("sites").children[0].children[1].textContent,"Unknown");
-  assert.equal(get("sites").children[0].children[3].textContent,"0.0");
-  assert.match(get("map-data-values").textContent,/1\/1 sampled sites/);
+  assert.equal(Object.hasOwn(map.sources,"sites"),false);
+  assert.match(get("map-data-values").textContent,/Native county forecast cell data is unavailable/);
 });
 
-test("map inspection opens on site selection and can close without leaving the map", async () => {
+test("site-specific map controls are not wired into the map", async () => {
   const {get}=await boot();
-  get("map-site").value="demo-001";get("map-site").onchange();
-  assert.equal(get("map-inspect-toggle")["aria-expanded"],"true");
-  get("map-inspect-toggle").onclick();
-  assert.equal(get("map-inspect-toggle")["aria-expanded"],"false");
+  assert.equal(get("map-site").onchange,undefined);
+  assert.equal(get("map-inspect-toggle").onclick,undefined);
 });
 
 test("coarse cells open summaries with explicit drill-down, and parcel panel returns to the cell", async()=>{

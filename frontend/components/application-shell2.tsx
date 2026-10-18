@@ -9,7 +9,6 @@ import {
   Database,
   FileChartColumn,
   ShieldCheck,
-  Waves,
 } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -119,7 +118,6 @@ const sidebarData: SidebarData = {
     { title: "Resources", items: [
       { label: "Exercise guide", icon: HelpCircle, href: "#exercise-guide", children: [
         { label: "Reading the map", icon: Map, href: "#exercise-guide" },
-        { label: "Understanding a score", icon: Waves, href: "#site-details" },
       ] },
       { label: "Official NWS guidance", icon: ShieldCheck, href: "https://www.weather.gov/mob/" },
     ] },

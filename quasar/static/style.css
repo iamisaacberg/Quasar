@@ -267,7 +267,6 @@ html, body, #root { width: 100%; height: 100%; margin: 0; }
 .map-viewport .mapboxgl-ctrl-bottom-left, .map-viewport .mapboxgl-ctrl-bottom-right { z-index: 2; }
 .map-viewport .mapboxgl-ctrl-attrib { max-width: calc(100cqw - 110px); font-size: 9px; line-height: 12px; }
 .map-viewport .map-sidebar { display: none; position: absolute; z-index: 5; top: 98px; bottom: 190px; right: 16px; width: min(360px, calc(100% - 32px)); max-height: none; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; padding: 14px; background: var(--card); box-shadow: 0 5px 25px #102b3022; }
-.map-viewport:has(#map-inspect-toggle[aria-expanded="true"]) .map-sidebar:not([data-dismissed="true"]),
 .map-viewport:has(#replay-toggle[aria-pressed="true"]) .map-sidebar:not([data-dismissed="true"]) { display: block; }
 .map-sidebar-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 .map-sidebar-header button { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 6px; }
