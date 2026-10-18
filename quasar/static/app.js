@@ -172,7 +172,16 @@ function renderExposureInspection() {
     if (model && score !== null) {
       content.append(element("p", `Model: ${exposureData?.model_metadata?.model_version || exposureData?.method_version || "Unavailable"}`, "detail-note"));
       content.append(element("p", `Learned mapped susceptibility: ${model.susceptibility.toFixed(3)} · FEMA mapping proxy, not observed flood skill.`, "detail-note"));
+      content.append(element("p", `Actual FEMA mapped fraction: ${typeof model.fema_mapped_area_fraction === "number" ? model.fema_mapped_area_fraction.toFixed(3) : "Unknown or incomplete reference"} · Estimated fraction: ${model.susceptibility.toFixed(3)}.`, "detail-note"));
       content.append(element("p", `Forecast rainfall: ${model.rainfall_6h_mm.toFixed(1)} mm / 6h · Rainfall stress: ${model.rainfall_stress.toFixed(3)} (experimental rule).`, "detail-note"));
+      content.append(element("p", "Index = 100 × estimated mapped fraction × rainfall / (rainfall + 50). The 50 mm constant is uncalibrated; surge and drainage are not modeled.", "detail-note"));
+      const evidence = exposureData?.model_metadata;
+      if (evidence?.evaluation_protocol) {
+        content.append(element("p", `Evaluation: ${evidence.evaluation_protocol} · Geographic cross-validation on existing research data; original test excluded.`, "detail-note"));
+        const summary = evidence.evaluation_summary;
+        if (summary) content.append(element("p", `Mapped-fraction errors: mean subgroup MAE ${summary.macro_subgroup_mae.toFixed(3)} · Fully mapped MAE ${summary.fully_mapped_mae.toFixed(3)} · RMSE ${summary.parcel_rmse.toFixed(3)} · Supported ${(100 * summary.coverage).toFixed(1)}%. These measure mapping agreement.`, "detail-note"));
+        content.append(element("p", `Model SHA-256: ${evidence.model_sha256} · Dataset: ${evidence.training_dataset_id} · Evaluation SHA-256: ${evidence.evaluation_sha256}`, "detail-note"));
+      }
       content.append(element("p", `Model instability: ${model.model_instability.toFixed(3)} · Ensemble spread, not a confidence interval.`, "detail-note"));
       content.append(element("p", `Raw model baseline: ${model.baseline.toFixed(3)} · Signed tree-path attributions (not physical causes):`, "detail-note"));
       for (const [name, value] of Object.entries(model.attributions)) {

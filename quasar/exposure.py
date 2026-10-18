@@ -207,6 +207,9 @@ def exposure(query):
                             file_stat.st_mtime_ns, start, end, resolution)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+        required_model = os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
+        if required_model and result.get("model_metadata", {}).get("model_version") != required_model:
+            return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
         now = datetime.now(timezone.utc)
         computed = timestamp(result["computed_at"])
         if computed > now:
@@ -250,6 +253,9 @@ def _remote(query):
             raise ValueError()
         if data.get("status") == "ready":
             context = model_context(data)
+            required_model = os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
+            if required_model and context.get("model_metadata", {}).get("model_version") != required_model:
+                return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
             if context:
                 source = context["forecast_provenance"]
                 if (timestamp(source["valid_from"]) != timestamp(query["from"])

@@ -10,8 +10,11 @@ from . import FEATURES, POLICY, TARGET, finite
 def details(value, score):
     keys = {"susceptibility", "raw_susceptibility", "rainfall_6h_mm", "rainfall_stress",
             "model_instability", "baseline", "attributions"}
-    if not isinstance(value, dict) or set(value) != keys or score is None:
+    if not isinstance(value, dict) or not keys <= set(value) or set(value)-keys-{"fema_mapped_area_fraction"} or score is None:
         raise ValueError("Invalid model diagnostics")
+    reference = value.get("fema_mapped_area_fraction")
+    if reference is not None and (not finite(reference) or not 0 <= reference <= 1):
+        raise ValueError("Invalid FEMA reference fraction")
     if any(not finite(value[k]) for k in keys-{"attributions"}):
         raise ValueError("Nonfinite model diagnostics")
     attrs = value["attributions"]
@@ -27,13 +30,26 @@ def details(value, score):
 
 
 def metadata(value):
-    if (not isinstance(value, dict) or set(value) != {"schema_version", "model_version", "target", "policy", "promoted", "model_sha256", "notice"}
+    required = {"schema_version", "model_version", "target", "policy", "promoted", "model_sha256", "notice"}
+    lineage = {"training_dataset_id", "evaluation_sha256", "evaluation_protocol", "evaluation_summary"}
+    if (not isinstance(value, dict) or not required <= set(value) or set(value)-required-lineage
             or value["schema_version"] != 1 or value["target"] != TARGET or value["policy"] != POLICY
             or value["promoted"] is not True or not isinstance(value["model_version"], str)
             or not 1 <= len(value["model_version"]) <= 200
             or not isinstance(value["model_sha256"], str) or not re.fullmatch("[0-9a-f]{64}", value["model_sha256"])
             or not isinstance(value["notice"], str) or not 1 <= len(value["notice"]) <= 1000):
         raise ValueError("Invalid/unpromoted model metadata")
+    if set(value) & lineage or value["model_version"].startswith("mapped-susceptibility-v2-"):
+        from .v2 import PROTOCOL_ID
+        if (not lineage <= set(value) or value["evaluation_protocol"] != PROTOCOL_ID
+                or any(not isinstance(value[k], str) or not re.fullmatch("[0-9a-f]{64}", value[k])
+                       for k in ("training_dataset_id", "evaluation_sha256"))):
+            raise ValueError("Incomplete v2 evaluation lineage")
+        summary = value["evaluation_summary"]
+        if (not isinstance(summary, dict) or set(summary) != {"macro_subgroup_mae", "fully_mapped_mae", "parcel_rmse", "equal_block_rmse", "coverage"}
+                or any(not finite(v) or not 0 <= v <= 1 for v in summary.values())
+                or summary["coverage"] < .9):
+            raise ValueError("Invalid v2 evaluation summary")
     return value
 
 

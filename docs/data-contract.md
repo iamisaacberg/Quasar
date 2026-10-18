@@ -1,5 +1,14 @@
 # Application data contract
 
+V2 adds an optional, validated lineage group to `model_metadata`:
+`training_dataset_id`, `evaluation_sha256`, `evaluation_protocol`, and
+`evaluation_summary` (macro subgroup MAE, fully mapped MAE, parcel/equal-block
+RMSE, feature support). The complete group is required for v2 identities; legacy
+assessments without it remain readable. `model_details` can include
+`fema_mapped_area_fraction`, null when the authoritative reference is incomplete.
+These are mapping metrics and reference fractions, not flood probabilities.
+The [v2 guide](modeling-v2.md) defines qualification and exact-version pinning.
+
 Optional promoted mapping-proxy model metadata, forecast provenance and signed
 raw-model diagnostics extend schema-1 assessments additively; see
 [the exposure additions](exposure-display.md#optional-modeling-fields-schema-1-additive)

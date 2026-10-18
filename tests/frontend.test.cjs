@@ -558,6 +558,27 @@ test(`model inspection separates susceptibility and rainfall with ${forecastMode
 });
 }
 
+test('v2 inspection traces actual FEMA, model evaluation, and the uncalibrated formula',async()=>{
+  const app=await boot({configured:true,forecastMode:'county_archive',mixed:true,exposureScores:true,exposureTransform:page=>({
+    ...page,model_metadata:{model_version:'mapped-susceptibility-v2-synthetic',model_sha256:'a'.repeat(64),
+      training_dataset_id:'b'.repeat(64),evaluation_sha256:'c'.repeat(64),evaluation_protocol:'mapping-proxy-nested-spatial-v2',
+      evaluation_summary:{macro_subgroup_mae:.12,fully_mapped_mae:.2,parcel_rmse:.1,equal_block_rmse:.15,coverage:.96}},
+    parcels:Object.fromEntries(Object.entries(page.parcels || {}).map(([id,record])=>[id,record.score===null?record:{...record,score:81,
+      model_details:{susceptibility:.9,fema_mapped_area_fraction:.4,rainfall_6h_mm:450,rainfall_stress:.9,
+        model_instability:.02,baseline:.6,attributions:{terrain_min_m:.1,terrain_mean_m:.2}}}]))
+  })});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===81));
+  app.get('selection-content').children[1].onclick();
+  const text=app.get('selection-exposure').children.map(node=>node.textContent).join('\n');
+  assert.match(text,/Actual FEMA mapped fraction: 0.400 · Estimated fraction: 0.900/);
+  assert.match(text,/rainfall \/ \(rainfall \+ 50\)/);
+  assert.match(text,/original test excluded/);
+  assert.match(text,/Fully mapped MAE 0.200/);
+  assert.match(text,/96.0%/);
+  assert.ok(text.includes('a'.repeat(64)) && text.includes('b'.repeat(64)) && text.includes('c'.repeat(64)));
+});
+
 test('H3 rainfall survives missing parcel context and refresh recovers prepared inputs',async()=>{
   const app=await boot({configured:true,rainfall:86.4});app.map.handlers['load:']();
   parcelClick(app);await until(()=>app.get('context-retry').hidden===false);

@@ -1,5 +1,10 @@
 # Offline parcel modeling
 
+For the controlled retraining experiment, use the [v2 protocol and handoff](modeling-v2.md).
+Its `review`, `train-v2` and `assess-replay` commands retain this FEMA target and
+portable architecture. The original test is excluded from v2 selection and
+evaluation; v2 reports geographic cross-validation on existing research data.
+
 These commands prepare, train, evaluate, export and score an experimental FEMA
 mapping proxy. PR #17 supplied the pipeline without trained weights. The
 [first real-data run](modeling-run-v1.md), completed October 18, 2026 UTC
@@ -29,7 +34,7 @@ meters before `log1p`. Audit accepts either manifest spelling and rejects other 
 
 **Training and promotion are run results, not a property of this source file.**
 Check `evaluation.json` before describing a model as promoted.
-Ignored county datasets are absent from this workspace. Synthetic tests do not
+Ignored county datasets must be obtained separately from a repository clone. Synthetic tests do not
 establish flood accuracy, county coverage, visual acceptance or LinuxONE execution.
 County scope is Okaloosa, FIPS `12091`.
 

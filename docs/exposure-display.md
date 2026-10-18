@@ -1,5 +1,12 @@
 # Experimental relative exposure display
 
+For the retrained FEMA proxy, see the [v2 protocol](modeling-v2.md). V2 exposes
+dataset/evaluation identity and summary mapping errors in the existing calculation
+details. Actual FEMA mapped fraction stays separate from the model estimate.
+`QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION` optionally pins either the inventory
+service or proxy to the reviewed exact model identity; a mismatch is unavailable,
+with no fallback to the archived v1. Source changes alone do not activate v2.
+
 The map uses fixed green/yellow/orange/red anchors for experimental exposure
 indices. It is not a trained parcel flood model, flood probability, depth, or
 safety assessment. **Green does not establish safety.** Existing real-parcel
