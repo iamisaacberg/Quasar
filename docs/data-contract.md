@@ -144,4 +144,9 @@ coverage/unknown states.
 
 County snapshots have `schema_version: 3`, county FIPS `12091`, kind `current_county_forecasts` or `historical_county_forecasts`, source table/model, native resolution/statistic/units, actual retrieval time, county geometry, `native_cells` and initialization-grouped `runs`. Each native cell retains ID, original WKT and GeoJSON geometry. IDs are SHA-256 of source WKT. Hourly rows reference the cell ID in `property_id`; `rainfall_1h_mm` is null or a nonnegative finite number. Duplicate cell/hour/run rows invalidate the snapshot. Current snapshots additionally carry `init_time`, `valid_from` and `valid_to`; historical ones carry the Central-time replay bounds.
 
-The importer selects native cells by county intersection; cells can extend beyond the county. The runtime associates the six fictional points locally using source polygon coverage and rejects ambiguous overlapping assignments. It exposes native rainfall as additive `weather_cells` GeoJSON on property collections, with per-cell availability and six-hour mm. Score records remain six fictional sites; county parcels stay unscored. H3 grids do not substitute for native forecast polygons. Existing schemas 1/2 remain supported for the configured county. Miami-Dade FIPS 12086 files are rejected.
+The importer selects native cells by authoritative county intersection; cells can
+extend beyond the boundary. Application views consume native-cell rainfall only,
+without associating fictional sites. County parcels remain unscored unless a
+separate matching exposure assessment exists. H3 does not replace native forecast
+polygons. Application forecast endpoints require schema 3; schemas 1/2 remain
+available only in offline research adapters. FIPS 12086 inputs are rejected.

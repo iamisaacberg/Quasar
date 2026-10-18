@@ -1,5 +1,12 @@
 # Isaias 2026 replay and evacuation exercise
 
+> Current application behavior is defined by [data-contract.md](data-contract.md).
+> Synthetic scoring, fictional sites, what-if controls and simulated routing
+> described below are retained offline research context; their application
+> endpoints are retired. The app uses native county forecasts and prepared
+> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+
+
 Open **Map overview**, then choose **Isaias simulation** in the map toolbar
 (or use the legacy `/#isaias-replay` link). Playback, site inspection, trends and
 routing share the map side panel; **Exit Isaias simulation** returns to the

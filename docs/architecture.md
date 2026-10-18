@@ -1,5 +1,12 @@
 # Architecture and implementation status
 
+> Current application behavior is defined by [data-contract.md](data-contract.md).
+> Synthetic scoring, fictional sites, what-if controls and simulated routing
+> described below are retained offline research context; their application
+> endpoints are retired. The app uses native county forecasts and prepared
+> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+
+
 ```text
 Synthetic JSON adapters
     -> Okaloosa scope checks

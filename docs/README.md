@@ -1,6 +1,11 @@
 # Quasar documentation
 
-Quasar is a Okaloosa County flood intelligence research application for the IBM Z Datathon. It connects exercise sites, rainfall inputs, an explainable relative score, maps, historical forecast reconstruction, simulated routing, and reports. The current score is an unvalidated heuristic. All six sites and their terrain, FEMA, waterway, and gauge attributes are fictional.
+Quasar displays Okaloosa County parcels, prepared terrain/FEMA reference inputs,
+and imported native forecast rainfall. The application has no fictional-site or
+synthetic fallback; real parcel scores remain unknown without separate matching
+assessments. Start with the [current runtime contract](data-contract.md) and
+[activation checklist](real-data-rollout.md). Older explanatory guides retain
+clearly marked offline research context.
 
 These guides describe the code and existing project records reviewed on **October 17, 2026**, including local work in progress. They do not certify a deployed build, current source availability, current snapshot freshness, historical accuracy, or IBM Z execution. Runtime status must be checked separately.
 
@@ -39,11 +44,11 @@ The guides explain the whole application; the following files retain the detaile
 
 | Task | Follow |
 | --- | --- |
-| Run the synthetic demonstration | [Run locally](../README.md#run-locally) |
+| Run the county source-data app | [Run locally](../README.md#run-locally) |
 | Configure the map or import current rainfall | [Integration setup](integrations.md) |
 | Prepare historical context and exercise roads | [Local replay preparation](isaias-demo.md#local-data-preparation) |
 | Understand a displayed score | [Scoring mechanism](mechanisms.md#scoring-mechanism) |
-| Work in Power BI or Tableau | [Reports and exports](../README.md#reports--exports), then [export contract](data-contract.md#reports-and-bi-exports-additive-contract) |
+| Work in Power BI or Tableau | [Reports and downloads contract](data-contract.md#reports-and-downloads) |
 | Explore data in a notebook | [Notebook workflow](../notebooks/README.md) |
 | Select the next engineering task | [Improvement roadmap](improvement-roadmap.md) |
 
@@ -54,7 +59,7 @@ The guides explain the whole application; the following files retain the detaile
 - Imported rainfall does not validate fictional site attributes. Native weather cells, H3 display cells, and site geometry serve different purposes.
 - Downloaded research files do not establish completed normalization, integration, or evaluation.
 - Historical forecast reconstruction does not establish observed flooding or exactly what was publicly available at the time unless publication timing is documented.
-- All routes and notifications are exercises. Follow official NWS and local emergency guidance for real decisions.
+- Simulated routes and notification previews are retired from the application. Follow official NWS and local emergency guidance for real decisions.
 
 ## Maintaining these docs
 

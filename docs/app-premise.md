@@ -1,5 +1,12 @@
 # App premise and product boundaries
 
+> Current application behavior is defined by [data-contract.md](data-contract.md).
+> Synthetic scoring, fictional sites, what-if controls and simulated routing
+> described below are retained offline research context; their application
+> endpoints are retired. The app uses native county forecasts and prepared
+> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+
+
 ## The idea
 
 Quasar explores how a county-focused application can combine rainfall forecasts with local site characteristics and explain which locations deserve closer investigation as conditions change. Its scope is **Okaloosa County, Florida, FIPS `12091`**. The project is an IBM Z Datathon research application, with a working demonstration that teammates can inspect and extend.

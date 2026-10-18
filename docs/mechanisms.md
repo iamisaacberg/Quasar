@@ -1,5 +1,12 @@
 # Mechanisms and implementation reference
 
+> Current application behavior is defined by [data-contract.md](data-contract.md).
+> Synthetic scoring, fictional sites, what-if controls and simulated routing
+> described below are retained offline research context; their application
+> endpoints are retired. The app uses native county forecasts and prepared
+> parcel inputs, with transparent unknown interiors and no synthetic fallback.
+
+
 ## Runtime structure
 
 One Python process serves a fixed set of static assets and JSON/download endpoints. It uses `ThreadingHTTPServer` and standard-library modules, with no third-party Python runtime dependencies. An optional read-only SQLite store holds county parcel geometry and H3 memberships. There is no scoring database, background queue, scheduler, or message provider.
