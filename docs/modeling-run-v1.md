@@ -3,6 +3,9 @@
 Completed **October 18, 2026 UTC (October 17 Central)** from PR #17's pipeline.
 County scope: **Okaloosa, Florida, FIPS 12091**.
 
+This report preserves the original local checkpoint. See the subsequent
+[LinuxONE exposure activation](real-data-rollout.md#exposure-activation) for current serving status.
+
 ## What exists and where
 
 | Item | Verified state at this checkpoint |

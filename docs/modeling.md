@@ -4,10 +4,33 @@ These commands prepare, train, evaluate, export and score an experimental FEMA
 mapping proxy. PR #17 supplied the pipeline without trained weights. The
 [first real-data run](modeling-run-v1.md), completed October 18, 2026 UTC
 (October 17 Central), trained and exported a model locally from verified
-LinuxONE inputs and passed the unchanged promotion gates. It has not been
-installed or activated on LinuxONE. Ignored datasets and trained artifacts are
+LinuxONE inputs and passed the unchanged promotion gates. The subsequent
+[LinuxONE activation](real-data-rollout.md#exposure-activation) serves all 25
+archive positions using the host's checksum-matched staged model and evaluation.
+That activated model stays in place. The straight-line ensemble added here is a
+second scorer for the same exported trees, retained as a manual fallback; it does
+not replace the current one or introduce separately trained weights.
+Ignored datasets and trained artifacts are
 not included in a repository clone. This mapping-proxy evaluation does not
 establish observed-flood accuracy or actual LinuxONE performance.
+
+Quasar learns patterns in FEMA mapped hazard areas from parcel
+terrain and mapped stream proximity, then combines that estimate with six-hour
+forecast rainfall to prioritize closer inspection. The resulting exposure index
+is experimental. Prediction of actual flooding requires verified storm
+observations and independent evaluation. The method omits storm surge, drainage
+capacity, floor elevation, and observed water levels. Official NWS and local
+guidance remain the authority for emergency decisions. Notification features
+remain simulations.
+
+Authoritative terrain manifests record elevation units as `meters` (NAVD88).
+Parcel records use `m`. Area is square meters and mapped-stream distance is
+meters before `log1p`. Audit accepts either manifest spelling and rejects other units.
+
+**Training and promotion are run results, not a property of this source file.**
+Check `evaluation.json` before describing a model as promoted.
+Ignored county datasets are absent from this workspace. Synthetic tests do not
+establish flood accuracy, county coverage, visual acceptance or LinuxONE execution.
 County scope is Okaloosa, FIPS `12091`.
 
 ## Method
@@ -105,6 +128,16 @@ values and thresholds use XGBoost float32 comparison semantics. Signed tree-path
 changes plus the baseline sum to raw susceptibility; clipping/ensemble averaging
 are separate. Attributions are not SHAP values or physical causes. Standard-library
 server inference imports no ML/GIS packages.
+
+Two scorers read those same trees. `predict` is the current tree walk and remains
+the scorer for the activated model and assessment production. `predict_compiled`
+emits one straight-line function with the same comparisons and sums. It is a
+manual fallback path for county-scale runtime, and bias edits still apply on each
+call. Production continues to call `predict`; there is no automatic substitution
+for missing inputs, stale forecasts or failed provenance checks. Both scorers
+preserve unknown inputs. Revalidate a model after editing its trees before scoring
+again. The compiled cache retains only the most recently used complete model and
+is cleared by validation.
 
 ## Assessment production and benchmark
 

@@ -23,7 +23,7 @@
     const points=geometry.coordinates.flat(geometry.type==="MultiPolygon" ? 2 : 1);
     return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
   }
-  function createSearch({get, element, token, geometry, select, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
+  function createSearch({get, element, token, geometry, select, isCellId=()=>false, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
     const input=get("map-search"), list=get("map-search-results"), status=get("map-search-status");
     let results=[], active=-1, version=0, controller, timer;
     const message=text=>{status.textContent=text;};
@@ -32,9 +32,10 @@
       input.setAttribute("aria-expanded",String(results.length>0));
       input.removeAttribute("aria-activedescendant");
       results.forEach((feature,i)=>{
+        const label=feature.properties?.h3_index || feature.properties?.full_address || feature.properties?.name || "Location";
         const option=element("li"); option.id=`map-search-option-${i}`;option.setAttribute("role","option");
         option.setAttribute("aria-selected",String(i===active));
-        const button=element("button",feature.properties?.full_address || feature.properties?.name || "Location");
+        const button=element("button",label);
         button.type="button";button.tabIndex=-1;button.onclick=()=>choose(i);option.append(button);list.append(option);
         if(i===active)input.setAttribute("aria-activedescendant",option.id);
       });
@@ -42,7 +43,7 @@
     function invalidate() {version++;controller?.abort();cancel(timer);}
     function choose(index) {
       const feature=results[index]; if(!feature)return;
-      invalidate(); input.value=feature.properties?.full_address || feature.properties?.name || "Location";
+      invalidate(); input.value=feature.properties?.h3_index || feature.properties?.full_address || feature.properties?.name || "Location";
       results=[];active=-1;draw();select(feature);message("Location selected. Parcel and flood scores remain unknown.");
       input.focus();
     }
@@ -52,6 +53,11 @@
     input.oninput=()=>{
       invalidate(); results=[];active=-1;draw();
       const query=input.value.trim(), ticket=version;
+      const cellId=query.toLowerCase();
+      if(isCellId(cellId)) {
+        results=[{type:"Feature",geometry:null,properties:{h3_index:cellId}}];
+        active=0;draw();message("Hex cell found. Press Enter to inspect it.");return;
+      }
       if(query.length<3){message("Enter at least three characters.");return;}
       message("Searching Okaloosa County…");
       timer=schedule(async()=>{
@@ -76,30 +82,31 @@
   }
   const localTime=value=>new Date(value).toLocaleString("en-US",{timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",timeZoneName:"short"});
   function createPlayback({get, select, every=setInterval, stop=clearInterval}) {
-    let kind="none", times=[], index=0, timer=null, busy=false, generation=0, available=false, note="Waiting for imported forecast data.";
+    let kind="none", times=[], index=0, timer=null, busy=false, selecting=null, generation=0, playGeneration=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
       get("replay-play").setAttribute("aria-label",timer===null?"Play Isaias timeline":"Pause playback");
       get("replay-play").setAttribute("aria-pressed",String(timer!==null));
       get("replay-prev").disabled=!available || busy || index===0;
       get("replay-next").disabled=!available || busy || index>=times.length-1;
-      get("replay-play").disabled=!available || busy || times.length<2;
+      get("replay-play").disabled=!available || (busy && timer===null) || times.length<2;
       get("replay-hour").disabled=!available || busy || times.length<2;
       get("replay-hour").max=String(Math.max(0,times.length-1));get("replay-hour").value=String(index);
       get("replay-hour").setAttribute("aria-valuetext",times[index]?localTime(times[index]):"Unavailable");
       get("playback-clock").textContent=times[index] ? `${kind==="archive"?"Isaias":"Forecast"} · ${localTime(times[index])}` : "Isaias archive unavailable";
       get("playback-status").textContent=busy?"Loading selected hour…":note;
     }
-    function pause() {if(timer!==null)stop(timer);timer=null;draw();}
+    function pause() {playGeneration++;if(timer!==null)stop(timer);timer=null;draw();}
     async function go(next) {
       if(!available || busy || next<0 || next>=times.length)return;
-      const ticket=++generation;busy=true;draw();
+      const ticket=++generation;busy=true;selecting=next;draw();
       try {
         const ok=await select(kind,next);
         if(ticket!==generation)return;
-        if(ok===false){note="Selected hour unavailable. Previous results retained.";pause();}
-        else {index=next;if(index===times.length-1)pause();}
-      } catch {if(ticket===generation){note="Selected hour unavailable. Previous results retained.";pause();}}
+        if(ok===false){note="Selected hour unavailable. Playback paused.";pause();return false;}
+        index=next;if(index===times.length-1)pause();
+        return true;
+      } catch(error) {if(ticket===generation){note=`Selected hour unavailable. Playback paused.${error?.message ? ` ${error.message}` : ""}`;pause();}return false;}
       finally {if(ticket===generation){busy=false;draw();}}
     }
     get("replay-prev").onclick=()=>{pause();return go(index-1);};
@@ -108,12 +115,14 @@
     get("replay-play").onclick=async()=>{
       if(timer!==null){pause();return;}
       if(!available || busy || times.length<2)return;
-      if(index===times.length-1)await go(0);
+      const playTicket=playGeneration;
+      if(index===times.length-1 && await go(0)!==true)return;
+      if(playTicket!==playGeneration)return;
       if(!available || index===times.length-1)return;
       timer=every(()=>{if(!busy)void go(index+1);},1000);draw();
     };
     return {pause, configure(nextKind,nextTimes,nextIndex=0,enabled=true,message="Following six-hour rainfall · mm / 6h") {
-      if(nextKind!==kind){pause();generation++;busy=false;}
+      if(nextKind!==kind || (busy && nextIndex!==selecting)){pause();generation++;busy=false;}
       kind=nextKind;times=nextTimes;index=nextIndex;available=enabled && times.length>0;note=message;
       if(!available)pause();draw();
     }};

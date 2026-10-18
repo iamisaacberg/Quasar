@@ -154,7 +154,14 @@ def _train(directory, output):
         '<text x="30" y="48">Red: overestimate; blue: underestimate. EPSG:26916; unknowns omitted.</text>'
         + ''.join(circles) + '<text x="30" y="580">Spatial positions; not a flood observation or inundation map.</text></svg>')
     (root/"MODEL_CARD.md").write_text(
-        "# Learned mapped susceptibility\n\n"+NOTICE+"\n\nTarget: "+TARGET+
+        "# Learned mapped susceptibility\n\n"
+        "Quasar learns patterns in FEMA mapped hazard areas from parcel terrain and mapped stream proximity, "
+        "then combines that estimate with six-hour forecast rainfall to prioritize closer inspection. "
+        "The resulting exposure index is experimental. Prediction of actual flooding requires verified storm "
+        "observations and independent evaluation.\n\n"
+        "The method omits storm surge, drainage capacity, floor elevation, and observed water levels. "
+        "Official NWS and local guidance remain the authority for emergency decisions. Notification features remain simulations.\n\n"
+        +NOTICE+"\n\nTarget: "+TARGET+
         "\n\nDevelopment-only preprocessing, geographically grouped tuning, and one untouched test evaluation. "
         "The rainfall interaction is an uncalibrated visualization rule; ensemble spread is not a confidence interval. "
         "See evaluation.json for exclusions, source dates/terms, parameters, coverage, baselines and gate results. "

@@ -38,3 +38,17 @@ test('parcel rainfall headline preserves zero, partial overlap and geometry mism
  assert.equal(rainfallSummary(context,both).value,'0.0');
  assert.equal(rainfallSummary(null,current()).value,'Unavailable');
 });
+
+test('parcel overview distinguishes mapped zero from unknown and flags incomplete coverage',()=>{
+ const {parcelOverview}=require('../quasar/static/inspection.js');
+ const unknown=parcelOverview(null);
+ assert.deepEqual(unknown.stats.map(([value])=>value),['Unknown','Unknown','Unknown']);
+ assert.match(unknown.insights.join(' '),/unknown.*incomplete/);
+ const overview=parcelOverview({inputs:{terrain:{status:'complete',mean_m:0},
+   fema:{status:'partial',sfha_mapped_area_fraction:0,overlaps:[{FLD_ZONE:'X'}]},
+   hydrography:{nearest_retained_river_stream_distance_m:0}}});
+ assert.deepEqual(overview.stats.map(([value])=>value),['0.00 m','0.0%','0 m']);
+ assert.match(overview.insights.join(' '),/rest is unknown/);
+ assert.match(overview.insights.join(' '),/reference zones: X.*revisions are unverified/);
+ assert.doesNotMatch(overview.insights.join(' '),/Terrain coverage is incomplete/);
+});

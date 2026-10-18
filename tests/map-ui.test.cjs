@@ -46,6 +46,17 @@ test('search debounces at three characters, filters county geometry, and support
   assert.match(app.get('map-search-status').textContent,/scores remain unknown/);
   app.get('map-search-clear').onclick();assert.equal(app.selected[1],null);assert.equal(app.get('map-search').value,'');
 });
+test('a pasted H3 cell ID is selected locally without a geocoder request',()=>{
+  const get=elements(),selected=[];let requests=0;
+  createSearch({get,element:(_tag,text)=>Object.assign(new Element(),{textContent:text}),token:'pk.test',geometry,
+    isCellId:value=>value==='8928308280fffff',request:async()=>{requests++;throw new Error('should not geocode an H3 ID');},select:feature=>selected.push(feature)});
+  get('map-search').value='8928308280FFFFF';get('map-search').oninput();
+  assert.equal(get('map-search-results').children.length,1);
+  assert.equal(get('map-search-results').children[0].children[0].textContent,'8928308280fffff');
+  get('map-search').onkeydown({key:'Enter',preventDefault(){}});
+  assert.equal(requests,0);assert.equal(selected[0].properties.h3_index,'8928308280fffff');
+  assert.match(get('map-search-status').textContent,/scores remain unknown/);
+});
 test('cancelled and late geocodes cannot reopen old results; provider errors remain explicit',async()=>{
   const pending=[];
   const app=search((url,options)=>new Promise(resolve=>pending.push({resolve,signal:options.signal})));
@@ -83,9 +94,35 @@ test('shared playback pauses, scrubs, waits for responses and stops at the final
 });
 test('failed and superseded playback keep the last displayed timestamp',async()=>{
   const failed=playback(async()=>false),clock=failed.get('playback-clock').textContent;
-  await failed.get('replay-next').onclick();assert.equal(failed.get('playback-clock').textContent,clock);assert.match(failed.get('playback-status').textContent,/Previous results/);
+  await failed.get('replay-next').onclick();assert.equal(failed.get('playback-clock').textContent,clock);assert.match(failed.get('playback-status').textContent,/Playback paused/);
   let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));const old=app.get('replay-next').onclick();
   app.controller.configure('archive',times,2);finish(true);await old;assert.equal(app.get('replay-hour').value,'2');assert.match(app.get('playback-clock').textContent,/Isaias/);
   app.controller.configure('none',[],0,false);assert.equal(app.get('replay-play').disabled,true);
   app.controller.configure('forecast',times,0,false,'Imported forecast is stale.');assert.equal(app.get('replay-play').disabled,true);assert.match(app.get('playback-status').textContent,/stale/);
+});
+test('a direct selection supersedes a pending hour even within the same archive',async()=>{
+  let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=app.get('replay-next').onclick();
+  app.controller.configure('forecast',times,2);
+  finish(true);await pending;
+  assert.equal(app.get('replay-hour').value,'2');
+  assert.equal(app.get('replay-hour').disabled,false);
+});
+test('restarting from the end stays paused if the first hour cannot load its scores',async()=>{
+  const app=playback(async(_kind,index)=>{
+    app.controller.configure('forecast',times,index);
+    throw new Error('scores offline');
+  });
+  app.controller.configure('forecast',times,2);
+  await app.get('replay-play').onclick();
+  assert.equal(app.timers.size,0);
+  assert.match(app.get('playback-status').textContent,/Playback paused.*scores offline/);
+});
+test('pausing during a slow restart prevents playback from starting when scores arrive',async()=>{
+  let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));
+  app.controller.configure('forecast',times,2);
+  const restart=app.get('replay-play').onclick();
+  app.controller.pause();finish(true);await restart;
+  assert.equal(app.timers.size,0);
+  assert.equal(app.get('replay-play').textContent,'▶');
 });

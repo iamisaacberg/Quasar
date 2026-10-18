@@ -189,8 +189,17 @@ def exposure(query):
         return _remote(query)
     path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
     catalog = os.environ.get("QUASAR_EXPOSURE_CATALOG")
-    if (not path and not catalog) or not database:
-        return _unavailable("not_configured", "Parcel exposure results are not configured; scores remain unknown.")
+    directory = os.environ.get("QUASAR_EXPOSURE_DIRECTORY")
+    if not (path or directory or catalog) or not database:
+        missing = []
+        if not (path or directory or catalog):
+            missing.append("model assessment source")
+        if not database:
+            missing.append("parcel inventory")
+        return _unavailable("not_configured", "Exposure service is not configured: missing "
+                            + " and ".join(missing) + ". Prepared parcel inputs do not contain model results.")
+    if not catalog and path and directory:
+        return _unavailable("invalid", "Configure only one exposure source: a file or a directory.")
     try:
         from .exposure_catalog import select, verify, version
         expected = None
@@ -204,6 +213,12 @@ def exposure(query):
                 return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
             _, entry, path = selected
             expected = entry["sha256"]
+        elif directory:
+            if start.minute or start.second or start.microsecond:
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+            path = str(Path(directory) / (start.strftime("%Y%m%dT%H%M%SZ") + ".json"))
+            if not Path(path).exists():
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
         path = str(Path(path).resolve())
         revision = version(path)
         file_stat, db_stat = Path(path).stat(), Path(database).stat()

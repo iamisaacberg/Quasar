@@ -42,7 +42,9 @@ Do not start a deployment or restart shared services without authorization.
 
 The map, Data tab and Reports use imported native county forecast cells only.
 The map opens directly on the Isaias October 9 archive, with 25 hourly
-positions, county-clipped H3 rainfall and an interactive maximum-native-cell rainfall trend.
+positions, county-clipped H3 rainfall and compact rewind, play/pause and forward
+controls. Tools → Archive details contains the interactive maximum-native-cell
+rainfall trend, hour scrubber and source recheck.
 Each hex uses the maximum of its overlapping native forecasts; this does not
 increase forecast resolution. Missing overlaps leave the hex transparent.
 Map, Data and Reports share the selected hour. The current forecast is absent
@@ -61,8 +63,9 @@ Real parcel scores remain unknown unless separately produced matching exposure
 assessments exist. Optional offline modeling implements an experimental FEMA
 mapping proxy and rainfall interaction. A real-data model has now been trained
 locally and passed the pipeline's mapping-proxy promotion gates; see the
-[training report](docs/modeling-run-v1.md). It has not been activated on LinuxONE,
-and no observed-flood validation is established.
+[training report](docs/modeling-run-v1.md). LinuxONE now serves matching assessments
+for all 25 archive positions; see [activation](docs/real-data-rollout.md#exposure-activation).
+No observed-flood validation is established.
 Exposure colors are not flood probability or depth, and green does not establish safety.
 
 Fictional sites, synthetic scenarios, what-if additions, notification previews and
@@ -97,9 +100,9 @@ evaluates a FEMA mapping proxy, exports portable trees and produces experimental
 rainfall/exposure assessments, with a separate gated observed-outcome experiment.
 The [first real-data run](docs/modeling-run-v1.md) produced a trained portable
 model and a local archived-rainfall assessment. Training artifacts stay under
-ignored `data/processed/`; cloning this repo does not include them. Server
-activation and actual LinuxONE performance remain separate, uncompleted steps.
-
+ignored `data/processed/`; cloning this repo does not include them. The
+[LinuxONE activation](docs/real-data-rollout.md#exposure-activation) records the
+separately verified serving artifact and host benchmarks.
 `python3 -m quasar.modeling assess-replay` plans all 25 saved archive positions
 without writes; `--execute` produces separate immutable per-window artifacts and
 a bounded exact-window catalog. Missing source hours remain gaps. Optional
@@ -107,3 +110,4 @@ a bounded exact-window catalog. Missing source hours remain gaps. Optional
 existing transferred evidence without retraining. See the
 [operations runbook](docs/datathon-submission/operations.md). Ignored county/model
 artifacts are still required; catalog code alone does not establish real coverage.
+

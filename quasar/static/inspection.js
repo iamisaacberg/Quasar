@@ -14,7 +14,21 @@
     if(!values.length) return {value:"Unavailable",detail:overlaps.length ? "Rainfall is unavailable for the selected archive hour." : "Prepared native-cell overlaps are unavailable for this selection."};
     const low=Math.min(...values),high=Math.max(...values);
     return {value:low===high ? low.toFixed(1) : `${low.toFixed(1)}–${high.toFixed(1)}`,
-      detail:`${values.length}/${overlaps.length} overlapping native cells available${values.length<overlaps.length || context?.forecast_coverage_complete===false ? " · Partial coverage; hex remains transparent" : ""}. Forecast rainfall at the source grid resolution, not parcel flood depth.`};
+      detail:`${values.length}/${overlaps.length} native cells available${values.length<overlaps.length || context?.forecast_coverage_complete===false ? " · Partial coverage; hex remains transparent" : ""}. Forecast reconstruction, not observed rain.`};
+  }
+  function parcelOverview(context) {
+    const {terrain={},fema={},hydrography:hydro={}}=context?.inputs || {};
+    const sfha=fema.sfha_mapped_area_fraction;
+    const distance=hydro.nearest_retained_river_stream_distance_m;
+    const insights=[];
+    if(number(sfha)) insights.push(`${(sfha*100).toFixed(1)}% of this parcel intersects the mapped special flood hazard area.${fema.status!=="complete" ? " FEMA coverage is incomplete; the rest is unknown." : ""}`);
+    else insights.push("Mapped flood-zone exposure is unknown for this parcel.");
+    const zones=[...new Set((fema.overlaps || []).map(hit=>hit.FLD_ZONE).filter(Boolean))];
+    if(zones.length) insights.push(`FEMA reference zones: ${zones.join(", ")}. Later map revisions are unverified.`);
+    if(terrain.status!=="complete") insights.push("Terrain coverage is incomplete; available elevation does not describe the entire parcel.");
+    return {stats:[[value(terrain.mean_m," m"),"Mean terrain"],
+      [number(sfha)?`${(sfha*100).toFixed(1)}%`:"Unknown","FEMA hazard area"],
+      [number(distance)?distance<1000?`${Math.round(distance)} m`:`${(distance/1000).toFixed(1)} km`:"Unknown","River / stream"]],insights};
   }
   function forecastRows(context,current) {
     if(current?.mode==="synthetic_demo") return [["Forecast rainfall","Exercise rainfall is not applied to real parcels."]];
@@ -60,5 +74,5 @@
     const p=context.provenance || {}, terrain=p.terrain || {}, fema=p.fema || {};
     return `Prepared ${context.prepared_at || "Unknown"}. Terrain: ${terrain.source_dates?.join?.(", ") || terrain.source_date_range || "see source metadata"}; ${terrain.vertical_datum || "NAVD88"}, meters. FEMA panel dates: ${(fema.panel_effective_dates || []).join(", ") || "Unknown"}; package publication: ${(fema.package_publication_dates || []).join(", ") || "Unknown"}. ${fema.later_revision_completeness || "Later map revisions unverified"}. Lakes, canals and coastal water coverage are incomplete. No parcel score is calculated.`;
   }
-  return {forecastRows,parcelRows,provenance,rainfallSummary};
+  return {forecastRows,parcelRows,provenance,rainfallSummary,parcelOverview};
 });
