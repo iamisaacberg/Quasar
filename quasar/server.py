@@ -165,6 +165,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/weather/timeline":
                 from .forecast_timeline import timeline as forecast_timeline
                 return self.send(200, forecast_timeline())
+            if url.path == "/api/data/weather":
+                from .data_dashboard import weather_data
+                return self.send(200, weather_data())
             if url.path == "/api/county":
                 return self.send(200, county_boundary())
             if url.path == "/api/exposure" or url.path.startswith(("/api/parcels", "/api/cells/")):

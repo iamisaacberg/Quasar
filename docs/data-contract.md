@@ -259,6 +259,34 @@ The importer selects native cells by county intersection; cells can extend beyon
 
 ## Retained current-forecast playback (additive)
 
+### Source-only Data tab
+
+`GET /api/data/weather` reads the configured schema-3 current county snapshot
+without assigning rainfall to fictional sites or computing scores. It returns
+`county_fips`, `timezone`, `units` (`mm / 6h`), `generated_at`, `status`,
+`default_index` and `frames`. Each frame has `at`, `valid_to` and `rows`, with
+`native_cell_id`, `rainfall_6h_mm`, `available_hours` and per-cell `status`.
+Successful imports retain `init_time`, `retrieved_at`, `source_table`,
+`native_resolution`, `statistic` and `expires_at`. Freshness and retained-window
+rules match map playback, including the original snapshot expiry. Null/missing
+hours stay unavailable; valid zero stays zero. Missing imports, bridge errors,
+invalid data and legacy six-site imports produce explicit states with no frames.
+No cloud query, property join or scoring is performed.
+
+The existing parcel manifest adds optional `parcel_count` for indexed inventories.
+It must be a nonnegative integer or null. Older remote manifests may omit it;
+the UI displays unknown rather than zero. Live GIS browsing has no countywide
+verified count. Counts reflect county-validated parcel geometry, not homes or
+flood-risk coverage. Existing authentication and county checks still apply.
+
+The Data tab CSV contains all native cells in the selected window, independently
+of search/status filters, with source/validity metadata and explicit units.
+Unknown rainfall is blank. Charts count input availability; mean rainfall is an
+unweighted mean of available native cells, not an area-weighted county estimate.
+Fictional scenario reports and their existing exports retain their own labels.
+
+### Map playback
+
 `GET /api/weather/timeline` reads one configured WeatherNext snapshot. It never
 queries BigQuery or starts an import. The response has `county_fips`, `timezone`,
 `units` (`mm / 6h`), `status`, `default_index`, and `frames`. Each frame has `at`

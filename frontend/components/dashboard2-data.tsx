@@ -1,16 +1,17 @@
 import type { ReactNode } from "react";
 import { Activity, CircleHelp, Database, TriangleAlert } from "lucide-react";
-import type { Report } from "@/reports";
 
-// Extracted from @shadcnblocks/dashboard2: StatsCards and TransactionsTable.
-// Keep the existing application shell; replace the example transactions and
-// month-over-month metrics with the selected exercise window's actual values.
-export function DashboardStats({ summary }: { summary: NonNullable<Report["summary"]> }) {
+
+// Extracted from @shadcnblocks/dashboard2: keep the KPI strip and table layout.
+export function DashboardStats({ parcelCount, cellCount, availableCount, meanRainfall }: {
+  parcelCount: number | null; cellCount: number | null; availableCount: number | null; meanRainfall: number | null;
+}) {
+  const value = (input: number | null) => input === null ? "Unknown" : input.toLocaleString("en-US", { maximumFractionDigits: 2 });
   const stats = [
-    { title: "Fictional sites", value: String(summary.site_count), icon: Database, context: "Selected window", helper: `${summary.scored_count} scored · ${summary.unknown_count} unknown` },
-    { title: "Mean relative score", value: summary.mean_score === null ? "Unknown" : summary.mean_score.toLocaleString("en-US", { maximumFractionDigits: 2 }), icon: Activity, context: "Illustrative score / 100", helper: "Excludes unknown scores" },
-    { title: "Elevated scores", value: String(summary.bands.elevated || 0), icon: TriangleAlert, context: "Illustrative score ≥ 65", helper: "Not flood depth or probability" },
-    { title: "Insufficient data", value: String(summary.unknown_count), icon: CircleHelp, context: "Missing or stale inputs", helper: "Unknown sites stay unscored" },
+    { title: "Indexed parcels", value: value(parcelCount), icon: Database, context: "County-validated geometry", helper: "Parcel flood scores remain unknown" },
+    { title: "Native forecast cells", value: value(cellCount), icon: Activity, context: "Intersecting Okaloosa County", helper: "Original forecast resolution" },
+    { title: "Mean cell rainfall", value: value(meanRainfall), icon: TriangleAlert, context: "Millimeters per six hours", helper: "Unweighted; excludes unavailable cells" },
+    { title: "Available rainfall", value: value(availableCount), icon: CircleHelp, context: "Complete, fresh native cells", helper: "Missing or stale rainfall stays unknown" },
   ];
   return <section aria-label="Selected window summary" className="grid grid-cols-2 gap-3 rounded-xl border bg-card p-4 sm:gap-4 sm:p-5 lg:grid-cols-4 lg:gap-6 lg:p-6">
     {stats.map((stat, index) => <div key={stat.title} className="flex items-start">

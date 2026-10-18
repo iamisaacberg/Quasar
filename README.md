@@ -22,7 +22,7 @@ Install Python 3.11 or later. From this repository's root:
 python3 -m quasar
 ```
 
-Open <http://127.0.0.1:8000>. The Python backend has no third-party runtime dependencies. Add your Mapbox public token to enable the map. The site list, H3 indexing, score details and synthetic notification previews work without map credentials. Mapbox's SDK and basemap require internet access. The server is a local demo server, not a production hosting stack.
+Open <http://127.0.0.1:8000>. The Python backend has no third-party runtime dependencies. Add your Mapbox public token to enable the map. County parcel browsing works without map credentials; Mapbox's SDK and basemap require internet access. The server is a local demo server, not a production hosting stack.
 
 ### Share with teammates over Wi-Fi
 
@@ -91,7 +91,7 @@ npm test
 
 ## Data workspace
 
-The **Data** sidebar view provides a separate selected-window summary, charts, input coverage, searchable site values and source readiness. It uses the shared report pipeline; rechecking reads local state and does not start a cloud import. Unknown and stale values remain visible as such.
+The **Data** sidebar view uses imported county-native WeatherNext cells and the verified parcel inventory, separately from the fictional-site reports. Its summary, charts, searchable cell table and CSV preserve six-hour rainfall, missing/stale states and source provenance. Select a retained forecast window to inspect it. Parcel counts come from the indexed inventory manifest; older hosts or live GIS browsing without a verified total show unknown. Real parcels remain unscored. No configured county snapshot means an unavailable state, with no synthetic fallback. Rechecking reads configured local/bridge sources and does not start a cloud import.
 
 ## Map workspace UI
 
@@ -127,21 +127,21 @@ legend information. Simulated routing remains exclusive to the archive/what-if
 workflow.
 
 When an imported WeatherNext snapshot is selectable, the map opens with that
-source and **Rainfall · mm / 6h**. Native forecast polygons show county rainfall when a county snapshot is imported; blue points and numeric labels show rainfall at the six fictional sites. The summary shows the
-validity window, initialization/import times, native resolution, available-site
-count and unavailable values. Stale or incomplete rainfall remains unavailable;
-valid zero rainfall stays zero even when missing terrain prevents a site score.
-Site scores remain fictional; native rainfall cells are not flood depth. **Relative
+source and **Rainfall · mm / 6h**. Native forecast polygons show county rainfall.
+The summary shows the validity window, initialization/import times, native
+resolution, available-cell count and unavailable values. The Map overview no
+longer renders fictional exercise-site points, scores, or a site inspector.
+Stale or incomplete rainfall remains unavailable. Native rainfall cells are not
+flood depth. **Relative
 exposure** switches to experimental parcel indices and server-side P90 H3 summaries
 when matching assessments are configured; otherwise those indices stay unknown.
 A neutral county H3 grid stays available for parcel browsing in rainfall mode. Legends and demo labels remain visible.
 
-**Inspect sites** opens the site selector and factor explanation, including when
-Mapbox is unavailable. The **Isaias simulation** button opens archive/what-if
-controls, playback, selected-site trend and simulated routing in the same map's
-floating details panel. Exit returns to the preceding data source. The old `/#isaias-replay`
-link still opens the simulation within Map overview. The other navigation links
-retain sites, source status, reports and the guide.
+The **Isaias simulation** button opens archive/what-if controls, playback, and
+simulated routing in the map's floating details panel. Exit returns to the
+preceding data source. The old `/#isaias-replay` link still opens the simulation
+within Map overview. The other navigation links retain source status, reports
+and the guide.
 
 React/Tailwind source lives in `frontend/`. Vite builds the shell into
 `quasar/static/ui/`; those generated assets are committed so `python3 -m quasar`
@@ -172,9 +172,9 @@ runtime, scoring, and cloud-query behavior remain unchanged.
 
 ## What works today
 
-- Six **fictional** Okaloosa exercise sites, including one with missing terrain data.
+- Six **fictional** Okaloosa exercise records remain in the synthetic API and reports; they are not drawn or inspectable from Map overview.
 - Three deterministic exercise windows with changing synthetic rainfall and gauge conditions.
-- A Mapbox GL JS map, prioritized site list, factor contributions, and explicit unknown scores.
+- A Mapbox GL JS map for county parcels, native forecast cells, and explicit unknown states.
 - Countywide H3 browsing at resolutions 4–7, adapting to zoom like TrialSmiles. Every cell click opens a summary with an explicit zoom action; resolution-7 cells progressively load matching county GIS polygons and keep them in a bounded browser cache across visits. A parcel opens its own details panel with a back-to-cell action. Parcel scores remain unknown; configured verified inputs appear as descriptive context. Hexagons intersect the authoritative Census boundary and can extend past it; they are not county boundaries, flood extents or sharper weather predictions.
 - A WeatherNext 3 BigQuery importer for the native 0.1-degree ensemble-mean hourly precipitation product, with six-hour aggregation, provenance, missing-data and staleness checks.
 - Opt-in SMS/email **previews** for elevated scores. Nothing is sent or stored, and no contact details are collected.
@@ -236,6 +236,7 @@ See [the export contract](docs/data-contract.md#reports-and-bi-exports-additive-
 | GET | `/api/cells/{h3}/summary` | Distinct indexed parcel counts, input coverage and native overlaps at R4–R7 |
 | GET | `/api/exposure?from=...&to=...&mode=current&resolution=7` | Optional matching parcel assessments and complete-inventory P90 summaries; [contract](docs/exposure-display.md) |
 | GET | `/api/weather/status` | Explicit not-configured, ready, incomplete, stale or invalid snapshot status |
+| GET | `/api/data/weather` | Native-cell forecast windows for the Data tab, without fictional sites or scores |
 | GET | `/api/reports?scenario=compare` | Shared analysis for reports; single windows also supported |
 | GET | `/api/exports?scenario=compare&format=zip` | CSV, GeoJSON or BI bundle download |
 | GET | `/api/timeline?site=demo-001` | Isaias hourly forward-six-hour scores and source status |

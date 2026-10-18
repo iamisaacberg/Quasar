@@ -62,7 +62,6 @@ test('replay boots without a map and synchronizes hourly controls, timeline and 
   const app=await boot();
   assert.equal(app.get('isaias-replay').hidden,false);
   assert.equal(app.get('timeline-rows').children.length,25);
-  assert.equal(app.get('detail-heading').textContent,'demo-001');
   assert.match(app.get('route-summary').textContent,/historical conditions unavailable/);
   await app.get('replay-next').onclick();
   const routes=app.requests.filter(r=>r.url==='/api/routes');
@@ -81,7 +80,7 @@ test('presets and overrides enter what-if mode; reset clears overrides and clock
   await app.get('replay-reset').onclick();body=JSON.parse(app.requests.filter(r=>r.url==='/api/routes').at(-1).body);
   assert.deepEqual(body.roads,{});assert.deepEqual(body.destinations,{});assert.equal(body.at,Replay.hour(0));assert.equal(body.mode,'archive');assert.equal(body.preset,'archived');
 });
-test('late responses cannot overwrite a newer hour or selected site',async()=>{
+test('late responses cannot overwrite a newer hour and replay has no site picker',async()=>{
   const app=await boot();app.hold(Replay.hour(1));
   const old=app.get('replay-next').onclick();
   await app.get('replay-next').onclick();
@@ -89,10 +88,9 @@ test('late responses cannot overwrite a newer hour or selected site',async()=>{
   app.release();await old;
   assert.equal(app.get('replay-clock').textContent,clock);
   assert.match(app.get('timeline-change').textContent,/Unknown/);
-  const row=app.get('sites').children[1];row.children.at(-1).children[0].onclick();
-  await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(app.get('detail-heading').textContent,'demo-002');
-  assert.match(app.get('timeline-heading').textContent,/demo-002/);
+  assert.equal(app.get('sites').children.length,0);
+  assert.equal(app.get('map-site').onchange,undefined);
+  assert.ok(app.requests.some(request=>request.url.startsWith('/api/timeline?site=demo-001')));
 });
 test('one failed response keeps all displayed results at the preceding clock',async()=>{
   const app=await boot(),clock=app.get('replay-clock').textContent;
