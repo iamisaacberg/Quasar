@@ -48,7 +48,15 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
     addControl(control) { this.controls.push(control); }
     addImage(id,image) { (this.images ||= {})[id]=image; }
     on(name,...rest) { this.handlers[`${name}:${rest.length===1 ? "" : rest[0]}`]=rest.at(-1); }
-    addSource(id,source) { const updates=this.geometryUpdates;this.sources[id]={data:source.data,setData(data){this.data=data;updates[id]=(updates[id]||0)+1;}}; }
+    addSource(id,source) { const updates=this.geometryUpdates;this.sources[id]={...source,setData(data){this.data=data;updates[id]=(updates[id]||0)+1;}}; }
+    stateForFeature(source,feature) {
+      // Mapbox's vector_tile_to_pbf drops non-integer IDs; FeatureIndex.getId
+      // restores string IDs only through promoteId. A state write alone is not
+      // evidence that a tiled feature can read that state.
+      const promoted=this.sources[source].promoteId;
+      const id=promoted ? feature.properties[promoted] : Number.isSafeInteger(+feature.id) ? +feature.id : undefined;
+      return id===undefined ? {} : this.featureStates[source]?.[id] || {};
+    }
     getSource(id) { return this.sources[id]; }
     addLayer(layer) { this.layers[layer.id]=layer; }
     setPaintProperty(id,key,value) { this.layers[id].paint[key]=value; }
@@ -237,6 +245,42 @@ async function until(predicate) {
 }
 const parcelClick=(app,cell=h3.latLngToCell(30.55,-86.485,7))=>app.map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
 const geometryRequests=app=>app.requests.filter(url=>url.startsWith('/api/parcels?'));
+
+test('tiled H3 features can read rainfall state at every supported resolution, including zero and unavailable',async()=>{
+  const app=await boot({configured:true,featureState:true,rainfall:55.8});
+  app.map.handlers['load:']();
+  for(const zoom of [6,8,9,11]) {
+    app.map.zoom=zoom;app.map.handlers['zoomend:']();
+    const known=app.map.sources.hotspots.data.features.find(f=>f.properties.rainfall_mm!==null);
+    assert.ok(known);
+    assert.equal(app.map.stateForFeature('hotspots',known).rainfall_mm,55.8);
+  }
+  for(const forecastStatus of ['ready','incomplete','stale']) {
+    const other=await boot({configured:true,featureState:true,forecastStatus,rainfall:0});
+    other.map.handlers['load:']();
+    assert.ok(other.map.sources.hotspots.data.features.every(feature=>
+      other.map.stateForFeature('hotspots',feature).rainfall_mm===(forecastStatus==='ready'?feature.properties.rainfall_mm:null)));
+  }
+  app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
+  assert.ok(app.map.sources.hotspots.data.features.every(feature=>app.map.stateForFeature('hotspots',feature).rainfall_mm===null));
+});
+
+test('H3, parcel and selected-parcel features read matching exposure state and clear it on source failure',async()=>{
+  const app=await boot({configured:true,featureState:true,exposureScores:true});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.featureStates.parcels?.[101]?.exposure_score===90);
+  const cell=app.map.sources.hotspots.data.features.find(f=>app.map.featureStates.hotspots?.[f.id]?.exposure_score===81);
+  assert.ok(cell);
+  assert.equal(app.map.stateForFeature('hotspots',cell).exposure_score,81);
+  assert.deepEqual(Array.from(app.map.sources.parcels.data.features,feature=>app.map.stateForFeature('parcels',feature).exposure_score),[0,90]);
+  app.get('selection-content').children[1].onclick();
+  const selected=app.map.sources['selected-parcel'].data.features[0];
+  assert.equal(app.map.stateForFeature('selected-parcel',selected).exposure_score,90);
+  app.setExposureFailure(true);await app.get('forecast-retry').onclick();
+  await until(()=>app.map.featureStates.parcels?.[101]?.exposure_score===null);
+  assert.ok(app.map.sources.hotspots.data.features.every(feature=>app.map.stateForFeature('hotspots',feature).exposure_score===null));
+  assert.equal(app.map.stateForFeature('selected-parcel',selected).exposure_score,null);
+});
 
 test('hour changes update feature state without replacing geometry and revisits reuse assessments',async()=>{
   const app=await boot({configured:true,exposureScores:true,forecastFrames:3,featureState:true,parcelCount:100});

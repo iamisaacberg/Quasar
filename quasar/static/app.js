@@ -858,8 +858,10 @@ function setupMap(settings) {
         map.setPaintProperty(layer.id,"raster-saturation",-1);
         map.setPaintProperty(layer.id,"raster-brightness-max",0.55);
       }
-      map.addSource("hotspots", {type:"geojson", data:empty});
-      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":["case",["==",["get","exposure_score"],null],0,0.28]}},belowLabels);
+      // Vector tiles retain integer IDs only. Promote the H3 property so tiled
+      // hexagons can read the string-keyed rainfall and exposure feature state.
+      map.addSource("hotspots", {type:"geojson", data:empty, promoteId:"h3_index"});
+      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":opacity("exposure_score",0.28)}},belowLabels);
       map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":"#9ca3af", "line-opacity":0.45, "line-width":0.65}});
       map.addSource("county-boundary", {type:"geojson", data:county || empty});
       map.addLayer({id:"county-boundary", type:"line", source:"county-boundary", paint:{"line-color":"#ecf4ef","line-width":2,"line-dasharray":[3,2]}});
