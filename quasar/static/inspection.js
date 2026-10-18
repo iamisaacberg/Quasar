@@ -20,7 +20,29 @@
     if(!values.length) return {value:"Unavailable",detail:overlaps.length ? "Rainfall is unavailable for the selected archive hour." : "Prepared native-cell overlaps are unavailable for this selection."};
     const low=Math.min(...values),high=Math.max(...values);
     return {value:low===high ? low.toFixed(1) : `${low.toFixed(1)}–${high.toFixed(1)}`,
-      detail:`${values.length}/${overlaps.length} native cells available${values.length<overlaps.length || context?.forecast_coverage_complete===false ? " · Partial coverage; hex remains transparent" : ""}. Forecast reconstruction, not observed rain.`};
+      detail:`${values.length}/${overlaps.length} native cells available${values.length<overlaps.length || context?.forecast_coverage_complete===false ? " · Partial coverage; hex remains transparent" : ""}. Values are reported at native resolution; parcels in the same native cell share its source value. Forecast reconstruction, not observed rain.`};
+  }
+  function parcelRainfallSummary(context,current) {
+    const overlaps=context?.forecast_overlaps || [], features=current?.weather_cells?.features || [];
+    if(!overlaps.length) return {value:"Unavailable",detail:"Prepared native-cell overlaps are unavailable for this parcel."};
+    const native=new Map(features.map(feature=>[feature.id,feature]));
+    let total=0,weighted=0;
+    for(const overlap of overlaps) {
+      const fraction=overlap.area_fraction;
+      const feature=native.get(overlap.native_cell_id), properties=feature?.properties;
+      const matches=feature && sameGeometry(feature.geometry,overlap.geometry);
+      if(!number(fraction) || fraction<=0 || fraction>1 || !matches || properties.status!=="ready"
+          || !number(properties.rainfall_6h_mm) || properties.rainfall_6h_mm<0) {
+        return {value:"Unavailable",detail:"Complete parcel-area rainfall is unavailable for this forecast window."};
+      }
+      total+=fraction;
+      weighted+=fraction*properties.rainfall_6h_mm;
+    }
+    if(!number(total) || Math.abs(total-1)>1e-6) {
+      return {value:"Unavailable",detail:"Native forecast coverage does not cover the complete parcel geometry."};
+    }
+    return {value:(weighted/total).toFixed(1),
+      detail:`Area-weighted estimate across the complete parcel geometry using ${overlaps.length} native forecast cell${overlaps.length===1?"":"s"} (${current?.weather_cells?.native_resolution || "native resolution"}). Forecast reconstruction, not observed rain.`};
   }
   function parcelOverview(context) {
     const {terrain={},fema={},hydrography:hydro={}}=context?.inputs || {};
@@ -80,5 +102,5 @@
     const p=context.provenance || {}, terrain=p.terrain || {}, fema=p.fema || {};
     return `Prepared ${context.prepared_at || "Unknown"}. Terrain: ${terrain.source_dates?.join?.(", ") || terrain.source_date_range || "see source metadata"}; ${terrain.vertical_datum || "NAVD88"}, meters. FEMA panel dates: ${(fema.panel_effective_dates || []).join(", ") || "Unknown"}; package publication: ${(fema.package_publication_dates || []).join(", ") || "Unknown"}. ${fema.later_revision_completeness || "Later map revisions unverified"}. Lakes, canals and coastal water coverage are incomplete. No parcel score is calculated.`;
   }
-  return {forecastRows,parcelRows,provenance,rainfallSummary,parcelOverview};
+  return {forecastRows,parcelRows,provenance,rainfallSummary,parcelRainfallSummary,parcelOverview};
 });
