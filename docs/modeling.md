@@ -5,7 +5,7 @@ and explicit `train-positive` command. Confirmed zero-overlap parcels are exclud
 from that model's training, evaluation and scoring; their map/input records remain.
 
 For the controlled retraining experiment, use the [v2 protocol and handoff](modeling-v2.md).
-Its `review`, `train-v2` and `assess-replay` commands retain this FEMA target and
+Its `review`, `train-v2` and `assess-model-replay` commands retain this FEMA target and
 portable architecture. The original test is excluded from v2 selection and
 evaluation; v2 reports geographic cross-validation on existing research data.
 
