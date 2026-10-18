@@ -16,11 +16,15 @@ the new selection. Missing, stale, unconfigured or mismatched versions stay
 unavailable; the app never substitutes the other choice.
 
 On the inventory host configure `QUASAR_EXPOSURE_V1_DIRECTORY` and
-`QUASAR_EXPOSURE_V2_DIRECTORY`, and pin `QUASAR_EXPOSURE_V1_MODEL_VERSION` and
-`QUASAR_EXPOSURE_V2_MODEL_VERSION` to each exact artifact identity. Each choice also supports its own `_DATABASE` (prepared indexed serving),
-`_CATALOG`/`_ARTIFACT_ROOT` (verified immutable release), or optional `_FILE` for one window; `_FILE` and `_DIRECTORY` are
-mutually exclusive within a choice. Configure the same two identity pins on
-the hosted proxy. Its authenticated upstream request forwards `model`, verifies
+`QUASAR_EXPOSURE_V2_DIRECTORY`. The service pins the reviewed V1 and V2 release
+identities in code, so these environment variables are optional. Set
+`QUASAR_EXPOSURE_V1_MODEL_VERSION` or `QUASAR_EXPOSURE_V2_MODEL_VERSION` only
+when deliberately serving a different reviewed identity; the proxy and inventory
+host must use the same override. Each choice also supports its own `_DATABASE`
+(prepared indexed serving), `_CATALOG`/`_ARTIFACT_ROOT` (verified immutable
+release), or optional `_FILE` for one window; `_FILE` and `_DIRECTORY` are
+mutually exclusive within a choice. The hosted proxy uses the same built-in
+pins. Its authenticated upstream request forwards `model`, verifies
 the response's `model_choice` and exact identity, and keeps errors explicit.
 Only the whitelist `v1`/`v2` is accepted; user input never supplies filesystem
 paths. Legacy requests without `model` retain their previous configuration. Explicit choices never borrow the generic indexed database or catalog.
