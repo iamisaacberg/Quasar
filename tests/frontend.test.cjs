@@ -350,7 +350,7 @@ test("unknown parcels and cells have transparent interiors and no hatch layers",
   await new Promise(resolve=>setImmediate(resolve));
   assert.ok(map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
   assert.equal(get('selection-score').textContent,'Unscored');
-  assert.notEqual(map.layers['selected-parcel-outline'].paint['line-color'],map.layers['parcel-outline'].paint['line-color']);
+  assert.ok(map.layers['selected-parcel-outline'].paint['line-width']>map.layers['parcel-outline'].paint['line-width']);
 });
 
 test("server parcel indices and complete-inventory p90 drive colors and accessible inspection",async()=>{

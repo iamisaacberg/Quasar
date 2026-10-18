@@ -628,10 +628,10 @@ function setupMap(settings) {
       map.addLayer({id:"selected-cell-outline", type:"line", source:"selected-cell", paint:{"line-color":"#0d9488","line-width":3}});
       map.addSource("parcels", {type:"geojson", data:empty});
       map.addLayer({id:"parcel-fill", type:"fill", source:"parcels", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":["case",["==",["get","exposure_score"],null],0,0.45]}});
-      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#667f80","line-width":0.65}});
+      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#ffffff","line-width":0.65}});
       map.addSource("selected-parcel", {type:"geojson", data:empty});
       map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":["case",["==",["get","exposure_score"],null],0,0.3]}});
-      map.addLayer({id:"selected-parcel-outline", type:"line", source:"selected-parcel", paint:{"line-color":"#0d9488","line-width":3}});
+      map.addLayer({id:"selected-parcel-outline", type:"line", source:"selected-parcel", paint:{"line-color":"#ffffff","line-width":3}});
       map.on("click", "hotspot-fill", (event) => {
         if (map.queryRenderedFeatures(event.point, {layers:["parcel-fill"]}).length) return;
         const p = event.features[0].properties;
