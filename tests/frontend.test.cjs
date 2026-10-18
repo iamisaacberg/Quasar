@@ -365,6 +365,12 @@ test("server parcel indices and complete-inventory p90 drive colors and accessib
   map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(get('selection-score').textContent,'81.0 / 100');
+  assert.equal(get('selection-stat-one').textContent,'3');
+  assert.equal(get('selection-stat-two').textContent,'1');
+  assert.equal(get('selection-stat-three').textContent,'67%');
+  assert.match(get('selection-assessment').textContent,/90th percentile.*coverage is incomplete/);
+  assert.ok(get('selection-insights').children.some(node=>/1 parcel is unassessed/.test(node.textContent)));
+  assert.equal(get('selection-records').open,false);
   assert.match(get('selection-exposure').children[0].textContent,/2\/3 parcels scored/);
   assert.deepEqual(Array.from(map.sources.parcels.data.features,f=>f.properties.exposure_score),[0,90]);
   get('selection-content').children[1].onclick();
@@ -477,7 +483,8 @@ test('H3 rainfall survives missing parcel context and refresh recovers prepared 
   app.setInspectionContext({inventory_id:'snapshot',parcel_count:101,terrain_complete_count:90,fema_complete_count:101,forecast_overlaps:[]});
   await app.get('forecast-retry').onclick();
   assert.equal(app.get('selection-rainfall').textContent,'86.4');
-  assert.equal(app.get('selection-stat-two').textContent,'90');
+  assert.equal(app.get('selection-stat-two').textContent,'Unknown');
+  assert.ok(app.get('selection-insights').children.some(node=>/Terrain inputs complete for 90 parcels/.test(node.textContent)));
   assert.equal(app.get('context-retry').hidden,true);
   app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
   assert.equal(app.get('selection-rainfall').textContent,'No rainfall data');
