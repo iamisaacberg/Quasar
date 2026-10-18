@@ -14,7 +14,12 @@ not observed rainfall, proof of local flooding, or a trained flood model.
    chart on the map. The 25 positions
    run from October 9 midnight through October 10 midnight in America/Chicago
    (`2026-10-09T05:00:00Z` through `2026-10-10T05:00:00Z`). Each position shows
-   the **following six forecast hours**.
+   the **following six forecast hours**. The replay opens at **8 AM Central on
+   October 9** and restarts there after reaching the end. Earlier hours remain
+   available through the slider, chart and rewind. Play advances one hour every
+   250 ms (4× the previous speed): 8 AM to noon takes about one second when
+   inputs are ready. Exposure playback buffers the next hour's summaries and
+   waits for the selected hour's scores before advancing; slow sources add time.
 3. The chart shows the maximum among available native-cell totals at each hour.
    It is not a county mean, cumulative storm total or rainfall observation.
    Hatched bars indicate partial coverage or unavailable rainfall; valid zero

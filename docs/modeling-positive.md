@@ -196,7 +196,7 @@ python3 -m quasar.modeling qualify-positive \
   --experiment data/processed/okaloosa/modeling/experiment-v3-positive \
   --output data/processed/okaloosa/modeling/experiment-v4-positive
 
-python3 -m quasar.modeling assess-replay \
+python3 -m quasar.modeling assess-model-replay \
   --database data/processed/okaloosa/linuxone/quasar-parcels.sqlite3 \
   --inputs data/processed/okaloosa/parcel-inputs/20261017-reconciled \
   --boundary data/raw/census_okaloosa_county.geojson \

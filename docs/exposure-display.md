@@ -17,13 +17,13 @@ unavailable; the app never substitutes the other choice.
 
 On the inventory host configure `QUASAR_EXPOSURE_V1_DIRECTORY` and
 `QUASAR_EXPOSURE_V2_DIRECTORY`, and pin `QUASAR_EXPOSURE_V1_MODEL_VERSION` and
-`QUASAR_EXPOSURE_V2_MODEL_VERSION` to each exact artifact identity. Each choice
-also supports an optional `_FILE` for one window; `_FILE` and `_DIRECTORY` are
+`QUASAR_EXPOSURE_V2_MODEL_VERSION` to each exact artifact identity. Each choice also supports its own `_DATABASE` (prepared indexed serving),
+`_CATALOG`/`_ARTIFACT_ROOT` (verified immutable release), or optional `_FILE` for one window; `_FILE` and `_DIRECTORY` are
 mutually exclusive within a choice. Configure the same two identity pins on
 the hosted proxy. Its authenticated upstream request forwards `model`, verifies
 the response's `model_choice` and exact identity, and keeps errors explicit.
 Only the whitelist `v1`/`v2` is accepted; user input never supplies filesystem
-paths. Legacy requests without `model` retain their previous configuration.
+paths. Legacy requests without `model` retain their previous configuration. Explicit choices never borrow the generic indexed database or catalog.
 
 The prepared local comparison has both 25-hour bundles, a verified original-v1
 download receipt, and the newly generated V2 assessments. Ignored
@@ -97,8 +97,11 @@ the inventory host only after generation and verification complete. A single
 73 MB county assessment cannot populate the full replay, and combining 25 into
 one file would exceed the serving limit. Do not retrain to activate existing weights.
 
-Exposure playback waits for the displayed hour's summaries and loaded parcel
-assessments before advancing again. While those requests are pending, the selected
+Playback advances one hour every 250 ms when inputs are ready. Exposure playback
+buffers only the next hour's summaries in bounded session memory, without
+displaying future values. It waits for the displayed hour's summaries and selected parcel
+assessment before advancing again; other parcels hydrate in the background and
+remain unknown until matching results arrive. While those requests are pending, the selected
 hour shows loading and unknown scores; Pause remains available. An unavailable
 response pauses playback with its error rather than skipping through later hours.
 Recheck source retries the selected hour without discarding cached parcel geometry.
@@ -204,3 +207,22 @@ model explanations remain separate. Invalid diagnostics fail closed. Parcel
 inspection labels the mapping proxy, visualization rule, instability and source
 times explicitly. None of these values establish flood depth, probability,
 confidence intervals or safety.
+
+## Multiple exact-window artifacts
+
+The optional server-only catalog and artifact root select immutable schema-1
+single-window files without changing the exposure API. Catalog beats the legacy
+file/directory settings; failures/missing windows never substitute prior results.
+All selected files must match the catalog county, inventory, model hash, forecast
+hash, mode and exact six-hour interval. Absolute/traversing/escaping-symlink paths,
+duplicate keys, invalid hashes and corrupt files fail closed. Source provenance
+stays inside each artifact, rather than combining different windows under one
+shared top-level record. One decoded artifact is retained; cached H3 summaries
+contain counts/statistics, not additional full parcel maps.
+
+The offline `assess-replay` command lists the actual 25 saved archive windows and
+requires `--execute` for production into a new release directory. Its coverage
+report distinguishes produced windows and genuine source gaps; a producer error
+prevents catalog publication. Code/fixture acceptance does not establish real
+all-hour coverage, target-host resources or activation. See the [catalog contract](data-contract.md#exact-window-exposure-catalog-server-only-version-1) and
+[operations/rollback](datathon-submission/operations.md).

@@ -17,7 +17,7 @@ class Element {
   addEventListener(){}
   focus(){}
 }
-async function boot(hash='#map-overview'){
+async function boot(hash='#map-overview',defaultIndex=8){
   const ids=new Map(),timers=new Map(),requests=[],held=[];let hold=null,fail=null;
   const get=id=>{if(!ids.has(id))ids.set(id,new Element(id==='scenario'?'select':'div'));return ids.get(id);};
   get('map-layer').value='rainfall';
@@ -32,7 +32,7 @@ async function boot(hash='#map-overview'){
     if(url==='/api/config')body={map:{configured:false}};
     else if(url==='/api/parcels/manifest')return {ok:false,json:async()=>({error:'not configured'})};
     else if(url==='/api/official-alerts')body={message:'Not connected'};
-    else if(url.startsWith('/api/weather/timeline?'))body={county_fips:'12091',source,status:'ready',default_index:0,frames:Array.from({length:source==='archive'?25:3},(_,i)=>({at:hour(source,i),collection:{type:'FeatureCollection',mode:source==='archive'?'county_archive':'county_forecast',scenario:{id:source==='archive'?'isaias-2026':'weathernext',valid_from:hour(source,i),valid_to:hour(source,i+6)},features:[],forecast:{status:'ready'},weather_cells:{type:'FeatureCollection',features:[{id:'synthetic-cell',properties:{status:i===2?'incomplete':'ready',rainfall_6h_mm:i===2?null:i},geometry:{type:'Polygon',coordinates:[]}}]}}}))};
+    else if(url.startsWith('/api/weather/timeline?'))body={county_fips:'12091',source,status:'ready',default_index:defaultIndex,frames:Array.from({length:source==='archive'?25:3},(_,i)=>({at:hour(source,i),collection:{type:'FeatureCollection',mode:source==='archive'?'county_archive':'county_forecast',scenario:{id:source==='archive'?'isaias-2026':'weathernext',valid_from:hour(source,i),valid_to:hour(source,i+6)},features:[],forecast:{status:'ready'},weather_cells:{type:'FeatureCollection',features:[{id:'synthetic-cell',properties:{status:i===2?'incomplete':'ready',rainfall_6h_mm:i===2?null:i},geometry:{type:'Polygon',coordinates:[]}}]}}}))};
     else throw Error(url);
     return {ok:true,json:async()=>body};
   };
@@ -47,8 +47,10 @@ async function boot(hash='#map-overview'){
 }
 test('the primary map opens Isaias and playback reuses the loaded archive',async()=>{
   const app=await boot();assert.equal(app.get('replay-hour').max,'24');assert.match(app.get('playback-clock').textContent,/Isaias/);
-  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'1');
+  assert.equal(app.get('replay-hour').value,'8');assert.match(app.get('playback-clock').textContent,/8 AM/);
+  await app.get('replay-next').onclick();assert.equal(app.get('replay-hour').value,'9');
   assert.equal(app.requests.filter(url=>url.includes('/api/weather/timeline')).length,1);
+  await app.reload();assert.equal(app.get('replay-hour').value,'9');
   assert.ok(app.requests.every(url=>!url.includes('source=current') && !/^\/api\/(routes|timeline|properties|notifications|replay)/.test(url)));
   app.get('replay-play').onclick();assert.equal(app.timers.size,1);app.navigate('#data');assert.equal(app.timers.size,0);
 });

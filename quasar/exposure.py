@@ -18,6 +18,8 @@ from urllib.request import Request, build_opener
 
 from .config import COUNTY_FIPS
 from .parcels import SourceUnavailable, _NoRedirect
+from .timing import phase
+from .transport import read_body
 
 SCALE = json.loads((Path(__file__).parent / "static/exposure-scale.json").read_text())
 MAX_BYTES = 128 * 1024 * 1024
@@ -100,11 +102,18 @@ def validate_model_population(record, context):
             raise ValueError("Positive-only model scored an excluded or unknown FEMA population")
 
 
-@lru_cache(maxsize=2)
-def _artifact(path, size, modified):
+@lru_cache(maxsize=1)
+def _artifact(path, size, modified, revision=None, expected_sha256=None):
     if size > MAX_BYTES:
         raise ValueError("Exposure artifact exceeds its size limit")
-    data = json.loads(Path(path).read_bytes())
+    from .modeling import digest, read_json
+    from .exposure_catalog import version
+    before = version(path)
+    if expected_sha256 and digest(path) != expected_sha256:
+        raise ValueError("Exposure artifact checksum mismatch")
+    data = read_json(path, MAX_BYTES)
+    if version(path) != before or (revision and before != revision):
+        raise ValueError("Exposure artifact changed during loading")
     if (not isinstance(data, dict) or data.get("schema_version") != 1
             or data.get("county_fips") != COUNTY_FIPS
             or not all(isinstance(data.get(key), str) and data[key] for key in
@@ -133,7 +142,7 @@ def _artifact(path, size, modified):
             if context and score is not None and ("model_details" not in records[parcel_id]
                     or context["forecast_provenance"]["status"] != "ready"):
                 raise ValueError("Model scores require diagnostics and ready source data")
-        windows[start, end] = {**window, "records": records}
+        windows[start, end] = {**{k: v for k, v in window.items() if k != "parcels"}, "records": records}
     return {**data, "windows": windows}
 
 
@@ -143,8 +152,9 @@ def _unavailable(status, message):
 
 
 @lru_cache(maxsize=8)
-def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution):
-    data = _artifact(artifact_path, size, modified)
+def _aggregate(database, db_size, db_modified, artifact_path, size, modified, start, end, resolution,
+               revision=None, expected_sha256=None):
+    data = _artifact(artifact_path, size, modified, revision, expected_sha256)
     window = data["windows"].get((start, end))
     if window is None:
         return None
@@ -170,8 +180,6 @@ def _aggregate(database, db_size, db_modified, artifact_path, size, modified, st
             "computed_at": window["computed_at"], "scale_version": SCALE["version"],
             "aggregation": "parcel_p90_linear", "resolution": resolution,
             "aggregation_architecture": platform.machine(),
-            # Cache summaries only; retaining full records here would keep eight
-            # county inventories alive as the user scrubs through replay hours.
             "cells": {cell: summarize(scores) for cell, scores in groups.items()}}
 
 
@@ -198,55 +206,91 @@ def exposure(query):
         return _unavailable("not_configured", f"{choice.upper()} exposure model identity is not configured.")
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
         return _remote(query)
+    prepared = os.environ.get(prefix+"_DATABASE")
+    if prepared:
+        if os.environ.get(prefix+"_CATALOG"):
+            return _unavailable("invalid", "Configure either an exposure catalog or a prepared database, not both.")
+        try:
+            from .exposure_store import read
+            result, records = read(prepared, os.environ.get("QUASAR_PARCEL_DATABASE", ""), start, end, resolution, ids)
+            return _finish(result, records, query, start, end, ids, mode)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
+            return _unavailable("invalid", "Prepared exposure database is unavailable or invalid; scores remain unknown.")
     path, database = os.environ.get(prefix+"_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
+    catalog = os.environ.get(prefix+"_CATALOG")
     directory = os.environ.get(prefix+"_DIRECTORY")
-    if not (path or directory) or not database:
+    if not (path or directory or catalog) or not database:
         missing = []
-        if not (path or directory):
+        if not (path or directory or catalog):
             missing.append("model assessment source")
         if not database:
             missing.append("parcel inventory")
         return _unavailable("not_configured", "Exposure service is not configured: missing "
                             + " and ".join(missing) + ". Prepared parcel inputs do not contain model results.")
-    if path and directory:
+    if not catalog and path and directory:
         return _unavailable("invalid", "Configure only one exposure source: a file or a directory.")
     try:
-        if directory:
-            # Each model artifact has its own forecast provenance and 128 MiB limit.
-            # Resolve from validated UTC time, never a user-supplied path or nearest hour.
+        from .exposure_catalog import select, verify, version
+        expected = None
+        selected = None
+        if catalog:
+            root = os.environ.get(prefix+"_ARTIFACT_ROOT")
+            if not root:
+                raise ValueError("Exposure catalog requires an explicit artifact root")
+            selected = select(catalog, root, mode, start, end)
+            if selected is None:
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+            _, entry, path = selected
+            expected = entry["sha256"]
+        elif directory:
             if start.minute or start.second or start.microsecond:
                 return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
             path = str(Path(directory) / (start.strftime("%Y%m%dT%H%M%SZ") + ".json"))
             if not Path(path).exists():
                 return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+        path = str(Path(path).resolve())
+        revision = version(path)
         file_stat, db_stat = Path(path).stat(), Path(database).stat()
+        data = _artifact(path, file_stat.st_size, file_stat.st_mtime_ns, revision, expected)
+        if selected:
+            verify(selected[0], selected[1], data, start, end)
         result = _aggregate(database, db_stat.st_size, db_stat.st_mtime_ns, path, file_stat.st_size,
-                            file_stat.st_mtime_ns, start, end, resolution)
+                            file_stat.st_mtime_ns, start, end, resolution, revision, expected)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
-        if required_model and result.get("model_metadata", {}).get("model_version") != required_model:
-            return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
-        now = datetime.now(timezone.utc)
-        computed = timestamp(result["computed_at"])
-        if computed > now:
-            return _unavailable("invalid", "Exposure computation time is in the future.")
-        if mode == "current" and (end <= now or now - computed > timedelta(hours=2)):
-            return _unavailable("stale", "Parcel exposure results are stale; scores remain unknown.")
-        if mode == "current" and result.get("forecast_provenance") and (
-                result["forecast_provenance"]["mode"] != "current"
-                or timestamp(result["forecast_provenance"]["expires_at"]) <= now):
-            return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
-        if query.get("run_id") not in (None, result["run_id"]):
-            return _unavailable("changed", "Exposure run changed; refresh this selection.")
-        records = (_artifact(path, file_stat.st_size, file_stat.st_mtime_ns)["windows"][start, end]["records"]
-                   if ids else {})
-        return {**result,
-                **({"model_choice": choice} if choice else {}),
-                "cells": {} if ids else result["cells"],
-                "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
-                            "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
+        records = data["windows"][start, end]["records"] if ids else {}
+        return _finish(result, records, query, start, end, ids, mode)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
         return _unavailable("invalid", "Parcel exposure artifact is unavailable or invalid; scores remain unknown.")
+
+
+def _finish(result, records, query, start, end, ids, mode):
+    if result is None:
+        return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+    choice = query.get("model")
+    required_model = (os.environ.get("QUASAR_EXPOSURE_"+choice.upper()+"_MODEL_VERSION") if choice
+                      else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION"))
+    if required_model and result.get("model_metadata", {}).get("model_version") != required_model:
+        return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
+    context = model_context(result)
+    for record in records.values():
+        validate_model_population(record, context)
+    now = datetime.now(timezone.utc)
+    computed = timestamp(result["computed_at"])
+    if computed > now:
+        return _unavailable("invalid", "Exposure computation time is in the future.")
+    if mode == "current" and (end <= now or now - computed > timedelta(hours=2)):
+        return _unavailable("stale", "Parcel exposure results are stale; scores remain unknown.")
+    if mode == "current" and result.get("forecast_provenance") and (
+            result["forecast_provenance"]["mode"] != "current"
+            or timestamp(result["forecast_provenance"]["expires_at"]) <= now):
+        return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
+    if query.get("run_id") not in (None, result["run_id"]):
+        return _unavailable("changed", "Exposure run changed; refresh this selection.")
+    return {**result, **({"model_choice": choice} if choice else {}),
+            "cells": {} if ids else result["cells"],
+            "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
+                        "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
 
 
 def _remote(query):
@@ -258,10 +302,10 @@ def _remote(query):
         raise SourceUnavailable("LinuxONE exposure service is not configured correctly.")
     allowed = {key: query[key] for key in ("from", "to", "mode", "resolution", "parcel_ids", "run_id", "model") if key in query}
     request = Request(base + "/api/exposure?" + urlencode(allowed),
-                      headers={"X-Quasar-Parcel-Token": token, "Accept": "application/json"})
+                      headers={"X-Quasar-Parcel-Token": token, "Accept": "application/json", "Accept-Encoding": "gzip"})
     try:
-        with build_opener(_NoRedirect).open(request, timeout=12) as response:
-            body = response.read(2_000_001)
+        with phase("upstream"), build_opener(_NoRedirect).open(request, timeout=12) as response:
+            body = read_body(response, 2_000_000)
         if len(body) > 2_000_000:
             raise ValueError()
         data = json.loads(body)

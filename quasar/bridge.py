@@ -6,13 +6,19 @@ Raw downloads and property datasets are intentionally not bridgeable.
 """
 
 import hmac
+import hashlib
 import json
 import os
 import time
 from pathlib import Path
+from functools import lru_cache
+from threading import RLock
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+from .timing import phase
+from .transport import read_body
 
 
 class BridgeUnavailable(Exception):
@@ -29,6 +35,30 @@ SNAPSHOTS = {
 }
 REMOTE_CACHE_SECONDS = 15
 _remote_cache = {}
+_source_lock = RLock()
+
+
+def file_version(path):
+    stat = Path(path).stat()
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+class _Snapshot(dict):
+    """Internal read-only-by-contract snapshot with a once-computed identity."""
+    def __init__(self, data, limit):
+        super().__init__(data)
+        self.encoded = json.dumps(data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        if len(self.encoded) > limit:
+            raise ValueError("Snapshot exceeds its size limit")
+        self.content_identity = hashlib.sha256(self.encoded).digest()
+
+
+@lru_cache(maxsize=4)
+def _local_snapshot(path, version, limit):
+    data = _Snapshot(_parse_snapshot(Path(path).read_bytes(), limit), limit)
+    if file_version(path) != version:
+        raise ValueError("Snapshot changed during loading")
+    return data
 
 
 def _path_for(name):
@@ -77,20 +107,26 @@ def read_snapshot(name):
     Returns None only when local mode has no imported snapshot. Remote failures
     raise BridgeUnavailable so callers can preserve an explicit unavailable state.
     """
+    with phase("source"), _source_lock:
+        return _read_snapshot(name)
+
+
+def _read_snapshot(name):
     path, limit = _path_for(name)
     upstream = _bridge_url()
     if upstream is None:
         if path is None:
             return None
         try:
-            if path.stat().st_size > limit:
+            version = file_version(path)
+            if version[2] > limit:
                 raise ValueError("Snapshot exceeds its size limit")
-            return _parse_snapshot(path.read_bytes(), limit)
+            return _local_snapshot(str(path.resolve()), version, limit)
         except FileNotFoundError:
             return None
 
     base, token = upstream
-    cache_key = (base, name)
+    cache_key = (base, name, hashlib.sha256(token.encode()).digest())
     cached = _remote_cache.get(cache_key)
     now = time.monotonic()
     if cached and cached[0] > now:
@@ -99,18 +135,16 @@ def read_snapshot(name):
     request = Request(f"{base}/snapshots/{name}", headers={
         "Authorization": f"Bearer {token}",
         "Accept": "application/json",
+        "Accept-Encoding": "gzip",
         "User-Agent": "Quasar-data-bridge/1",
     })
     try:
-        with build_opener(_NoRedirect).open(request, timeout=8) as response:
+        with phase("upstream"), build_opener(_NoRedirect).open(request, timeout=8) as response:
             content_type = response.headers.get_content_type()
             if content_type != "application/json":
                 raise BridgeUnavailable("The data bridge returned an unexpected content type")
-            length = response.headers.get("Content-Length")
-            if length and int(length) > limit:
-                raise BridgeUnavailable("The data bridge snapshot exceeds its size limit")
-            payload = response.read(limit + 1)
-        data = _parse_snapshot(payload, limit)
+            payload = read_body(response, limit)
+        data = _Snapshot(_parse_snapshot(payload, limit), limit)
     except HTTPError as exc:
         if exc.code == 404:
             try:
@@ -124,7 +158,11 @@ def read_snapshot(name):
         raise
     except (URLError, TimeoutError, OSError, ValueError, TypeError) as exc:
         raise BridgeUnavailable("The data bridge snapshot is unavailable") from exc
+    if cached and cached[1] == data:
+        data = cached[1]
     _remote_cache[cache_key] = (now + REMOTE_CACHE_SECONDS, data)
+    while len(_remote_cache) > 4:
+        del _remote_cache[next(iter(_remote_cache))]
     return data
 
 
@@ -142,15 +180,12 @@ def serve_snapshot(name, authorization):
         path, limit = _path_for(name)
         if path is None:
             return 404, {"status": "not_imported", "error": "Snapshot is not available"}
-        if path.stat().st_size > limit:
+        version = file_version(path)
+        if version[2] > limit:
             raise ValueError("Snapshot exceeds its size limit")
-        payload = path.read_bytes()
-        data = _parse_snapshot(payload, limit)
-        # Emit canonical JSON and reject NaN/Infinity before sending it upstream.
-        encoded = json.dumps(data, separators=(",", ":"), allow_nan=False).encode("utf-8")
-        if len(encoded) > limit:
-            raise ValueError("Snapshot exceeds its size limit")
-        return 200, encoded
+        with phase("source"), _source_lock:
+            data = _local_snapshot(str(path.resolve()), version, limit)
+        return 200, data.encoded
     except FileNotFoundError:
         return 404, {"status": "not_imported", "error": "Snapshot is not available"}
     except (OSError, ValueError, TypeError):

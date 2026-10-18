@@ -128,7 +128,7 @@ from paired comparisons, never replaced by zero.
 Only after qualification:
 
 ```sh
-python -m quasar.modeling assess-replay --database "$MODEL_DATABASE" \
+python -m quasar.modeling assess-model-replay --database "$MODEL_DATABASE" \
   --inputs "$MODEL_INPUTS" --boundary "$MODEL_BOUNDARY" \
   --inspection "$MODEL_INSPECTION" --weather "$MODEL_WEATHER" \
   --model "$MODEL_RUN/model.json" --evaluation "$MODEL_RUN/evaluation.json" \

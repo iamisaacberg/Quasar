@@ -20,7 +20,7 @@ class Element {
   querySelectorAll() { return []; }
 }
 
-async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page, withPlayback=false, forecastFrames=1}={}) {
+async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page, withPlayback=false, forecastFrames=1,featureState=false}={}) {
   const ids = new Map();
   let exposureRunId="synthetic-run", clock=Date.now(), archiveMissing=false;
   const exposureTimers=new Map(), playbackTimers=new Map();
@@ -37,7 +37,8 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
   let map, resizeCallback, resizeCount=0, observed;
   const events=[], requests=[];
   class FakeMap {
-    constructor(options) { map=this; this.options=options; this.controls=[]; this.sources={}; this.layers={}; this.handlers={}; }
+    constructor(options) { map=this; this.options=options; this.controls=[]; this.sources={}; this.layers={}; this.handlers={}; this.featureStates={}; this.geometryUpdates={};
+      if(featureState)this.setFeatureState=({source,id},state)=>{(this.featureStates[source] ||= {})[id]={...(this.featureStates[source]?.[id] || {}),...state};}; }
     resize() { resizeCount++; }
     getZoom() { return this.zoom ?? this.options.zoom; }
     flyTo(options) { this.zoom=options.zoom; this.lastFlight=options; }
@@ -47,7 +48,15 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
     addControl(control) { this.controls.push(control); }
     addImage(id,image) { (this.images ||= {})[id]=image; }
     on(name,...rest) { this.handlers[`${name}:${rest.length===1 ? "" : rest[0]}`]=rest.at(-1); }
-    addSource(id,source) { this.sources[id]={data:source.data,setData(data){this.data=data;}}; }
+    addSource(id,source) { const updates=this.geometryUpdates;this.sources[id]={...source,setData(data){this.data=data;updates[id]=(updates[id]||0)+1;}}; }
+    stateForFeature(source,feature) {
+      // Mapbox's vector_tile_to_pbf drops non-integer IDs; FeatureIndex.getId
+      // restores string IDs only through promoteId. A state write alone is not
+      // evidence that a tiled feature can read that state.
+      const promoted=this.sources[source].promoteId;
+      const id=promoted ? feature.properties[promoted] : Number.isSafeInteger(+feature.id) ? +feature.id : undefined;
+      return id===undefined ? {} : this.featureStates[source]?.[id] || {};
+    }
     getSource(id) { return this.sources[id]; }
     addLayer(layer) { this.layers[layer.id]=layer; }
     setPaintProperty(id,key,value) { this.layers[id].paint[key]=value; }
@@ -236,6 +245,63 @@ async function until(predicate) {
 }
 const parcelClick=(app,cell=h3.latLngToCell(30.55,-86.485,7))=>app.map.handlers['click:hotspot-fill']({point:{},features:[{properties:{h3_index:cell,resolution:7}}]});
 const geometryRequests=app=>app.requests.filter(url=>url.startsWith('/api/parcels?'));
+
+test('tiled H3 features can read rainfall state at every supported resolution, including zero and unavailable',async()=>{
+  const app=await boot({configured:true,featureState:true,rainfall:55.8});
+  app.map.handlers['load:']();
+  for(const zoom of [6,8,9,11]) {
+    app.map.zoom=zoom;app.map.handlers['zoomend:']();
+    const known=app.map.sources.hotspots.data.features.find(f=>f.properties.rainfall_mm!==null);
+    assert.ok(known);
+    assert.equal(app.map.stateForFeature('hotspots',known).rainfall_mm,55.8);
+  }
+  for(const forecastStatus of ['ready','incomplete','stale']) {
+    const other=await boot({configured:true,featureState:true,forecastStatus,rainfall:0});
+    other.map.handlers['load:']();
+    assert.ok(other.map.sources.hotspots.data.features.every(feature=>
+      other.map.stateForFeature('hotspots',feature).rainfall_mm===(forecastStatus==='ready'?feature.properties.rainfall_mm:null)));
+  }
+  app.setArchiveMissing(true);await app.get('forecast-retry').onclick();
+  assert.ok(app.map.sources.hotspots.data.features.every(feature=>app.map.stateForFeature('hotspots',feature).rainfall_mm===null));
+});
+
+test('H3, parcel and selected-parcel features read matching exposure state and clear it on source failure',async()=>{
+  const app=await boot({configured:true,featureState:true,exposureScores:true});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.featureStates.parcels?.[101]?.exposure_score===90);
+  const cell=app.map.sources.hotspots.data.features.find(f=>app.map.featureStates.hotspots?.[f.id]?.exposure_score===81);
+  assert.ok(cell);
+  assert.equal(app.map.stateForFeature('hotspots',cell).exposure_score,81);
+  assert.deepEqual(Array.from(app.map.sources.parcels.data.features,feature=>app.map.stateForFeature('parcels',feature).exposure_score),[0,90]);
+  app.get('selection-content').children[1].onclick();
+  const selected=app.map.sources['selected-parcel'].data.features[0];
+  assert.equal(app.map.stateForFeature('selected-parcel',selected).exposure_score,90);
+  app.setExposureFailure(true);await app.get('forecast-retry').onclick();
+  await until(()=>app.map.featureStates.parcels?.[101]?.exposure_score===null);
+  assert.ok(app.map.sources.hotspots.data.features.every(feature=>app.map.stateForFeature('hotspots',feature).exposure_score===null));
+  assert.equal(app.map.stateForFeature('selected-parcel',selected).exposure_score,null);
+});
+
+test('hour changes update feature state without replacing geometry and revisits reuse assessments',async()=>{
+  const app=await boot({configured:true,exposureScores:true,forecastFrames:3,featureState:true,parcelCount:100});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>Object.values(app.map.featureStates.parcels || {}).filter(state=>state.exposure_score!==null).length===100);
+  app.get('archive-trend').children[1].onclick();
+  await until(()=>Object.values(app.map.featureStates.parcels || {}).filter(state=>state.exposure_score!==null).length===100);
+  const geometry={...app.map.geometryUpdates};
+  const requests=app.requests.filter(url=>url.startsWith('/api/exposure?')).length;
+  app.get('archive-trend').children[0].onclick();
+  await until(()=>Object.values(app.map.featureStates.parcels || {}).filter(state=>state.exposure_score!==null).length===100);
+  assert.equal(app.map.geometryUpdates.parcels,geometry.parcels);
+  assert.equal(app.map.geometryUpdates.hotspots,geometry.hotspots);
+  assert.equal(app.requests.filter(url=>url.startsWith('/api/exposure?')).length,requests);
+  app.get('selection-content').children[1].onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,1);
+  app.get('selection-back').onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,0);
+  app.get('selection-content').children[1].onclick();
+  assert.equal(app.map.sources['selected-parcel'].data.features.length,1);
+});
 
 test('3,165 parcels load completely, render 50 rows, and restore across visits without geometry requests',async()=>{
   const storage=QuasarParcelCache.disk(new IDBFactory());
@@ -448,17 +514,19 @@ test('late exposure lookups cannot recolor retained geometry after a scenario ch
 });
 
 // protects: switching assessment runs replaces every cached index; fails_when: old indices are reused under a new run; seam: none; no_claim: real model accuracy.
-test('exposure playback waits for both hourly summaries and parcel batches before advancing',async()=>{
-  let releaseSummary, releaseParcels;
+test('exposure playback waits for hourly summaries and the selected parcel before advancing',async()=>{
+  let releaseSummary, releaseParcels, parcelGate;
   const app=await boot({configured:true,exposureScores:true,withPlayback:true,forecastFrames:3,
     holdExposure:params=>{
       if(Date.parse(params.get('from'))!==Date.parse('2026-10-09T06:00:00Z'))return;
-      return new Promise(resolve=>{if(params.has('parcel_ids'))releaseParcels=resolve;else releaseSummary=resolve;});
+      if(params.has('parcel_ids'))return parcelGate ||= new Promise(resolve=>{releaseParcels=resolve;});
+      return new Promise(resolve=>{releaseSummary=resolve;});
     },
     exposureTransform:(page,params)=>Date.parse(params.get('from'))===Date.parse('2026-10-09T06:00:00Z') ?
       {...page,parcels:Object.fromEntries(Object.entries(page.parcels).map(([id,record])=>[id,{...record,score:42,factors:[{name:'synthetic_factor',value:42,contribution:42}]}]))} : page});
   app.map.handlers['load:']();parcelClick(app);
   await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  app.get('selection-content').children[1].onclick();
   const geometryCount=geometryRequests(app).length;
   await app.get('replay-play').onclick();app.tickPlayback();
   await until(()=>releaseSummary);
@@ -484,6 +552,24 @@ test('rainfall playback does not request unused exposure assessments',async()=>{
   app.tickPlayback();await until(()=>app.get('replay-hour').value==='2');
   assert.equal(app.requests.filter(url=>url.startsWith('/api/exposure?')).length,0);
   assert.ok(app.map.sources.hotspots.data.features.some(f=>f.properties.rainfall_mm===15));
+});
+
+test('play buffers one future summary without displaying it and reuses it when advancing',async()=>{
+  let release;
+  const app=await boot({configured:true,exposureScores:true,withPlayback:true,forecastFrames:3,
+    holdExposure:params=>!params.has('parcel_ids') && Date.parse(params.get('from'))===Date.parse('2026-10-09T06:00:00Z') ?
+      new Promise(resolve=>{release=resolve;}) : undefined});
+  app.map.handlers['load:']();
+  await until(()=>app.map.sources.hotspots.data.features.some(f=>f.properties.exposure_score===81));
+  const nextRequests=()=>app.requests.filter(url=>url.startsWith('/api/exposure?') && url.includes('2026-10-09T06%3A00%3A00'));
+  await app.get('replay-play').onclick();await until(()=>release);
+  assert.equal(app.get('replay-hour').value,'0');
+  assert.ok(app.map.sources.hotspots.data.features.some(f=>f.properties.exposure_score===81));
+  assert.equal(nextRequests().length,1);
+  release();await new Promise(resolve=>setImmediate(resolve));
+  app.tickPlayback();await until(()=>app.get('replay-hour').value==='1' && !app.get('replay-hour').disabled);
+  assert.equal(nextRequests().length,1,'selected hour must reuse its prefetched summary');
+  await app.get('replay-play').onclick();
 });
 
 test('an exposure outage pauses playback with unknown scores and recheck recovers the same hour',async()=>{

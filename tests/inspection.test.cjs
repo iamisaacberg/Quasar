@@ -31,6 +31,9 @@ test('parcel rainfall headline preserves zero, partial overlap and geometry mism
  const {rainfallSummary}=require('../quasar/static/inspection.js');
  const partial=rainfallSummary(context,current());
  assert.equal(partial.value,'0.0');assert.match(partial.detail,/1\/2.*Partial coverage/);
+ const reorderedGeometry={coordinates:geometry.coordinates,type:geometry.type};
+ const reordered=current('ready',13);reordered.weather_cells.features[0].geometry=reorderedGeometry;
+ assert.equal(rainfallSummary(context,reordered).value,'13.0');
  assert.equal(rainfallSummary(context,current('stale',4)).value,'Unavailable');
  const both=current();both.weather_cells.features[1].properties={status:'ready',rainfall_6h_mm:12};
  assert.equal(rainfallSummary(context,both).value,'0.0–12.0');

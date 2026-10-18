@@ -2,6 +2,13 @@
 
 For the incoming developer, start with the [complete gap-closure execution plan](DATATHON-GAP-CLOSURE-PLAN.md) and [workboard](DATATHON-WORKBOARD.md). The [datathon rubric audit](DATATHON-DEV-HANDOFF.md) supplies the requirement-by-requirement evidence, artifact identities and initial LinuxONE commands.
 
+The [implemented demonstration package](datathon-submission/README.md) adds the
+current architecture, recorded-model summary, source/dependency inventory,
+claim ledger, recording outline, verification/activation runbook and acceptance
+checklist. Real-data transfer, target-host execution and human review remain
+separate from local software completion. Isaac excluded team/lab/deadline/submission
+administration from this implementation.
+
 Quasar displays Okaloosa County parcels, prepared terrain/FEMA reference inputs,
 and imported native forecast rainfall. The application has no fictional-site or
 synthetic fallback; real parcel scores remain unknown without separate matching

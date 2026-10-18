@@ -31,7 +31,7 @@ def main():
         review.add_argument("--"+key, type=Path)
     review.add_argument("--output", type=Path, required=True)
     review.add_argument("--research-sensitivity", action="store_true", help="Non-serveable summary comparisons for the research pool, including rejected candidates")
-    replay = sub.add_parser("assess-replay", help="Prepare 25 exact v2 replay windows; never activates them")
+    replay = sub.add_parser("assess-model-replay", help="Prepare 25 qualified model windows; never activates them")
     for key in ("database", "inputs", "boundary", "inspection", "model", "evaluation", "weather", "output"):
         replay.add_argument("--"+key, type=Path, required=True)
     export = sub.add_parser("export")
@@ -42,6 +42,19 @@ def main():
         assess.add_argument("--"+name, type=Path, required=True)
     assess.add_argument("--from", dest="start", required=True)
     assess.add_argument("--mode", choices=("current", "replay"), required=True)
+    replay = sub.add_parser("assess-replay", help="Plan saved archive windows; --execute produces a new immutable release")
+    for name in ("database", "inputs", "boundary", "inspection", "model", "evaluation", "weather", "output"):
+        replay.add_argument("--"+name, type=Path, required=True)
+    replay.add_argument("--execute", action="store_true")
+    compare = sub.add_parser("compare-assessments")
+    for name in ("reference", "candidate", "output"):
+        compare.add_argument("--"+name, type=Path, required=True)
+    bundle = sub.add_parser("verify-bundle")
+    for name in ("manifest", "root", "output"):
+        bundle.add_argument("--"+name, type=Path, required=True)
+    evidence = sub.add_parser("verify-model-evidence")
+    for name in ("experiment", "dataset", "output"):
+        evidence.add_argument("--"+name, type=Path, required=True)
     bench = sub.add_parser("benchmark")
     for name in ("database", "artifact", "output"):
         bench.add_argument("--"+name, type=Path, required=True)
@@ -75,7 +88,7 @@ def main():
             from .review import review
             result = review(args.output, research_sensitivity=args.research_sensitivity, **{k: getattr(args, k) for k in
                 ("dataset", "experiment", "database", "inputs", "boundary", "inspection", "weather", "assessments")})
-        elif args.command == "assess-replay":
+        elif args.command == "assess-model-replay":
             from .production import produce_replay
             result = produce_replay(args.database, args.inputs, args.boundary, args.inspection, args.model,
                                     args.evaluation, args.weather, args.output)
@@ -86,6 +99,21 @@ def main():
             from .production import produce
             result = produce(args.database, args.inputs, args.boundary, args.inspection, args.model,
                              args.evaluation, args.weather, args.start, args.mode, args.output)
+        elif args.command == "assess-replay":
+            from .replay_batch import assess_replay
+            result = assess_replay(args.database, args.inputs, args.boundary, args.inspection,
+                                   args.model, args.evaluation, args.weather, args.output, execute=args.execute)
+        elif args.command == "verify-model-evidence":
+            from . import write_json
+            from .evidence import verify_model_evidence
+            result = verify_model_evidence(args.experiment, args.dataset)
+            write_json(args.output, result)
+        elif args.command in ("compare-assessments", "verify-bundle"):
+            from . import write_json
+            from .evidence import compare_assessments, verify_bundle
+            result = (compare_assessments(args.reference, args.candidate) if args.command == "compare-assessments"
+                      else verify_bundle(args.manifest, args.root))
+            write_json(args.output, result)
         elif args.command == "benchmark":
             from .production import benchmark
             result = benchmark(args.database, args.artifact, args.output)
@@ -96,7 +124,7 @@ def main():
             else:
                 _, result = prepare_outcomes(args.dataset, args.observations, args.inspection, args.weather)
         print(json.dumps(result, indent=2, allow_nan=False))
-        return 0 if result.get("status") not in ("missing", "insufficient_evidence", "incomplete", "research_only") else 2
+        return 0 if result.get("status") not in ("missing", "insufficient_evidence", "mismatch", "incomplete", "failed", "source_gap", "research_only") else 2
     except (ValueError, OSError, KeyError, TypeError, StopIteration, ImportError, sqlite3.Error) as exc:
         print(json.dumps({"status": "unavailable", "message": str(exc)}), file=sys.stderr)
         return 2

@@ -1,5 +1,7 @@
 # Real-data runtime activation
 
+The [current operations runbook](datathon-submission/operations.md) adds verification and an optional catalog candidate; it does not replace the active directory release below. Hosted access is public; source API authentication remains required.
+
 ## Exposure activation
 
 On October 18 UTC (October 17 Central), authorized activation switched Quasar
@@ -98,7 +100,7 @@ This change runs no cloud query and does not manufacture fresh timestamps.
    It reads credentials through SSH into memory and passes values to Vercel on
    stdin. It never writes credentials into the repository or deploys.
 6. Deploy the reviewed feature branch to Vercel Preview. Verify the real-data
-   APIs through the team access gate, expiry behavior, archive and parcel input
+   APIs through the public hosted application, expiry behavior, archive and parcel input
    reads. Isaac reviews the map. Do not promote production or push main.
 
 `.context/rollout/` holds the exact host-specific config changes and real-artifact

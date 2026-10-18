@@ -126,7 +126,7 @@ Private `folds.json`, `out-of-fold.json`, `block-residuals.json` and
 
 The gates are engineering selection rules, not flood-accuracy standards. The
 failed candidate is ineligible for assessment publication. An actual
-`assess-replay` invocation returned exit 2, “Unknown or unqualified v2 evaluation
+`assess-model-replay` invocation returned exit 2, “Unknown or unqualified v2 evaluation
 protocol,” before creating a replay directory. Twenty-five research sensitivity
 summaries were produced; **zero serveable v2 assessments were published**.
 

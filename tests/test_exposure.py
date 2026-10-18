@@ -43,6 +43,7 @@ class ExposureTests(unittest.TestCase):
         self.query = {"from": "2026-10-09T05:00:00Z", "to": "2026-10-09T11:00:00Z", "mode": "replay"}
         env = patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": str(self.artifact),
                                      "QUASAR_EXPOSURE_DIRECTORY": "",
+                                     "QUASAR_EXPOSURE_CATALOG": "", "QUASAR_EXPOSURE_ARTIFACT_ROOT": "",
                                      "QUASAR_PARCEL_DATABASE": str(self.database), "QUASAR_LINUXONE_API_URL": ""})
         env.start()
         self.addCleanup(env.stop)

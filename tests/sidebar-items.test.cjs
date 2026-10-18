@@ -6,8 +6,9 @@ const fs = require("node:fs");
 test("removed map help items stay out of the sidebar and built UI", () => {
   const sidebar = fs.readFileSync("frontend/components/application-shell2.tsx", "utf8");
   const dashboard = fs.readFileSync("frontend/dashboard.tsx", "utf8");
-  const builtCss = fs.readFileSync("quasar/static/ui/app-shell.css", "utf8");
-  const builtJs = fs.readFileSync("quasar/static/ui/app-shell.js", "utf8");
+  const entry = JSON.parse(fs.readFileSync("quasar/static/ui/.vite/manifest.json", "utf8"))["frontend/main.tsx"];
+  const builtCss = fs.readFileSync(`quasar/static/ui/${entry.css[0]}`, "utf8");
+  const builtJs = fs.readFileSync(`quasar/static/ui/${entry.file}`, "utf8");
 
   assert.doesNotMatch(sidebar, /Official NWS guidance|ShieldCheck/);
   assert.doesNotMatch(dashboard, /exercise-guide|How to read the map/);

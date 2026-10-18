@@ -43,11 +43,11 @@ const elements = (tree, predicate) => !tree || typeof tree !== 'object' ? [] : A
   ...(predicate(tree) ? [tree] : []), ...elements(tree.props?.children, predicate), ...elements(tree.props?.controls, predicate),
 ];
 
-function mount({active = true, reply} = {}) {
+function mount({active = true, reply, frame = 0} = {}) {
   const states = [], effects = [], calls = [];
   let stateCursor, effectCursor, queued, tree;
   const exported = {};
-  const context = {exports: exported, window:{addEventListener(){},removeEventListener(){},dispatchEvent(){}},CustomEvent:class{}, AbortController, setTimeout, clearTimeout, fetch: async (url, options) => {
+  const context = {exports: exported, window:{Quasar:{frame:()=>frame},addEventListener(){},removeEventListener(){},dispatchEvent(){}},CustomEvent:class{}, AbortController, setTimeout, clearTimeout, fetch: async (url, options) => {
     calls.push({url, ...options});
     const body = reply ? await reply(url, options) : undefined;
     const data = body ?? (url === '/api/data/weather?source=archive' ? forecast :
@@ -100,6 +100,15 @@ test('Data loads real-source endpoints only when active, with zero and unknown d
   assert.equal(app.calls.length, 3);
   assert.deepEqual(app.calls.map(call => call.url).sort(), ['/api/data/weather?source=archive', '/api/official-alerts', '/api/parcels/manifest']);
   assert.ok(app.calls.every(call => call.cache === 'no-store'));
+});
+
+test('Data opened before the map defaults to October 9 at 8 AM Central', async () => {
+  const frames=Array.from({length:25},(_,index)=>({at:new Date(Date.parse('2026-10-09T05:00:00Z')+index*3600000).toISOString(),
+    valid_to:new Date(Date.parse('2026-10-09T11:00:00Z')+index*3600000).toISOString(),rows:cells}));
+  const app=mount({frame:null,reply:async url=>url==='/api/data/weather?source=archive' ? {...forecast,frames,default_index:8} : undefined});
+  app.render();const html=await app.settle();
+  assert.match(html,/Oct 9, 2026, 8:00 AM Central time/);
+  assert.equal(app.find(node=>typeof node.props?.onValueChange==='function')[0].props.value,'8');
 });
 
 test('search and status filters affect only the native-cell table', async () => {

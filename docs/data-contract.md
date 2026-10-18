@@ -218,3 +218,76 @@ scores for zero overlap (`excluded_zero_fema_overlap`) and unknown/incomplete
 overlap (`verified_positive_fema_overlap_required`). These records remain in the
 county inventory and aggregation coverage denominator. Existing v1/v2 metadata
 and assessments retain their original population and remain schema-compatible.
+## Exact-window exposure catalog (server-only, version 1)
+
+`QUASAR_EXPOSURE_CATALOG` optionally names a bounded JSON catalog and requires
+`QUASAR_EXPOSURE_ARTIFACT_ROOT`. The configured catalog takes precedence over
+`QUASAR_EXPOSURE_FILE` and `QUASAR_EXPOSURE_DIRECTORY`; invalid files or absent windows never fall back to FILE.
+The existing `/api/exposure` query/response shape and `run_id` behavior are unchanged.
+Remote LinuxONE proxy configuration still takes precedence over local serving.
+
+Catalog fields: `schema_version: 1`, `county_fips: "12091"`, nonempty
+`inventory_id`, one expected 64-character lowercase `model_sha256`, and `entries`.
+Each entry has exactly `mode` (`replay`/`current`), timezone-aware `valid_from`,
+`valid_to` (exactly six hours later), relative `path`, file `sha256`, and
+`forecast_sha256`. The catalog is capped at 1 MiB and 256 entries. Duplicate
+mode/window keys, mixed county/inventory/model/source identities, multiwindow
+referenced files and mismatched artifact provenance are rejected. Every referenced
+artifact retains its existing schema-1 model/forecast metadata for that one window.
+Legacy single-file artifacts remain supported without requiring modeling metadata.
+
+Only relative files beneath the explicit root are resolved. Absolute paths,
+traversal and escaping symlinks fail closed. Each selected immutable file is
+hash-verified on cache load; size/mtime/ctime/inode version changes trigger rechecks.
+There is one decoded-artifact cache entry and eight small summary cache entries;
+resolution summaries do not retain full parcel maps. These are retention bounds,
+not a measured target-host peak-memory guarantee under concurrent requests.
+
+Use `python3 -m quasar.modeling assess-replay` to plan the actual saved 25-position
+archive. It is dry-run by default. `--execute` uses the existing producer per
+window, records source gaps and benchmark/count evidence, and publishes a new
+immutable release with `catalog.json` as final atomic completion marker. It never
+updates configuration, replaces a prior release, starts a service or queries cloud
+sources. See [operations](datathon-submission/operations.md#optional-all-hour-release).
+
+## Official alerts (separate current source)
+
+`GET /api/official-alerts` defaults to `source=archive` and returns
+`status: not_connected`, `connected: false`, no messages, and an explicit
+not-an-all-clear message. It never places present-day alerts on the replay.
+`source=current` reads only the operator-configured `QUASAR_NWS_ALERTS_FILE`;
+requests never fetch the network. Other source values/unknown query parameters
+are rejected. County scope remains 12091.
+
+The optional explicit `quasar.adapters.county_alerts` importer queries official
+county UGC FLC091, follows bounded same-host/same-county pagination, retains raw
+features and import/source metadata, and makes no retries in one invocation.
+Its coverage is the documented NWS county query, including intersecting zones;
+it is not exact parcel coverage. A missing alert polygon is allowed for zone
+products. No model score changes or overrides an official instruction.
+
+Current response states distinguish `not_connected`, `invalid`, `error`,
+`partial`, `stale`, fresh complete `empty`, and fresh complete `ready`.
+`connected` records whether a source page was read; it alone does not establish
+freshness/completeness. `retrieved_at`, `expires_at`, coverage/reference and
+source URL accompany usable parsed snapshots. Snapshots expire at 120 seconds;
+future retrieval times are invalid. Active/upcoming messages preserve official
+IDs, URLs, sent/effective/onset/expiry/end times, original text and message type.
+Updates/cancellations retire older referenced messages; duplicate identical IDs
+are deduplicated, conflicting duplicates invalidate the response. Future-issued,
+expired and cancelled messages cannot appear active. An empty fresh complete
+query means only no matching messages returned for that query/time, never safety.
+
+## Loading and serving optimizations
+
+See [loading performance](loading-performance.md) for explicit indexed exposure
+preparation, cache identity/freshness, worker behavior and benchmark evidence.
+Existing forecast/exposure response shapes are unchanged. Hashed UI/worker files
+are allowlisted by the committed build manifest and immutable; HTML and API
+responses remain no-store. Negotiated gzip preserves original JSON semantics.
+
+Authenticated source proxy reads now negotiate gzip too, enforcing the same
+wire and decoded byte caps before parsing. Invalid compressed responses remain
+unavailable. Request-local `Server-Timing` uses fixed phase names only. Snapshot
+and prepared-database caches include inode and change time so replacements do
+not reuse earlier validation; source failures and expiry still invalidate reads.

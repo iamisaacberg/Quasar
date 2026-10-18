@@ -1,7 +1,7 @@
-import { memo, useEffect, useState } from "react";
-import { Reports } from "./reports";
+import { lazy, memo, Suspense, useEffect, useState } from "react";
+const Reports = lazy(() => import("./reports").then(module => ({default: module.Reports})));
 import { MapSelectionPanel } from "./components/map-selection-panel";
-import { DataDashboard } from "./data-dashboard";
+const DataDashboard = lazy(() => import("./data-dashboard").then(module => ({default: module.DataDashboard})));
 import { ArrowUpRight, CloudRain, Layers3, MapPin, Radar, TriangleAlert, Waves, Search, X, SlidersHorizontal, Plus, Minus, ChevronLeft, ChevronRight, Info } from "lucide-react";
 
 declare global {
@@ -11,6 +11,9 @@ declare global {
 export const QuasarDashboard = memo(function QuasarDashboard() {
   const [isReportsView, setIsReportsView] = useState(window.location.hash === "#reports");
   const [isDataView, setIsDataView] = useState(window.location.hash === "#data");
+  const [visitedReports, setVisitedReports] = useState(isReportsView);
+  const [visitedData, setVisitedData] = useState(isDataView);
+  useEffect(() => {if (isReportsView) setVisitedReports(true); if (isDataView) setVisitedData(true);}, [isReportsView, isDataView]);
   useEffect(() => {
     // Mapbox may have initialized while a separate view hid its container.
     if (!isReportsView && !isDataView) window.dispatchEvent(new Event("resize"));
@@ -37,8 +40,10 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
   }, []);
   return (
     <div className={`workspace-view${isMapView ? " is-map-view" : ""}${isReportsView ? " is-reports-view" : ""}${isDataView ? " is-data-view" : ""}`}>
-      <Reports active={isReportsView} />
-      <DataDashboard active={isDataView} />
+      <Suspense fallback={<p role="status">Loading source view…</p>}>
+        {(isReportsView || visitedReports) && <Reports active={isReportsView} />}
+        {(isDataView || visitedData) && <DataDashboard active={isDataView} />}
+      </Suspense>
       <header className="workspace-header">
         <div className="breadcrumb"><span>Okaloosa County</span><span aria-hidden="true">/</span><strong>Map overview</strong></div>
       </header>

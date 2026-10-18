@@ -1,0 +1,16 @@
+# 175-second demonstration outline
+
+This is a recording script, not a recording, timed rehearsal or submitted entry. Use actual artifact-backed results only. Team/lab/deadline/submission administration is excluded. Do not read placeholders aloud or show private credentials.
+
+| Segment | Show | Suggested narration |
+| --- | --- | --- |
+| 0:00–0:20 | Quasar, Okaloosa and the analyst task | “Quasar helps an analyst inspect one rainfall forecast alongside county parcel context. The question is what deserves closer investigation, and where the inputs are still missing.” |
+| 0:20–0:40 | [Architecture](architecture.md) | “WeatherNext supplies rainfall forecasts. A separate model learns FEMA mapped-area fraction from terrain, area and stream-distance inputs. We combine them into an experimental index and keep unknowns visible.” |
+| 0:40–1:25 | Actual host/model/run evidence if available | After real proof: “This is the IBM LinuxONE run, its architecture, input identities and measured inference and aggregation result.” Show actual values. Until then: “The model was trained locally. LinuxONE county-data serving is recorded, but model inference and activation there are unfinished.” Do not substitute a generic IBM logo for evidence. |
+| 1:25–2:15 | The proven six-hour archive window; rainfall/exposure; scored and unknown parcel; cell coverage | “This is the October 9 archive, an initialization-based reconstruction. Rainfall is millimeters per six hours. Exposure is a relative index, not depth or probability. This parcel has an explanation; this one is unknown. Cell P90 excludes unknown scores while coverage counts them.” Show another hour and its actual matching result or unavailable state. If real artifacts are absent, demonstrate unavailable state and say so. |
+| 2:15–2:40 | [Model summary](model-summary.md), including weakness | “The recorded evaluation measures agreement with FEMA mapping, not observed floods. Aggregate errors improve over simple baselines, but fully mapped parcels have substantial subgroup errors. The rainfall formula is uncalibrated.” Quote numeric results only after reviewing the saved artifacts, and label recorded results until then. |
+| 2:40–2:55 | Source links and limitations | “The contribution is one place to inspect the forecast, parcel context, model arithmetic and missing evidence. User benefit and flood-outcome validation still need testing. Follow official NWS and local guidance.” |
+
+The exact supported demonstration window is 2026-10-09 05:00–11:00 UTC, midnight–06:00 Central. Actual indices require the matching reviewed assessment. Catalog code does not imply a real complete replay release. A zero rainfall/index result does not rule out storm surge or establish safety.
+
+Before recording, have a teammate explain back the model target, unknown state and difference between H3 P90 and rainfall maximum. Record any misunderstanding as a usability issue. Check actual encoded duration, audio and legibility after adding intros/outros. A 175-second outline leaves five seconds under 180, but does not measure the final video. Isaac or the operator supplies redacted actual host/app captures; no fabricated screen or narration may fill missing evidence.

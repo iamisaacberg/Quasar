@@ -9,6 +9,8 @@ import zlib
 from collections import OrderedDict
 from datetime import datetime, timezone
 from functools import lru_cache
+from .timing import phase
+from .transport import read_body
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
@@ -63,10 +65,10 @@ def remote_inspection(path, inventory_id=None):
             or parsed.query or parsed.fragment or len(token) < 32):
         raise SourceUnavailable("LinuxONE parcel service is not configured.")
     query = "?" + urlencode({"inventory_id": inventory_id}) if inventory_id else ""
-    request = Request(base + path + query, headers={"X-Quasar-Parcel-Token": token})
+    request = Request(base + path + query, headers={"X-Quasar-Parcel-Token": token, "Accept-Encoding": "gzip"})
     try:
-        with build_opener(_NoRedirect).open(request, timeout=12) as response:
-            body = response.read(2_000_001)
+        with phase("upstream"), build_opener(_NoRedirect).open(request, timeout=12) as response:
+            body = read_body(response, 2_000_000)
         if len(body) > 2_000_000:
             raise ValueError("Inspection response too large")
         data = json.loads(body)
@@ -244,10 +246,10 @@ def _remote_page(cell_id, offset, inventory_id, ring):
     if inventory_id is not None:
         params["inventory_id"] = inventory_id
     request = Request(f"{base_url}/api/parcels?{urlencode(params)}",
-                      headers={"X-Quasar-Parcel-Token": token, "User-Agent": "Quasar-Vercel-Proxy/0.1"})
+                      headers={"X-Quasar-Parcel-Token": token, "Accept-Encoding": "gzip", "User-Agent": "Quasar-Vercel-Proxy/0.1"})
     try:
-        with build_opener(_NoRedirect).open(request, timeout=12) as response:
-            body = response.read(2_000_001)
+        with phase("upstream"), build_opener(_NoRedirect).open(request, timeout=12) as response:
+            body = read_body(response, 2_000_000)
         if len(body) > 2_000_000:
             raise ValueError("Parcel page exceeded the response size limit")
         page = json.loads(body)

@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
+const React = require('react');
 
 function dashboard() {
   const exported = {};
@@ -14,6 +15,7 @@ function dashboard() {
     exports: exported,
     window: {location: {hash: '#map-overview'}},
     require: name => name === 'react' ? {
+      lazy: React.lazy, Suspense: React.Suspense,
       memo: component => component,
       useState: initial => [initial, () => {}],
       useEffect() {},

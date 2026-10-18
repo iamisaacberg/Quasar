@@ -235,6 +235,7 @@ def produce_replay(database, inputs, boundary, inspection, model_path, evaluatio
 def benchmark(database, artifact, output):
     """Measure R4–R7 aggregation after production, without starting a service."""
     from .. import exposure
+    from ..exposure_catalog import version
     began = time.perf_counter()
     data = read_json(artifact)
     if len(data["windows"]) != 1:
@@ -247,7 +248,7 @@ def benchmark(database, artifact, output):
     for resolution in (4, 5, 6, 7):
         result = exposure._aggregate(str(database), db_stat.st_size, db_stat.st_mtime_ns,
             str(artifact), stat.st_size, stat.st_mtime_ns, timestamp(window["valid_from"]),
-            timestamp(window["valid_to"]), resolution)
+            timestamp(window["valid_to"]), resolution, version(artifact))
         summaries[str(resolution)] = {"cell_count": len(result["cells"]), "run_id": result["run_id"]}
     elapsed = time.perf_counter()-began
     production_report = read_json(Path(artifact).with_suffix(Path(artifact).suffix+".benchmark.json"))
