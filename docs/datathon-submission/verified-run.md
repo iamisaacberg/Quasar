@@ -48,7 +48,7 @@ The optional county NWS importer successfully fetched the canonical official cou
 ## Archived radar proxy deployment
 
 On October 18, the radar proxy was installed on the authorized LinuxONE host
-`148.100.79.203` (`s390x`, Python 3.12.3). The active immutable release is
+(`s390x`, Python 3.12.3). The active immutable release is
 `/opt/quasar/releases/radar-20261018-4978dc054639`, and
 `/opt/quasar/current` points to it. The transferred Quasar package archive had
 SHA-256 `4978dc0546396eebf983b7d7088d69c34e4a70f9a3c81dc154fb037a1ea0b28a`.
