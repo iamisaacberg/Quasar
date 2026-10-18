@@ -5,6 +5,7 @@ const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrai
 let map, mapLoaded = false, current, mapData = {}, requestId = 0, started = false;
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 let radarTileKey = null;
+const radarPreloads = new Map();
 const countyGrids = new Map(), rainfallGrids = new Map(), sourceKeys=new Map(), sourceStates=new Map();
 let gridScheduled=false, gridEpoch=0;
 function stateExpression(expression,field) {
@@ -249,8 +250,20 @@ async function selectPlaybackFrame(index) {
 }
 
 function preparePlaybackFrame(index) {
-  if(playback?.playing===false || document.hidden || window.location && !["#map-overview","#isaias-replay", ""].includes(window.location.hash))return;
   const frame=forecastTimeline?.frames?.[index]?.collection;
+  if(playback?.playing===false || document.hidden || window.location && !["#map-overview","#isaias-replay", ""].includes(window.location.hash))return;
+  if(mapLoaded && $("radar-toggle").checked && frame?.mode==="county_archive") {
+    const bounds=map.getBounds(), zoom=Math.floor(map.getZoom());
+    const urls=window.QuasarMapUI?.archiveRadarTileUrls?.(frame.scenario.valid_from,
+      bounds.getWest(),bounds.getSouth(),bounds.getEast(),bounds.getNorth(),zoom) || [];
+    for(const url of urls) {
+      if(radarPreloads.has(url))continue;
+      const image=new Image();radarPreloads.set(url,image);
+      image.onload=image.onerror=()=>radarPreloads.delete(url);
+      image.src=url;
+    }
+    while(radarPreloads.size>64)radarPreloads.delete(radarPreloads.keys().next().value);
+  }
   if(!mapLoaded || $("map-layer").value!=="exposure" || frame?.mode!=="county_archive") return;
   const resolutions=new Set([QuasarSpatial.resolutionForZoom(map.getZoom())]);
   if(selectedCell) resolutions.add(selectedResolution);
