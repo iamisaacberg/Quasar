@@ -4,6 +4,37 @@ const fs = require("node:fs");
 const h3 = require("../quasar/static/vendor/h3-js.umd.js");
 const {aggregate} = require("../quasar/static/spatial.js");
 
+test("exposure labels use fixed thresholds, smooth colors and a distinct unknown", () => {
+  const {exposureBand,exposureColor,exposureExpression}=require('../quasar/static/spatial.js');
+  assert.deepEqual([0,34,35,64,65,84,85,100].map(x=>exposureBand(x).key),
+    ['lower_relative','lower_relative','moderate','moderate','elevated','elevated','highest','highest']);
+  assert.deepEqual([0,35,65,85,100].map(exposureColor),['#16a34a','#eab308','#f97316','#dc2626','#dc2626']);
+  assert.notEqual(exposureColor(50),exposureColor(51));
+  for (const x of [null,undefined,NaN,Infinity,-1,101,'85',true]) {
+    assert.equal(exposureBand(x).key,'unknown');
+    assert.equal(exposureColor(x),'#9ca3af');
+  }
+  const expression=exposureExpression('exposure_score');
+  assert.equal(expression[0],'case');
+  assert.equal(expression[2][0],'interpolate');
+  assert.equal(expression[2][1][0],'linear');
+});
+
+test("parcel colors use their own assessment and cell colors use server p90 only", () => {
+  const {exposureFeature,exposureCoverage}=require('../quasar/static/spatial.js');
+  const parcel={id:1,properties:{risk_score:null,risk_band:'unknown'}};
+  assert.equal(exposureFeature(parcel,{score:0,missing:[]}).properties.exposure_score,0);
+  assert.equal(exposureFeature(parcel,{score:90,missing:['terrain']}).properties.exposure_score,null);
+  assert.equal(exposureFeature(parcel,null).properties.exposure_incomplete,true);
+  const grid={features:[{id:'a',properties:{}},{id:'b',properties:{}}]};
+  const output=exposureCoverage(grid,{a:{p90_score:81,parcel_count:100,scored_count:20,incomplete:true}});
+  assert.equal(output.features[0].properties.exposure_score,81);
+  assert.equal(output.features[0].properties.exposure_incomplete,true);
+  assert.equal(output.features[1].properties.exposure_score,null);
+  assert.equal(output.features[1].properties.exposure_incomplete,true);
+  assert.equal(parcel.properties.exposure_score,undefined);
+});
+
 function point(id, score, lat=30.55, lon=-86.485) {
   return {type:"Feature", id, geometry:{type:"Point", coordinates:[lon,lat]},
     properties:{id, risk:{score, band:score === null ? "unknown" : "elevated"}}};

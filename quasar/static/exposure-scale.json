@@ -1,0 +1,12 @@
+{
+  "version": "relative-exposure-v1",
+  "title": "Experimental relative exposure",
+  "notice": "Green does not establish safety.",
+  "unknown_color": "#9ca3af",
+  "bands": [
+    {"minimum": 0, "key": "lower_relative", "color": "#16a34a", "label": "Lower relative exposure"},
+    {"minimum": 35, "key": "moderate", "color": "#eab308", "label": "Moderate relative exposure"},
+    {"minimum": 65, "key": "elevated", "color": "#f97316", "label": "Elevated relative exposure"},
+    {"minimum": 85, "key": "highest", "color": "#dc2626", "label": "Highest relative exposure"}
+  ]
+}

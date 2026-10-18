@@ -1,5 +1,10 @@
 # Data contract, version 2
 
+The additive [experimental exposure display contract](exposure-display.md) defines
+explicit parcel assessment artifacts, complete-inventory server-side P90 summaries,
+coverage, factor explanations and the fixed map scale. Geometry-only risk fields
+remain null/unknown; exposure assessments are separate and optional.
+
 ## Pilot boundary
 
 Okaloosa County is fixed to FIPS `12091`, timezone `America/Chicago`. API coordinates are WGS84 (EPSG:4326), `[longitude, latitude]`. The fixture loader checks county tags and coordinate validity. **It does not yet perform a county polygon intersection** and must not be used as an external-data import path without that check.

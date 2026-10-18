@@ -33,6 +33,7 @@ Imports and source preparation are deliberate commands. Browser requests read lo
 | --- | --- | --- |
 | Fixed scope and local settings | `quasar/config.py` | County, timezone, model version, non-executing `.env` loader, public Mapbox settings |
 | Scoring | `quasar/scoring.py` | Required inputs, normalization, contributions, bands, null behavior |
+| Optional parcel exposure | `quasar/exposure.py` | Explicit artifact validation, complete-inventory P90 summaries and authenticated LinuxONE proxy; no scoring method |
 | Main pipeline | `quasar/pipeline.py` | Fixture loading, scenario selection, mixed forecast association, GeoJSON, sorting |
 | Current forecast adapter | `quasar/adapters/weathernext.py` | Query construction, capped CLI import, schema and freshness checks |
 | Historical import/replay | `quasar/adapters/historical.py`, `quasar/replay.py` | Archived runs, temporal selection, forward windows, timeline, provenance |
@@ -144,9 +145,9 @@ Restrictions apply at departure time. The model does not predict changing condit
 
 ## Browser map and H3
 
-React provides the shell and dashboard markup; the existing JavaScript controller loads data and manages Mapbox. `spatial.js` assigns site coordinates to H3 resolution 7 and returns a copied point collection plus occupied-cell summaries. The county browsing layer fills every cell intersecting the authoritative Census boundary at zoom-dependent resolutions 4–7. All cell resolutions open the adapted TrialSmiles summary panel; a separate action zooms to the next level. R7 loads all intersecting county-validated parcel polygons in pages with persistent browser caching, resumable progress and a searchable list of 50 rows per page. Optional verified inspection inputs and native forecast overlaps populate descriptive context; overall scores remain unknown. A parcel opens its detail panel; close/back preserve the cell context. Real parcels remain unscored, and the rainfall browsing grid stays neutral. See the county/parcel API contract in `data-contract.md`.
+React provides the shell and dashboard markup; the existing JavaScript controller loads data and manages Mapbox. `spatial.js` assigns site coordinates to H3 resolution 7 and returns a copied point collection plus occupied-cell summaries. The county browsing layer fills every cell intersecting the authoritative Census boundary at zoom-dependent resolutions 4–7. All cell resolutions open the adapted TrialSmiles summary panel; a separate action zooms to the next level. R7 loads all intersecting county-validated parcel polygons in pages with persistent browser caching, resumable progress and a searchable list of 50 rows per page. Optional verified inspection inputs and native forecast overlaps populate descriptive context; overall scores remain unknown. A parcel opens its detail panel; close/back preserve the cell context. Geometry-only risk fields remain null, with optional exposure indices described below; the rainfall browsing grid stays neutral. See the county/parcel API contract in `data-contract.md`.
 
-Cell properties include site count, scored count, unknown count, maximum score, and mean score. Unknowns are excluded from numeric statistics. Maximum score determines the displayed band, so a mean does not hide a high-scoring sample. An all-unknown cell has null statistics and an unknown band.
+Fictional-site aggregation retains site/scored/unknown counts and maximum/mean scores. The displayed county exposure cells instead use server-side P90 parcel indices, complete indexed membership counts and explicit scoring coverage. Missing assessments remain gray/hatched; incomplete coverage retains hatching. Parcel indices are optional, separate from null geometry-only risk fields, and require an exact matching inventory/window. Scenario/hour changes retain cached geometry and selection while invalidating previous exposure indices. See the [exposure display contract](exposure-display.md).
 
 H3 boundaries are closed GeoJSON rings in longitude/latitude order. H3's indexing call receives latitude/longitude, so that conversion is explicit. Cells are not county-clipped, flood extents, continuous hazard surfaces, or weather downscaling.
 
@@ -175,10 +176,11 @@ The dashboard's official-alert endpoint returns `not_connected` and an empty lis
 | Method and path | Parameters/defaults | Result |
 | --- | --- | --- |
 | GET `/health` | Optional county scope | Process `ok`, fixed county, default demo mode; no upstream-readiness proof |
-| GET `/api/config` | Optional county scope | Notices, timezone, public Mapbox settings, H3 resolution |
+| GET `/api/config` | Optional county scope | Notices, timezone, public Mapbox settings, shared exposure scale |
 | GET `/api/scenarios` | Optional county scope | Three fixtures, historical descriptor, optional structurally valid current forecast |
 | GET `/api/properties` | `scenario=baseline`; replay accepts `at`, `preset`, `mode` | Scored GeoJSON with mode/provenance |
 | GET `/api/weather/status` | None | Current snapshot metadata/status without internal per-site records |
+| GET `/api/exposure` | Required six-hour `from`/`to`; `mode=current` by default; R4–R7 `resolution`, optional up to 100 `parcel_ids` and `run_id` | Matching optional assessments or complete-inventory P90 summaries; explicit unavailable/stale/invalid states |
 | GET `/api/timeline` | Required `site`; optional replay selection | 97-hour selected-site timeline |
 | GET `/api/routes` | Required `site`; optional replay selection | Exercise route/status without override maps |
 | POST `/api/routes` | Required JSON `site`; optional `at`, `preset`, `mode`, `roads`, `destinations` | Exercise route with validated overrides |
@@ -199,6 +201,7 @@ JSON responses and downloads use `Cache-Control: no-store`; JSON serialization r
 | `MAPBOX_PUBLIC_TOKEN` | Empty; only whitespace-free `pk.` values accepted; deliberately browser-visible |
 | `MAPBOX_STYLE` | `mapbox://styles/mapbox/light-v11`; requires a Mapbox style URL |
 | `QUASAR_WEATHERNEXT_FILE` | Unconfigured unless explicitly set |
+| `QUASAR_EXPOSURE_FILE` | Optional explicit assessment artifact; requires a matching parcel database, never produces scores itself |
 | `QUASAR_REPLAY_FILE` | `data/processed/isaias-2026.json` |
 | `QUASAR_ROUTES_FILE` | `data/processed/evacuation-network.json` |
 | `QUASAR_WIFI_PASSWORD` | Optional launcher input; otherwise interactive prompt |

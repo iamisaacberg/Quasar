@@ -1,10 +1,12 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const colors = { elevated: "#ee9b82", moderate: "#e6c36e", lower_relative: "#82c6c1", unknown: "#a4a8bb" };
+const colors = { unknown: "#9ca3af" };
 const names = { rainfall_6h_mm: "Rainfall, six hours (mm)", elevation_m: "Terrain elevation (m)", fema_zone: "Illustrative FEMA zone", waterway_distance_m: "Waterway distance (m)", gauge_margin_m: "Margin below flood stage (m)" };
 let map, mapLoaded = false, selectedId, current, mapData, requestId = 0, started = false, replayController, previousScenario = "baseline";
 let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 const countyGrids = new Map();
+let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, exposureExpiryTimer;
+const exposureResponses = new Map(), parcelAssessments = new Map();
 const parcelCache = window.QuasarParcelCache.create({indexedDB:window.indexedDB});
 let selectedResolution = 7, parcelEntry, cellContext, parcelContext, contextRequest = 0;
 let contextMessage = "", parcelListPage = 0, parcelSearch = "", lastParcelPaint = 0;
@@ -46,7 +48,7 @@ function choose(id, refresh = true) {
   $("detail-heading").textContent = property.label;
   const detail = $("detail");
   detail.replaceChildren(element("p", risk.score === null ? "Unknown" : `${risk.score} / 100`, "score"),
-    element("p", `${bandLabel(risk.band)} · unvalidated relative estimate`, "detail-note"));
+    element("p", `${QuasarSpatial.exposureBand(risk.score).label} · unvalidated relative estimate`, "detail-note"));
   for (const factor of risk.factors) {
     const row = element("div", undefined, "factor");
     const line = element("p");
@@ -87,7 +89,13 @@ function choose(id, refresh = true) {
 
 function render(data) {
   const changedScenario = current?.scenario.id !== data.scenario.id;
+  ++exposureRequest;
+  window.clearTimeout?.(exposureExpiryTimer);
+  exposureData = null; exposureHydrationRunning = false;
+  exposureResponses.clear(); parcelAssessments.clear();
   current = data;
+  // Keep cached geometry and the inspection panel; invalidate only hourly indices.
+  if (parcelEntry && mapLoaded) publishParcels(parcelEntry,true);
   replayController?.activate(data.scenario.id === "isaias-2026");
   $("replay-toggle").setAttribute("aria-pressed", String(data.scenario.id === "isaias-2026"));
   $("replay-toggle").textContent = data.scenario.id === "isaias-2026" ? "Exit Isaias simulation" : "Isaias simulation";
@@ -110,7 +118,7 @@ function render(data) {
     button.setAttribute("aria-label", `Inspect ${p.label}`);
     button.onclick = () => choose(p.id);
     const action = element("td"); action.append(button);
-    row.append(element("td", p.label), element("td", p.risk.score ?? "Unknown"), element("td", bandLabel(p.risk.band)), element("td", rainfallValue(feature) === null ? "Unavailable" : rainfallValue(feature).toFixed(1)), action);
+    row.append(element("td", p.label), element("td", p.risk.score ?? "Unknown"), element("td", QuasarSpatial.exposureBand(p.risk.score).label), element("td", rainfallValue(feature) === null ? "Unavailable" : rainfallValue(feature).toFixed(1)), action);
     $("sites").append(row);
   }
   showMapSummary();
@@ -143,7 +151,7 @@ function showMapSummary() {
   if (!current) return;
   const rain = $("map-layer").value === "rainfall";
   const synthetic = current.mode === "synthetic_demo";
-  $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Illustrative relative exposure · score / 100";
+  $("map-data-title").textContent = rain ? `${synthetic ? "Synthetic" : "WeatherNext 3"} rainfall · mm / 6h` : "Experimental relative exposure · index / 100";
   if ($("map-display-label")) $("map-display-label").textContent = $("map-data-title").textContent;
   const values = current.features.map(rainfallValue).filter(v => v !== null);
   $("map-data-values").textContent = values.length ? `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} mm / 6h · ${values.length}/${current.features.length} sampled sites with rainfall · ${current.features.length-values.length} unavailable` : `Rainfall unavailable at all ${current.features.length} sampled sites. Missing or stale inputs remain unknown.`;
@@ -160,12 +168,135 @@ function showMapSummary() {
   $("exposure-legend").hidden = rain;
   $("rainfall-legend").hidden = !rain;
   $("hex-toggle").disabled = false;
-  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : "Cell colors summarize fictional sites only. Neutral cells have no site score. Click cells to zoom, then inspect real parcels; parcel flood scores remain unknown.";
+  $("map-layer-note").textContent = rain ? "Labels show rainfall at fictional sites. The neutral county grid is for parcel browsing, not rainfall coverage. H3 does not sharpen the native 0.1 degree forecast." : `Cells show parcel P90; hatching marks incomplete scoring coverage. ${exposureData?.status === "ready" ? `Server aggregation: ${exposureData.aggregation_architecture}.` : exposureData?.message || "Parcel assessments unavailable."} Exercise sites remain fictional. Green does not establish safety.`;
 }
 
-function mapColors() {
-  return ["match", ["get", "risk_band"], "elevated", colors.elevated, "moderate", colors.moderate,
-    "lower_relative", colors.lower_relative, colors.unknown];
+function mapColors(field = "risk_score") {
+  return QuasarSpatial.exposureExpression(field);
+}
+
+function exposureParameters(resolution = 7) {
+  if (!current || ["synthetic_demo", "what_if_exercise"].includes(current.mode)) return null;
+  return {from:current.scenario.valid_from, to:current.scenario.valid_to, resolution:String(resolution),
+    mode:current.mode === "historical_mixed_demo" ? "replay" : "current"};
+}
+
+function selectedExposureSummary() {
+  const params=exposureParameters(selectedResolution);
+  const response=params && exposureResponses.get(new URLSearchParams(params).toString());
+  return response?.status === "ready" ? response.cells[selectedCell] : null;
+}
+
+function renderExposureInspection() {
+  if(!selectedCell) return;
+  const content=$("selection-exposure");
+  if(selectedParcel===null) {
+    const summary=selectedExposureSummary();
+    panelStats([[summary?.p90_score == null ? "Unknown" : summary.p90_score.toFixed(1),"Parcel index · P90"],
+      [summary ? `${summary.scored_count}/${summary.parcel_count}` : "Unknown","Scoring coverage"],
+      [summary ? String(summary.elevated_count) : "Unknown","Indices ≥65"]]);
+    content.replaceChildren(element("p",summary ? `${QuasarSpatial.exposureBand(summary.p90_score).label} · ${(summary.coverage*100).toFixed(1)}% scored${summary.incomplete ? " · Incomplete coverage" : ""}` : "Insufficient data · scoring coverage unknown","detail-note"));
+    void refreshExposure(selectedResolution);
+  } else {
+    const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
+    const score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
+    panelStats([[score===null ? "Unknown" : score.toFixed(1),"Exposure index / 100"],
+      [QuasarSpatial.exposureBand(score).label,"Relative exposure"],
+      [exposureData?.status === "ready" ? exposureData.method_version : "Unavailable","Method"]]);
+    $("selection-badge").textContent=score===null ? "County parcel · unscored" : "County parcel · experimental index";
+    content.replaceChildren(...(assessment?.factors || []).map(factor=>element("p",
+      `${names[factor.name] || factor.name}: ${factor.value ?? "Unknown"} · +${factor.contribution.toFixed(1)} index points`,"detail-note")));
+    if(score===null) content.append(element("p",`Insufficient data: ${assessment?.missing?.join(", ") || exposureData?.message || "No matching parcel assessment"}.`,"detail-note"));
+  }
+  $("selection-score").textContent=$("selection-stat-one").textContent === "Unknown" ? "Unscored" : $("selection-stat-one").textContent+" / 100";
+  content.append(element("p","Experimental relative exposure, not flood probability or depth. Green does not establish safety.","detail-note"));
+}
+
+function invalidateExposure(data) {
+  ++exposureRequest;
+  parcelAssessments.clear(); exposureHydrationRunning=false;
+  exposureData=data;
+  for(const key of exposureResponses.keys()) exposureResponses.set(key,data);
+}
+
+function scheduleExposureExpiry() {
+  window.clearTimeout?.(exposureExpiryTimer);
+  if(exposureData?.status!=="ready" || exposureParameters()?.mode!=="current") return;
+  const expires=Math.min(Date.parse(exposureData.valid_to),Date.parse(exposureData.computed_at)+2*3600000);
+  if(!Number.isFinite(expires)) return;
+  const request=exposureRequest;
+  exposureExpiryTimer=window.setTimeout?.(()=>{
+    if(request!==exposureRequest)return;
+    invalidateExposure({status:"stale",cells:{},message:"Parcel exposure results are stale; scores remain unknown."});
+    if(parcelEntry)publishParcels(parcelEntry,true);
+    updateCountyGrid();showMapSummary();
+    if(selectedCell)renderExposureInspection();
+    void refreshExposure(QuasarSpatial.resolutionForZoom(map.getZoom()),true);
+  },Math.max(0,expires-Date.now()+1));
+}
+
+async function refreshExposure(resolution, force=false) {
+  const params=exposureParameters(resolution);
+  if(!params) return;
+  const key=new URLSearchParams(params).toString();
+  if(force) exposureResponses.delete(key);
+  if(exposureResponses.has(key)) return;
+  const request=exposureRequest;
+  exposureResponses.set(key,{status:"loading",cells:{}});
+  try {
+    const data=await api(`/api/exposure?${key}`);
+    if(request!==exposureRequest) return;
+    if(data.status==="ready" && (!data.cells || data.aggregation!=="parcel_p90_linear")) throw new Error("Invalid exposure summary");
+    if(data.status==="ready" && exposureData?.status==="ready"
+        && (data.run_id!==exposureData.run_id || data.inventory_id!==exposureData.inventory_id)) {
+      ++exposureRequest;
+      parcelAssessments.clear(); exposureHydrationRunning=false; exposureResponses.clear();
+    }
+    if(data.status!=="ready") invalidateExposure(data);
+    exposureResponses.set(key,data);
+    exposureData=data;
+  } catch(error) {
+    if(request!==exposureRequest) return;
+    invalidateExposure({status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`});
+    exposureResponses.set(key,exposureData);
+  }
+  scheduleExposureExpiry();
+  updateCountyGrid(); showMapSummary();
+  if(selectedCell) renderExposureInspection();
+  if(parcelEntry) publishParcels(parcelEntry,true);
+}
+
+async function hydrateParcelExposure() {
+  const params=exposureParameters(), run=exposureData;
+  if(exposureHydrationRunning || !params || run?.status!=="ready" || !parcelEntry
+      || run.inventory_id!==parcelEntry.inventory_id || selectedResolution!==7) return;
+  const ids=parcelEntry.features.map(feature=>feature.id).filter(id=>!parcelAssessments.has(id));
+  if(!ids.length) return;
+  const request=exposureRequest, cell=selectedCell;
+  exposureHydrationRunning=true;
+  try {
+    for(let offset=0;offset<ids.length;offset+=100) {
+      if(request!==exposureRequest || selectedCell!==cell) return;
+      const batch=ids.slice(offset,offset+100);
+      const page=await api(`/api/exposure?${new URLSearchParams({...params,parcel_ids:batch.join(","),run_id:run.run_id})}`);
+      if(request!==exposureRequest || selectedCell!==cell) return;
+      if(page.status!=="ready" || page.run_id!==run.run_id || page.inventory_id!==parcelEntry?.inventory_id) throw new Error("Parcel exposure run or inventory changed");
+      for(const id of batch) parcelAssessments.set(id,page.parcels?.[id] || {score:null,factors:[],missing:["assessment_unavailable"]});
+    }
+    if(parcelEntry) publishParcels(parcelEntry,true);
+  } catch(error) {
+    if(request!==exposureRequest) return;
+    parcelAssessments.clear();
+    exposureData={status:"unavailable",cells:{},message:`Parcel exposure unavailable: ${error.message}`};
+    for(const key of exposureResponses.keys()) exposureResponses.set(key,exposureData);
+    if(parcelEntry) publishParcels(parcelEntry,true);
+    updateCountyGrid(); showMapSummary();
+  } finally {
+    if(request===exposureRequest) {
+      exposureHydrationRunning=false;
+      void hydrateParcelExposure();
+    }
+  }
 }
 
 function updateMap() {
@@ -201,13 +332,19 @@ function updateCountyGrid() {
   let grid = emptyCollection();
   if (county) {
     if (!countyGrids.has(resolution)) countyGrids.set(resolution, QuasarSpatial.countyCells(county.features[0].geometry, h3, resolution));
-    grid = QuasarSpatial.coverage(countyGrids.get(resolution), current, h3, resolution);
+    const params = exposureParameters(resolution);
+    const cached = params && exposureResponses.get(new URLSearchParams(params).toString());
+    grid = QuasarSpatial.exposureCoverage(countyGrids.get(resolution), cached?.status === "ready" ? cached.cells : {});
+    void refreshExposure(resolution);
   }
   map.getSource("hotspots").setData(grid);
   const rain = $("map-layer").value === "rainfall";
-  map.setPaintProperty("hotspot-fill", "fill-color", rain ? "#b9c9cd" : mapColors());
-  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0.07 : ["case", [">", ["get", "site_count"], 0], 0.25, 0.08]);
+  map.setPaintProperty("hotspot-fill", "fill-color", rain ? "#b9c9cd" : mapColors("exposure_score"));
+  map.setPaintProperty("hotspot-fill", "fill-opacity", rain ? 0.07 : 0.28);
   map.setPaintProperty("hotspot-outline", "line-color", "#c4d5d7");
+  for (const layer of ["parcel-fill", "selected-parcel-fill"]) map.setPaintProperty(layer,"fill-color",rain ? colors.unknown : mapColors("exposure_score"));
+  map.setLayoutProperty("parcel-hatch","visibility",rain ? "none" : "visible");
+  map.setLayoutProperty("hotspot-hatch","visibility",!rain && $("hex-toggle").checked ? "visible" : "none");
   $("grid-resolution").textContent = `H3 · RES ${resolution}`;
   if (county) $("grid-status").textContent = `${grid.features.length.toLocaleString()} cells · R${resolution} · click to inspect`;
 }
@@ -258,6 +395,7 @@ function renderInspectionInputs() {
   inputRows(rows);
   $("context-status").textContent=contextMessage;
   $("context-provenance").textContent=window.QuasarInspection.provenance(context);
+  renderExposureInspection();
 }
 
 async function loadInspection(kind,identifier) {
@@ -290,7 +428,9 @@ function renderParcelList() {
   const pages=Math.max(1,Math.ceil(features.length/50)); parcelListPage=Math.min(parcelListPage,pages-1);
   $("selection-content").replaceChildren(...features.slice(parcelListPage*50,(parcelListPage+1)*50).map(feature=>{
     const button=element("button",undefined,"selection-parcel-row"); button.type="button";
-    button.append(element("strong",`Parcel ${feature.id}`),element("span","Inspect inputs →"));
+    const score=feature.properties.exposure_score;
+    button.style.borderLeft=`4px solid ${QuasarSpatial.exposureColor(score)}`;
+    button.append(element("strong",`Parcel ${feature.id}`),element("span",`${score == null ? "Unknown" : score.toFixed(1)+" / 100"} · ${QuasarSpatial.exposureBand(score).label} →`));
     button.onclick=()=>inspectParcel(feature); return button;
   }));
   $("parcel-page").textContent=`${features.length ? parcelListPage*50+1 : 0}–${Math.min((parcelListPage+1)*50,features.length)} of ${features.length.toLocaleString()} loaded matches`;
@@ -362,7 +502,13 @@ function publishParcels(entry,force=false) {
   if(cellContext && cellContext.inventory_id!==entry.inventory_id) {
     cellContext=null; contextMessage="Reference inputs do not match the cached parcel inventory; current coverage is unknown.";
   }
-  parcelEntry=entry; parcelData={type:"FeatureCollection",features:entry.features};
+  parcelEntry=entry;
+  parcelData={type:"FeatureCollection",features:entry.features.map(feature=>QuasarSpatial.exposureFeature(feature,
+    exposureData?.status === "ready" && exposureData.inventory_id === entry.inventory_id ? parcelAssessments.get(feature.id) : null))};
+  const selected=parcelData.features.find(feature=>feature.id===selectedParcel);
+  if(selected) map.getSource("selected-parcel").setData({type:"FeatureCollection",features:[selected]});
+  if(selectedParcel!==null) renderExposureInspection();
+  void hydrateParcelExposure();
   if(force || Date.now()-lastParcelPaint>=100) {
     window.clearTimeout?.(parcelPaintTimer); parcelPaintTimer=undefined;
     map.getSource("parcels").setData(parcelData); lastParcelPaint=Date.now();
@@ -383,6 +529,10 @@ function publishParcels(entry,force=false) {
 async function loadParcels(force=false) {
   const cell=selectedCell, request=++parcelRequest, token=parcelCache.token;
   if(!cell || selectedResolution!==7) return;
+  if(force) {
+    await refreshExposure(selectedResolution,true);
+    if(request!==parcelRequest) return;
+  }
   $("parcel-retry").hidden=true;
   const cached=await parcelCache.get(cell);
   if(request!==parcelRequest) return;
@@ -475,22 +625,30 @@ function setupMap(settings) {
     map.on("error", () => { $("map-status").textContent = "Mapbox could not load a resource. Check your token, URL restrictions and network. The site list remains available."; });
     map.on("load", () => {
       const empty = {type:"FeatureCollection", features:[]};
+      const hatch = new Uint8Array(8*8*4);
+      for (let y=0;y<8;y++) for (let x=0;x<8;x++) {
+        const offset = (y*8+x)*4;
+        hatch.set([55,65,81,(x+y)%8<2 ? 150 : 0],offset);
+      }
+      map.addImage("exposure-hatch", {width:8,height:8,data:hatch});
       map.addSource("native-rainfall", {type:"geojson", data:empty});
       map.addLayer({id:"native-rainfall-fill",type:"fill",source:"native-rainfall",paint:{
         "fill-color":["case",["==",["get","rainfall_mm"],null],"#a1a9ad",["step",["get","rainfall_mm"],"#b9e2f8",25,"#509dce",75,"#3156a6"]],"fill-opacity":0.35}});
       map.addLayer({id:"native-rainfall-outline",type:"line",source:"native-rainfall",paint:{"line-color":"#6d99bc","line-width":0.6}});
       map.addSource("hotspots", {type:"geojson", data:empty});
-      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors(), "fill-opacity":0.25}});
-      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":mapColors(), "line-width":1}});
+      map.addLayer({id:"hotspot-fill", type:"fill", source:"hotspots", paint:{"fill-color":mapColors("exposure_score"), "fill-opacity":0.28}});
+      map.addLayer({id:"hotspot-hatch", type:"fill", source:"hotspots", filter:["==",["get","exposure_incomplete"],true], paint:{"fill-pattern":"exposure-hatch","fill-opacity":0.45}});
+      map.addLayer({id:"hotspot-outline", type:"line", source:"hotspots", paint:{"line-color":"#9ca3af", "line-width":1}});
       map.addSource("county-boundary", {type:"geojson", data:county || empty});
       map.addLayer({id:"county-boundary", type:"line", source:"county-boundary", paint:{"line-color":"#ecf4ef","line-width":2,"line-dasharray":[3,2]}});
       map.addSource("selected-cell", {type:"geojson", data:empty});
       map.addLayer({id:"selected-cell-outline", type:"line", source:"selected-cell", paint:{"line-color":"#ffffff","line-width":3}});
       map.addSource("parcels", {type:"geojson", data:empty});
-      map.addLayer({id:"parcel-fill", type:"fill", source:"parcels", paint:{"fill-color":"#9bd2c9","fill-opacity":0.18}});
-      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#bcebe2","line-width":1.1}});
+      map.addLayer({id:"parcel-fill", type:"fill", source:"parcels", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":0.45}});
+      map.addLayer({id:"parcel-hatch", type:"fill", source:"parcels", filter:["==",["get","exposure_incomplete"],true], paint:{"fill-pattern":"exposure-hatch","fill-opacity":0.65}});
+      map.addLayer({id:"parcel-outline", type:"line", source:"parcels", paint:{"line-color":"#6b7280","line-width":1.1}});
       map.addSource("selected-parcel", {type:"geojson", data:empty});
-      map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":"#56dec5","fill-opacity":0.3}});
+      map.addLayer({id:"selected-parcel-fill", type:"fill", source:"selected-parcel", paint:{"fill-color":mapColors("exposure_score"),"fill-opacity":0.3}});
       map.addLayer({id:"selected-parcel-outline", type:"line", source:"selected-parcel", paint:{"line-color":"#ffffff","line-width":3}});
       map.addSource("sites", {type:"geojson", data:empty});
       map.addLayer({id:"site-points", type:"circle", source:"sites", paint:{"circle-radius":8,
@@ -538,6 +696,7 @@ function setupMap(settings) {
 function toggleHex() {
   if (!mapLoaded) return;
   for (const id of ["hotspot-fill", "hotspot-outline"]) map.setLayoutProperty(id, "visibility", $("hex-toggle").checked ? "visible" : "none");
+  map.setLayoutProperty("hotspot-hatch", "visibility", $("hex-toggle").checked && $("map-layer").value !== "rainfall" ? "visible" : "none");
 }
 
 function showWeatherStatus(data) {
@@ -711,7 +870,11 @@ async function start() {
     });
     try { replayController.setContext(await api("/api/replay/context")); } catch { /* Explicit unavailable context in the replay. */ }
   }
-  try { setupMap((await api("/api/config")).map); }
+  try {
+    const config=await api("/api/config");
+    if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);
+    setupMap(config.map);
+  }
   catch { $("map-status").textContent = "Map configuration unavailable; the site list remains available."; }
   if (map) {
     try {

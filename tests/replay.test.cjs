@@ -44,7 +44,7 @@ async function boot(hash="#isaias-replay",{weather=false,unified=false}={}){
     else throw Error(url);
     return {ok:true,json:async()=>body};
   };
-  const context={console,URLSearchParams,fetch,document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
+  const context={console,URLSearchParams,fetch,QuasarSpatial:require('../quasar/static/spatial.js'),document:{getElementById:get,createElement:t=>new Element(t),createElementNS:(_,t)=>new Element(t),createTextNode:text=>({textContent:text}),dispatchEvent:()=>{}},
     Event:class{},MutationObserver:class{observe(){}},setTimeout,clearTimeout,setInterval:(fn)=>{timers.set(1,fn);return 1;},clearInterval:id=>timers.delete(id),
     window:{QuasarParcelCache,QuasarInspection,location:{hash},matchMedia:()=>({matches:false}),addEventListener:(name,fn)=>{(events[name]??=[]).push(fn);}}};
   vm.runInNewContext(fs.readFileSync('quasar/static/replay.js','utf8'),context);
