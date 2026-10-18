@@ -160,8 +160,9 @@ def _aggregate(database, db_size, db_modified, artifact_path, size, modified, st
             "computed_at": window["computed_at"], "scale_version": SCALE["version"],
             "aggregation": "parcel_p90_linear", "resolution": resolution,
             "aggregation_architecture": platform.machine(),
-            "cells": {cell: summarize(scores) for cell, scores in groups.items()},
-            "records": window["records"]}
+            # Cache summaries only; retaining full records here would keep eight
+            # county inventories alive as the user scrubs through replay hours.
+            "cells": {cell: summarize(scores) for cell, scores in groups.items()}}
 
 
 def exposure(query):
@@ -181,9 +182,26 @@ def exposure(query):
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
         return _remote(query)
     path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
-    if not path or not database:
-        return _unavailable("not_configured", "Parcel exposure results are not configured; scores remain unknown.")
+    directory = os.environ.get("QUASAR_EXPOSURE_DIRECTORY")
+    if not (path or directory) or not database:
+        missing = []
+        if not (path or directory):
+            missing.append("model assessment source")
+        if not database:
+            missing.append("parcel inventory")
+        return _unavailable("not_configured", "Exposure service is not configured: missing "
+                            + " and ".join(missing) + ". Prepared parcel inputs do not contain model results.")
+    if path and directory:
+        return _unavailable("invalid", "Configure only one exposure source: a file or a directory.")
     try:
+        if directory:
+            # Each model artifact has its own forecast provenance and 128 MiB limit.
+            # Resolve from validated UTC time, never a user-supplied path or nearest hour.
+            if start.minute or start.second or start.microsecond:
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+            path = str(Path(directory) / (start.strftime("%Y%m%dT%H%M%SZ") + ".json"))
+            if not Path(path).exists():
+                return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
         file_stat, db_stat = Path(path).stat(), Path(database).stat()
         result = _aggregate(database, db_stat.st_size, db_stat.st_mtime_ns, path, file_stat.st_size,
                             file_stat.st_mtime_ns, start, end, resolution)
@@ -201,9 +219,11 @@ def exposure(query):
             return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
         if query.get("run_id") not in (None, result["run_id"]):
             return _unavailable("changed", "Exposure run changed; refresh this selection.")
-        return {**{k: v for k, v in result.items() if k != "records"},
+        records = (_artifact(path, file_stat.st_size, file_stat.st_mtime_ns)["windows"][start, end]["records"]
+                   if ids else {})
+        return {**result,
                 "cells": {} if ids else result["cells"],
-                "parcels": {str(i): result["records"].get(i, {"parcel_id": i, "score": None,
+                "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
                             "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
         return _unavailable("invalid", "Parcel exposure artifact is unavailable or invalid; scores remain unknown.")

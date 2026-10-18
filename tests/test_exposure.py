@@ -42,6 +42,7 @@ class ExposureTests(unittest.TestCase):
         self.write()
         self.query = {"from": "2026-10-09T05:00:00Z", "to": "2026-10-09T11:00:00Z", "mode": "replay"}
         env = patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": str(self.artifact),
+                                     "QUASAR_EXPOSURE_DIRECTORY": "",
                                      "QUASAR_PARCEL_DATABASE": str(self.database), "QUASAR_LINUXONE_API_URL": ""})
         env.start()
         self.addCleanup(env.stop)
@@ -107,6 +108,50 @@ class ExposureTests(unittest.TestCase):
         self.data["windows"][0]["computed_at"] = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
         self.write()
         self.assertEqual(exposure.exposure(self.query)["status"], "invalid")
+
+    def test_directory_selects_exact_hour_and_retains_unknown_parcels(self):
+        directory = self.artifact.parent / "replay"
+        directory.mkdir()
+        (directory / "20261009T050000Z.json").write_text(json.dumps(self.data))
+        later = copy.deepcopy(self.data)
+        later["run_id"] = "synthetic-later-run"
+        later["windows"][0].update(valid_from="2026-10-09T06:00:00Z", valid_to="2026-10-09T12:00:00Z")
+        later["windows"][0]["parcels"][0] = self.record(1, 65)
+        (directory / "20261009T060000Z.json").write_text(json.dumps(later))
+        with patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": "", "QUASAR_EXPOSURE_DIRECTORY": str(directory)}):
+            first = exposure.exposure({**self.query, "parcel_ids": "1,3,4"})
+            self.assertEqual(first["parcels"]["1"]["score"], 0)
+            self.assertIsNone(first["parcels"]["3"]["score"])
+            self.assertIsNone(first["parcels"]["4"]["score"])
+            shifted = {**self.query, "from": "2026-10-09T06:00:00Z", "to": "2026-10-09T12:00:00Z"}
+            second = exposure.exposure({**shifted, "parcel_ids": "1"})
+            self.assertEqual(second["parcels"]["1"]["score"], 65)
+            self.assertEqual(second["run_id"], "synthetic-later-run")
+            self.assertEqual(exposure.exposure({**shifted, "run_id": first["run_id"]})["status"], "changed")
+            # Equivalent timezone offsets select the same UTC artifact.
+            self.assertEqual(exposure.exposure({**self.query, "from": "2026-10-09T00:00:00-05:00",
+                "to": "2026-10-09T06:00:00-05:00"})["run_id"], first["run_id"])
+            for start, end in (("07:00:00", "13:00:00"), ("05:00:00.000001", "11:00:00.000001")):
+                missing = exposure.exposure({**self.query, "from": f"2026-10-09T{start}Z", "to": f"2026-10-09T{end}Z"})
+                self.assertEqual(missing["status"], "unavailable")
+                self.assertEqual(missing["parcels"], {})
+            self.assertEqual(exposure.exposure({**self.query, "mode": "current"})["status"], "stale")
+            # A mislabeled or corrupt artifact cannot borrow the preceding window.
+            (directory / "20261009T060000Z.json").write_text(json.dumps(self.data))
+            self.assertEqual(exposure.exposure(shifted)["status"], "unavailable")
+            (directory / "20261009T060000Z.json").write_text("{broken")
+            self.assertEqual(exposure.exposure(shifted)["status"], "invalid")
+
+    def test_configuration_identifies_missing_source_and_rejects_ambiguous_sources(self):
+        with patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": ""}):
+            missing = exposure.exposure(self.query)
+            self.assertEqual(missing["status"], "not_configured")
+            self.assertIn("model assessment source", missing["message"])
+            self.assertNotIn("parcel inventory", missing["message"])
+        with patch.dict(os.environ, {"QUASAR_PARCEL_DATABASE": ""}):
+            self.assertIn("parcel inventory", exposure.exposure(self.query)["message"])
+        with patch.dict(os.environ, {"QUASAR_EXPOSURE_DIRECTORY": str(self.artifact.parent)}):
+            self.assertEqual(exposure.exposure(self.query)["status"], "invalid")
 
     def test_invalid_queries_are_not_source_failures(self):
         for patch_query in ({"parcel_ids": ",".join(str(i) for i in range(101))}, {"parcel_ids": "-1"}, {"parcel_ids":"x"}, {"resolution": "8"}, {"parcel_ids": "1,1"}, {"mode": "what_if"},
@@ -190,7 +235,7 @@ class ExposureApiTests(unittest.TestCase):
         status, body, _ = self.request("/api/config")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["exposure_scale"], exposure.SCALE)
-        with patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": "", "QUASAR_PARCEL_DATABASE": "", "QUASAR_LINUXONE_API_URL": ""}):
+        with patch.dict(os.environ, {"QUASAR_EXPOSURE_FILE": "", "QUASAR_EXPOSURE_DIRECTORY": "", "QUASAR_PARCEL_DATABASE": "", "QUASAR_LINUXONE_API_URL": ""}):
             status, body, _ = self.request("/api/exposure?from=2026-10-09T05:00:00Z&to=2026-10-09T11:00:00Z&mode=replay")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["status"], "not_configured")

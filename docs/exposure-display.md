@@ -26,6 +26,32 @@ results from a separately documented scoring method. Existing parcel API
 authentication also protects `/api/exposure`; set `QUASAR_PARCEL_API_TOKEN` to
 32+ characters. Never expose that token to the browser.
 
+For hourly playback, configure `QUASAR_EXPOSURE_DIRECTORY` **instead of**
+`QUASAR_EXPOSURE_FILE`. Store one existing schema-1 assessment per UTC start,
+named `YYYYMMDDTHHMMSSZ.json` (for example `20261009T050000Z.json`). Each file
+retains its own forecast provenance and 128 MiB limit. The API reads only the
+exact requested whole-hour file and still verifies its internal window,
+inventory, model diagnostics and freshness. Missing hours stay unavailable;
+there is no nearest-hour substitution. Setting both sources is an explicit
+configuration error. The authenticated proxy and browser API are unchanged.
+
+The October 9 Central replay needs 25 six-hour assessments starting hourly from
+`2026-10-09T05:00:00Z` through `2026-10-10T05:00:00Z`, inclusive. Run the existing
+`python3 -m quasar.modeling assess` command for each start with `--mode replay`
+and `--output <directory>/<UTC-start>.json`, using the same verified model,
+evaluation, inputs, inspection and archive paths. Benchmark the results before
+activation. Generate into a new ignored directory; configure that directory on
+the inventory host only after generation and verification complete. A single
+73 MB county assessment cannot populate the full replay, and combining 25 into
+one file would exceed the serving limit. Do not retrain to activate existing weights.
+
+If the inspector says the exposure service is **not configured**, this is a
+service-level gap, not proof that the selected parcel lacks terrain or FEMA data.
+Check the assessment source and `QUASAR_PARCEL_DATABASE` on the inventory host.
+`QUASAR_PARCEL_CONTEXT_DIRECTORY` supplies descriptive inputs only. Once the
+configured service is active, **Refresh parcels** requests fresh assessments.
+Parcel-level missing reasons are meaningful only after a matching run is served.
+
 The original display change adds no scoring formula or training dataset. Optional
 [offline modeling](modeling.md) can produce FEMA mapping proxy assessments after
 promotion gates pass, separately from any validated flood predictor. Missing assessments stay unknown
