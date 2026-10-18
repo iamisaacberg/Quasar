@@ -41,6 +41,9 @@ not observed rainfall, proof of local flooding, or a trained flood model.
    units. Report printing is available through the browser.
 
 Playback reuses one loaded snapshot; it does not download/recompute every frame.
+While playing, the map quietly preloads the next hour's radar tiles for the
+current viewport so the archived mosaic can keep pace with the replay. Scrubbing
+and paused playback do not start radar preloads.
 Recheck source explicitly reloads the archive. A failed reload clears rainfall
 and playback and shows the source failure. Recheck source also retries the
 selected parcel/cell reference inputs. Failed reference requests have their own

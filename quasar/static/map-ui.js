@@ -30,6 +30,20 @@
     const stamp=[date.getUTCFullYear(),String(date.getUTCMonth()+1).padStart(2,"0"),String(date.getUTCDate()).padStart(2,"0"),String(date.getUTCHours()).padStart(2,"0"),String(date.getUTCMinutes()).padStart(2,"0")].join("");
     return `/api/radar/tiles/${stamp}/{z}/{x}/{y}.png`;
   }
+  function archiveRadarTileUrls(at, west, south, east, north, zoom) {
+    const template=archiveRadarTiles(at);
+    if(!template || ![west,south,east,north,zoom].every(Number.isFinite) || east<west || north<south)return [];
+    const z=Math.max(4,Math.min(12,Math.floor(zoom))), scale=2**z;
+    const xFor=longitude=>Math.max(0,Math.min(scale-1,Math.floor((longitude+180)/360*scale)));
+    const yFor=latitude=>{
+      const lat=Math.max(-85.05112878,Math.min(85.05112878,latitude))*Math.PI/180;
+      return Math.max(0,Math.min(scale-1,Math.floor((1-Math.asinh(Math.tan(lat))/Math.PI)/2*scale)));
+    };
+    const urls=[];
+    for(let x=xFor(west);x<=xFor(east);x++)for(let y=yFor(north);y<=yFor(south);y++)
+      urls.push(template.replace("{z}",z).replace("{x}",x).replace("{y}",y));
+    return urls;
+  }
   function createSearch({get, element, token, geometry, select, isCellId=()=>false, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
     const input=get("map-search"), list=get("map-search-results"), status=get("map-search-status");
     let results=[], active=-1, version=0, controller, timer;
@@ -139,5 +153,5 @@
       if(!available)pause();draw();
     }};
   }
-  return {covers,bounds,archiveRadarTiles,createSearch,createPlayback,localTime};
+  return {covers,bounds,archiveRadarTiles,archiveRadarTileUrls,createSearch,createPlayback,localTime};
 });
