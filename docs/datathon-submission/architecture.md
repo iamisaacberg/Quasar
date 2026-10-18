@@ -20,7 +20,7 @@ flowchart LR
   F --> O[Separate current-alert API; excluded from archive]
 ```
 
-The graph describes implemented code paths. [The model run report](../modeling-run-v1.md) records local training and one local assessment. [The runtime activation record](../real-data-rollout.md) records earlier LinuxONE county geometry/context serving. **LinuxONE execution and activation of the trained model remain unverified here.** Catalog code and optional NWS code were tested with synthetic fixtures; neither has a real-data activation record in this checkout.
+The graph describes implemented code paths. [The model run report](../modeling-run-v1.md) records local training and one local assessment. [The runtime activation record](../real-data-rollout.md) records earlier LinuxONE county geometry/context serving. The [fresh execution checkpoint](verified-run.md) now verifies isolated LinuxONE inference, cross-host parity, the existing activated API path and all 25 transferred assessments. The optional catalog was validated separately; it is not the active directory configuration. A current NWS fetch succeeded without activating a current UI or refresh job.
 
 Python serves the API and committed React/Tailwind assets without third-party runtime dependencies. Training and polygon preparation use a separate optional environment. Portable inference does not install native ML libraries on `s390x`. A Dockerfile describes packaging; it does not establish a target-host container build or run.
 

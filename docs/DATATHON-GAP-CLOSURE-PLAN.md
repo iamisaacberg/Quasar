@@ -5,8 +5,10 @@
 > Exact-window catalog/batch production, transfer/parity/model-evidence tools and
 > separate current county-alert ingestion are implemented locally. Proposed-file
 > wording below is retained as the original plan, not current implementation status.
-> Real county artifacts, actual LinuxONE execution/activation and Isaac's rendered
-> acceptance remain unverified here. Isaac excluded administrative/submission tasks.
+> [Fresh verification](datathon-submission/verified-run.md) now records the runtime
+> transfer, authoritative containment, LinuxONE inference/parity, 25 actual windows
+> and bounded live API checks. Original research artifacts, human review and deeper
+> experiments remain open. Isaac excluded administrative/submission tasks.
 
 **Start here if you are taking over development.** This plan turns the [rubric audit](DATATHON-DEV-HANDOFF.md) into executable work. It covers the submission requirements, the working demo, the engineering gaps and the research needed for stronger claims. The companion [workboard](DATATHON-WORKBOARD.md) is the place to assign owners and record completion.
 

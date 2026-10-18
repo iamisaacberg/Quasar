@@ -12,7 +12,7 @@ The [demonstration/evidence package](docs/datathon-submission/README.md) contain
 the current architecture, model summary, attribution, replay/verification runbook,
 manual acceptance checklist and remaining research protocols. The
 [workboard](docs/DATATHON-WORKBOARD.md) separates implemented software from missing
-real-artifact, LinuxONE and human evidence; administrative/submission work is excluded.
+real-artifact, LinuxONE and human evidence; administrative/submission work is excluded. See the [verified execution checkpoint](docs/datathon-submission/verified-run.md) for fresh county, LinuxONE, parity and API evidence.
 
 - [App premise and product boundaries](docs/app-premise.md): the problem, intended audiences, current workflows, and limits of the demonstration.
 - [Data guide](docs/data-guide.md): fictional and imported inputs, provenance, geographic scales, freshness, missing data, and BI interpretation.
@@ -74,7 +74,7 @@ simulated routes are absent from the application. Their old HTTP endpoints retur
 The archive's official NWS feed remains explicitly disconnected; this is not an all-clear.
 An optional explicit county NWS importer and separate current-alert API read a
 short-lived saved snapshot, with no network fetch during serving and no current
-alerts on the replay. No live NWS check or activation is claimed.
+alerts on the replay. A live importer connection was verified separately; no current-alert UI/refresh was activated.
 
 ## Development and checks
 
@@ -110,4 +110,3 @@ a bounded exact-window catalog. Missing source hours remain gaps. Optional
 existing transferred evidence without retraining. See the
 [operations runbook](docs/datathon-submission/operations.md). Ignored county/model
 artifacts are still required; catalog code alone does not establish real coverage.
-

@@ -195,7 +195,7 @@ available only in offline research adapters. FIPS 12086 inputs are rejected.
 
 `QUASAR_EXPOSURE_CATALOG` optionally names a bounded JSON catalog and requires
 `QUASAR_EXPOSURE_ARTIFACT_ROOT`. The configured catalog takes precedence over
-`QUASAR_EXPOSURE_FILE`; invalid files or absent windows never fall back to FILE.
+`QUASAR_EXPOSURE_FILE` and `QUASAR_EXPOSURE_DIRECTORY`; invalid files or absent windows never fall back to FILE.
 The existing `/api/exposure` query/response shape and `run_id` behavior are unchanged.
 Remote LinuxONE proxy configuration still takes precedence over local serving.
 

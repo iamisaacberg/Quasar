@@ -17,7 +17,7 @@ Only Okaloosa County, Florida (FIPS `12091`) is supported. The current app uses 
 
 ## Scope and evidence
 
-The [recorded first model run](modeling-run-v1.md) lists 113,818 parcels, a trained model and one assessment. The [activation record](real-data-rollout.md) describes earlier LinuxONE county-context serving. Neither transfers ignored data into this checkout or verifies current host state. The [model summary](datathon-submission/model-summary.md) labels all reported real metrics as recorded until the supplied artifacts are rechecked.
+The [recorded first model run](modeling-run-v1.md) lists 113,818 parcels, a trained model and one assessment. The [activation record](real-data-rollout.md) describes earlier LinuxONE county-context serving. An authorized runtime transfer and fresh host checks are now recorded in [verified execution](datathon-submission/verified-run.md). The [model summary](datathon-submission/model-summary.md) distinguishes metrics checked against the active evaluation from missing raw residual/ledger verification.
 
 ## Current WeatherNext path
 
@@ -29,7 +29,7 @@ Each forward-six-hour sum needs six distinct valid hourly values from one eligib
 
 The archive spans 25 hourly starts from October 9 midnight through October 10 midnight Central (05:00 UTC endpoints). Each start looks forward six hours; the final window ends October 10 at 11:00 UTC. Selected runs must supply those required hours without mixing initializations. Missing/stale replay inputs stay unknown, using the deliberate replay clock rather than today's age cutoff. Original import/source records are preserved. Unknown publication time means initialization-based reconstruction, not proven warning lead time.
 
-The batch command plans this actual timeline and publishes each eligible assessment separately. Its coverage report records genuine source gaps. Catalog code and synthetic 25-position tests are not real county coverage. New acquisition to fill gaps requires an explicitly selected window/budget; the importer does not manufacture missing hours.
+The batch command plans this actual timeline and publishes each eligible assessment separately. Its coverage report records genuine source gaps. Catalog code and synthetic tests are separate from the now completed [verification of 25 existing real windows](datathon-submission/verified-run.md). New acquisition to fill gaps requires an explicitly selected window/budget; the importer does not manufacture missing hours.
 
 ## Geographic scales and joins
 

@@ -37,7 +37,7 @@ An explicit county importer retains native geometry, initialization/publication/
 
 The archive exposes 25 starts from October 9 midnight through October 10 midnight Central. The final forward window requires six additional hours. Map/Data/Reports share selected rainfall time. Selection changes invalidate prior exposure indices; late summary/parcel responses cannot repaint a new selection. Geometry may remain cached while time-dependent scores are cleared.
 
-Legacy single-file assessments still work. A configured catalog instead selects exact mode/window and enforces inventory/model/forecast/file identity beneath an explicit artifact root. No missing hour substitutes a prior score. Batch production writes a new release, records genuine gaps and publishes an atomic catalog marker after validation. Cached summaries do not retain full parcel maps across windows. Real resource acceptance remains a measured host task.
+Legacy single-file assessments still work. A configured catalog instead selects exact mode/window and enforces inventory/model/forecast/file identity beneath an explicit artifact root. No missing hour substitutes a prior score. Batch production writes a new release, records genuine gaps and publishes an atomic catalog marker after validation. Cached summaries do not retain full parcel maps across windows. The [verified execution checkpoint](datathon-submission/verified-run.md) records actual host measurements; broader load/recovery remains open.
 
 ## Browser map and H3
 

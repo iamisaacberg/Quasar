@@ -12,7 +12,7 @@ Okaloosa's [Local Mitigation Strategy](https://myokaloosa.gov/LMS) covers floodp
 | [FEMA Map Service Center](https://msc.fema.gov/portal/home) | Official regulatory flood-map information | Parcel context next to a selected rainfall window; a model trained to reproduce mapping must be compared with simply showing that mapping. It does not independently validate the maps or predict an event. |
 | [Okaloosa GIS viewer](https://webgis.myokaloosa.com/) | County GIS reference layers | An experimental linked forecast/model/unknown workflow. No claim that the county viewer lacks a particular feature or that Quasar is an agency-endorsed replacement. |
 
-The distinct contribution to test is a single view connecting forecast provenance, prepared county parcel context, portable model inference and explicit unknowns. LinuxONE model execution is part of the intended demonstrated path and remains pending actual host evidence. The architecture alone does not establish technical novelty.
+The distinct contribution to test is a single view connecting forecast provenance, prepared county parcel context, portable model inference and explicit unknowns. Fresh LinuxONE execution and API checks now have [actual evidence](verified-run.md); rendered review and measured analyst benefit remain open. The architecture alone does not establish technical novelty.
 
 ## Evaluation ready to run
 

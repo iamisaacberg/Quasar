@@ -1,6 +1,6 @@
 # Remaining research and operation
 
-These protocols cover T14–T20 of the [execution plan](../DATATHON-GAP-CLOSURE-PLAN.md). They are ready to review, not completed experiments. No new cloud acquisition, current-forecast schedule, labels, private host access, outreach or user study was performed. Assign actual owners before collecting evidence. No domain reviewer, partnership or source availability is invented.
+These protocols cover T14–T20 of the [execution plan](../DATATHON-GAP-CLOSURE-PLAN.md). They are ready to review, not completed experiments. No new cloud forecast acquisition, current-forecast schedule, outcome labels, outreach or user study was performed. Authorized isolated LinuxONE inference and a separate bounded NWS import are recorded in [verified execution](verified-run.md). Assign actual owners before collecting evidence. No domain reviewer, partnership or source availability is invented.
 
 ## T14: mapping-proxy weakness
 
@@ -8,7 +8,7 @@ Question: does the poor fully mapped validation group arise from reference/cover
 
 Before changing a feature or weight, record the candidate, development/grouped-validation selection rule and subgroup metric. Compare a direct FEMA display, development mean and current model where applicable. Report sample sizes, abstention and equal-block/parcel errors; do not hide a weak group behind overall RMSE. The existing test has been examined: it cannot become untouched by deleting its ledger or recreating the dataset. A redesigned candidate needs genuinely independent evaluation.
 
-Stop if reference/label quality cannot support comparison, or if there is no defensible incremental use over the available FEMA layer. Preserve the old model and report a restriction or negative result. This release's interpretation is restricted to experimental descriptive comparison, with no operational property prioritization. That restriction does not claim the cause of the weakness has been established. Actual reproduced failure analysis remains blocked on the source bundle.
+Stop if reference/label quality cannot support comparison, or if there is no defensible incremental use over the available FEMA layer. Preserve the old model and report a restriction or negative result. This release's interpretation is restricted to experimental descriptive comparison, with no operational property prioritization. That restriction does not claim the cause of the weakness has been established. The active evaluation and weak subgroup counts were inspected, but raw residuals/native members/training ledger remain absent; independently reproduced failure analysis remains blocked on those specific artifacts.
 
 ## T15: observed rainfall-impact experiment
 
@@ -41,7 +41,7 @@ Measure actual source availability → import → production → API latency ove
 
 ## T18: official alerts
 
-County import/interpretation and an explicit current API are implemented and fixture-tested; see [operations](operations.md#optional-current-official-alerts). The documented county UGC query avoids guessing a single forecast-zone relationship. A live source check, original message review and separate current UI acceptance remain open. The archive never displays present-day alerts. No hazard/safety conclusion is drawn from an empty, stale, partial or disconnected feed.
+County import/interpretation and an explicit current API are implemented and fixture-tested; see [operations](operations.md#optional-current-official-alerts). The documented county UGC query avoids guessing a single forecast-zone relationship. A bounded live canonical county fetch succeeded and its original response/lifecycle was retained. The snapshot deliberately expires after 120 seconds. Separate current UI acceptance and any operated refresh remain open. The archive never displays present-day alerts. No hazard/safety conclusion is drawn from an empty, stale, partial or disconnected feed.
 
 ## T19: operation, recovery and adoption
 

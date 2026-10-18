@@ -1,12 +1,12 @@
 # Architecture and implementation status
 
-Quasar is an Okaloosa County source-data application (FIPS `12091`). The [current architecture visual](datathon-submission/architecture.md) separates implemented code, recorded local training, earlier county serving and pending LinuxONE model activation. The [runtime contract](data-contract.md) defines fields and failure states.
+Quasar is an Okaloosa County source-data application (FIPS `12091`). The [current architecture visual](datathon-submission/architecture.md) separates implemented code, recorded local training, the active directory release, fresh isolated LinuxONE inference and optional catalog verification. The [runtime contract](data-contract.md) defines fields and failure states.
 
 ## Runtime path
 
 Explicit county preparation and WeatherNext import create validated snapshots and manifests. Local optional XGBoost training exports a dependency-free portable FEMA mapping proxy. Explicit offline assessment production combines its output with six complete native forecast hours. Immutable single-window artifacts can be selected by an optional exact-window catalog. The inventory host computes complete-inventory H3 P90 summaries; hosted Vercel instances proxy its authenticated HTTPS API. The browser receives only a public Mapbox token.
 
-Python serves the API and committed React/Tailwind assets. The server/container needs no ML/GIS, Jupyter or Node runtime. The optional ML/GIS environment stays local. Training, inference, aggregation, serving and browser display are separate proof steps. The [recorded first run](modeling-run-v1.md) proves local training and one local assessment; it does not prove LinuxONE model execution or activation.
+Python serves the API and committed React/Tailwind assets. The server/container needs no ML/GIS, Jupyter or Node runtime. The optional ML/GIS environment stays local. Training, inference, aggregation, serving and browser display are separate proof steps. The [recorded first run](modeling-run-v1.md) proves local training and one local assessment; the separate [verified execution checkpoint](datathon-submission/verified-run.md) now records fresh LinuxONE inference/cross-host parity and bounded checks of the already active API.
 
 ## Geometry, weather and exposure
 
@@ -14,7 +14,7 @@ County parcels require authoritative boundary validation; prepared inputs preser
 
 The default map is the October 9 archive with 25 hourly starts and a forward-six-hour window. Native WeatherNext rainfall stays at 0.1-degree resolution. H3 rainfall displays the maximum overlapping native value where coverage is complete. H3 exposure displays P90 across scored parcel members, with every member retained in the coverage denominator. Unknown scores stay transparent; they are never zero-filled or interpreted as safety. Reports/export remain source-rainfall products.
 
-Model artifacts retain per-window forecast/model provenance. The optional catalog is bounded and resolves only listed files beneath an explicit server-side artifact root, verifies content hashes, and rejects mismatched inventory/model/source/window identities. It cannot fall back to a prior hour or single-file configuration. One decoded artifact and eight small summary cache entries bound retained data across hour changes; actual county peak memory still needs measurement on the target host.
+Model artifacts retain per-window forecast/model provenance. The optional catalog is bounded and resolves only listed files beneath an explicit server-side artifact root, verifies content hashes, and rejects mismatched inventory/model/source/window identities. It cannot fall back to a prior hour or single-file configuration. One decoded artifact and eight small summary cache entries bound retained data across hour changes; actual target-host measurements are recorded in the [verified execution checkpoint](datathon-submission/verified-run.md), separately from local fixture checks.
 
 ## Access and failure states
 

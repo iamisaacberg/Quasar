@@ -165,7 +165,7 @@ confidence intervals or safety.
 
 The optional server-only catalog and artifact root select immutable schema-1
 single-window files without changing the exposure API. Catalog beats the legacy
-single-file setting; failures/missing windows never substitute prior results.
+file/directory settings; failures/missing windows never substitute prior results.
 All selected files must match the catalog county, inventory, model hash, forecast
 hash, mode and exact six-hour interval. Absolute/traversing/escaping-symlink paths,
 duplicate keys, invalid hashes and corrupt files fail closed. Source provenance

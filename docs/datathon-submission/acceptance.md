@@ -1,6 +1,6 @@
 # Acceptance record
 
-Source checkpoint: implementation based on `507de03`; record final reviewed commit when handing off. Synthetic regression results are separate from real-artifact and rendered review. No boxes below have been checked by generating this page.
+Source checkpoint: implementation based on `507de03`; record final reviewed commit when handing off. Synthetic regression results are separate from real-artifact and rendered review. Checked rows below cite retained execution reports; manual review remains unchecked.
 
 ## Automated behavior exercised
 
@@ -8,16 +8,18 @@ The Python suite covers score/unknown handling, validation, county boundaries, s
 
 Local logs are under `.context/`, indexed in the private evidence manifest. They are not committed. A passing fixture suite is not a real county production, source/API run, LinuxONE benchmark, browser render or model validation study.
 
+Fresh actual results are linked in [verified execution](verified-run.md). Checked rows below refer to those retained reports; unchecked rows still require their stated evidence.
+
 ## Required real-data/API evidence
 
-- [ ] Bundle receipt and producer hashes match; semantic model/forecast/inventory/boundary lineage matches.
-- [ ] Authoritative containment evidence accompanies the actual inventory.
-- [ ] Actual `s390x` inference, complete inventory, benchmark and cross-host parity are retained.
-- [ ] Source, proxy, summary and parcel responses agree on model/run/inventory/window.
-- [ ] Actual scored and unknown parcel IDs are selected from the result, not assumed from an old example.
-- [ ] An unsupported hour returns unavailable with no substituted scores.
-- [ ] Auth rejection, invalid input and source failure are exercised without disturbing the shared service.
-- [ ] All-hour catalog, if activated, has reviewed per-window coverage and actual host memory/latency results.
+- [x] Runtime bundle receipt/host hashes and model/forecast/inventory/boundary audit match. Original training lineage remains a separate missing subset.
+- [x] Authoritative containment evidence accompanies the actual inventory.
+- [x] Actual `s390x` inference, complete inventory, benchmark and cross-host parity are retained.
+- [x] Actual public proxy summaries/parcel responses agree on run/inventory/window and active model; fresh offline host result has expected new run/time. No new service activation.
+- [x] Actual scored and unknown parcel IDs are selected from the result, not assumed from an old example.
+- [x] An unsupported hour returns unavailable with no substituted scores.
+- [x] Auth rejection, invalid input and source failure are exercised without disturbing the shared service.
+- [x] All-hour candidate catalog has actual per-window coverage and host memory/latency evidence. It was not activated; existing directory serving remains in place.
 - [ ] Source/proxy cold and warm behavior fits configured timeouts/body caps.
 
 ## Isaac's manual review

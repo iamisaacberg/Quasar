@@ -19,7 +19,13 @@ def main():
     result = {"lockfile_sha256": hashlib.sha256(raw).hexdigest(), "packages": packages,
               "notice": "Lockfile inventory, including optional platform packages; not all entries are installed on every host. Declared license metadata is not a permission review. Preserve upstream license/notice files in distributed bundles."}
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(result, indent=2)+"\n")
+    # One package per line keeps the generated inventory reviewable without
+    # dropping transitive/optional versions, resolved URLs or integrity hashes.
+    lines = ["{", '  "lockfile_sha256": '+json.dumps(result["lockfile_sha256"])+",",
+             '  "notice": '+json.dumps(result["notice"])+",", '  "packages": [']
+    lines.append(",\n".join("    "+json.dumps(p, separators=(",", ":")) for p in packages))
+    lines.extend(["  ]", "}", ""])
+    args.output.write_text("\n".join(lines))
     print(f"Recorded {len(packages)} locked package entries")
 
 

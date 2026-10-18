@@ -15,7 +15,9 @@ from .weathernext import iso, timestamp
 from ..modeling import read_json, write_json
 from ..parcels import _NoRedirect
 
-SOURCE_URL = "https://api.weather.gov/alerts?active=true&zone=FLC091&status=actual"
+# The query form redirects to this canonical same-county endpoint. Use it
+# directly so redirect refusal still protects every actual network request.
+SOURCE_URL = "https://api.weather.gov/alerts/active/zone/FLC091"
 GUIDE = "https://www.weather.gov/media/documentation/docs/NWS_Geolocation.pdf"
 MAX_PAGES, MAX_BYTES, TTL_SECONDS = 8, 8_000_000, 120
 NOTICE = "Official NWS county-query results, separate from experimental exposure. An empty result is not an all-clear. Follow official NWS/local guidance."
@@ -24,10 +26,12 @@ NOTICE = "Official NWS county-query results, separate from experimental exposure
 def page_url(url):
     parts = urlsplit(url)
     query = parse_qs(parts.query)
-    if (parts.scheme != "https" or parts.netloc != "api.weather.gov" or parts.path != "/alerts"
-            or parts.fragment or query.get("zone") != ["FLC091"]
-            or query.get("active") != ["true"] or query.get("status") != ["actual"]
-            or set(query) - {"zone", "active", "status", "cursor", "limit"}):
+    canonical = parts.path == "/alerts/active/zone/FLC091" and not (set(query)-{"cursor", "limit"})
+    filtered = (parts.path == "/alerts" and query.get("zone") == ["FLC091"]
+                and query.get("active") == ["true"] and query.get("status") == ["actual"]
+                and not (set(query)-{"zone", "active", "status", "cursor", "limit"}))
+    if (parts.scheme != "https" or parts.netloc != "api.weather.gov" or parts.fragment
+            or not (canonical or filtered) or any(len(v) != 1 for v in query.values())):
         raise ValueError("Unexpected NWS pagination URL")
     return url
 

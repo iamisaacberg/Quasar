@@ -82,7 +82,7 @@ class CountyAlertTests(unittest.TestCase):
             calls.append(request)
             self.assertEqual(timeout, 10)
             return BytesIO(json.dumps({"type": "FeatureCollection", "features": [message(str(len(calls)))],
-                "pagination": {"next": alerts.SOURCE_URL+"&cursor=second"} if len(calls) == 1 else {}}).encode())
+                "pagination": {"next": alerts.SOURCE_URL+"?cursor=second"} if len(calls) == 1 else {}}).encode())
         result = alerts.import_snapshot("Quasar synthetic tests", opener=opener, now=NOW)
         self.assertTrue(result["complete"])
         self.assertEqual((result["pages"], len(result["features"])), (2, 2))

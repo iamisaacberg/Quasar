@@ -3,11 +3,11 @@
 | Claim | Evidence | Wording supported now | Boundary / next evidence |
 | --- | --- | --- | --- |
 | County source application | Current source, required checks | Quasar displays imported Okaloosa forecasts and prepared parcel context | Fresh live configuration and Isaac's rendered acceptance remain separate |
-| Trained model | [Recorded run](../modeling-run-v1.md) | A locally trained FEMA mapping proxy is recorded | Retrieve weights/evaluation/ledger; run read-only evidence verification |
+| Trained model | [Recorded run](../modeling-run-v1.md) | A locally trained FEMA mapping proxy is recorded | Active weights/evaluation and inference are checked; original dataset/native members/residuals/ledger still needed for arithmetic/lineage replay |
 | Rainfall plus model | Existing producer and synthetic tests | Offline code produces an experimental rainfall interaction | It is not a trained flood-outcome model or calibrated probability |
-| Complete replay software | Batch/catalog tests | Software handles 25 exact forward-six-hour windows and reports source gaps | No 25-window real county release exists in this checkout |
-| LinuxONE | [Prior county API activation](../real-data-rollout.md) | Earlier county serving on LinuxONE is recorded | Model inference, benchmark, parity and matching app output require an actual run |
-| Official alerts | County importer/API fixtures and [NWS county-query guidance](https://www.weather.gov/media/documentation/docs/NWS_Geolocation.pdf) | Optional current-alert code preserves empty, partial, stale and failure states | No live current NWS fetch is claimed; archive stays disconnected |
+| Complete replay software | Batch/catalog tests | Software handles 25 exact forward-six-hour windows and reports source gaps | All 25 existing real windows are now transferred/validated; optional catalog remains unactivated |
+| LinuxONE | [Prior county API activation](../real-data-rollout.md) | Earlier county serving on LinuxONE is recorded | Fresh LinuxONE inference/benchmark, full-parcel cross-host parity and bounded API checks are in [verified execution](verified-run.md); Isaac review/recovery remain open |
+| Official alerts | County importer/API fixtures and [NWS county-query guidance](https://www.weather.gov/media/documentation/docs/NWS_Geolocation.pdf) | Optional current-alert code preserves empty, partial, stale and failure states | One live canonical county import succeeded and then expires; current UI/refresh unactivated, archive disconnected |
 | Security | Narrow proxies, validation and authentication regression tests | Source tokens are server-only; invalid inputs fail closed in tests | No confidential-computing, acceleration, availability or comprehensive security certification |
 | Community benefit | [Problem brief](problem-and-comparison.md) | One view may reduce source switching for an analyst | No user study, agency partnership, adoption or loss reduction was measured |
 | Submission | Excluded by Isaac | Demonstration materials prepared locally | No submitted entry, recording, receipt or eligibility completion claimed |

@@ -12,7 +12,7 @@ second scorer for the same exported trees, retained as a manual fallback; it doe
 not replace the current one or introduce separately trained weights.
 Ignored datasets and trained artifacts are
 not included in a repository clone. This mapping-proxy evaluation does not
-establish observed-flood accuracy or actual LinuxONE performance.
+establish observed-flood accuracy or general LinuxONE performance. Fresh bounded execution results are in [verified execution](datathon-submission/verified-run.md).
 
 Quasar learns patterns in FEMA mapped hazard areas from parcel
 terrain and mapped stream proximity, then combines that estimate with six-hour
@@ -29,7 +29,7 @@ meters before `log1p`. Audit accepts either manifest spelling and rejects other 
 
 **Training and promotion are run results, not a property of this source file.**
 Check `evaluation.json` before describing a model as promoted.
-Ignored county datasets are absent from this workspace. Synthetic tests do not
+An authorized runtime transfer now supplies county inputs, active weights/evaluation and existing assessments in this workspace; original training data/native members/residuals/test ledger remain absent. Synthetic tests do not
 establish flood accuracy, county coverage, visual acceptance or LinuxONE execution.
 County scope is Okaloosa, FIPS `12091`.
 
