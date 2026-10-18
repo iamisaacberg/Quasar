@@ -53,6 +53,15 @@ class ExposureVersionTests(unittest.TestCase):
         with patch.dict(os.environ, {**self.env, "QUASAR_EXPOSURE_V2_FILE": "", "QUASAR_EXPOSURE_FILE": self.env["QUASAR_EXPOSURE_V1_FILE"]}):
             self.assertEqual(exposure.exposure({**self.query, "model": "v2"})["status"], "not_configured")
 
+    def test_reviewed_model_pins_work_without_deployment_identity_variables(self):
+        self.artifacts()
+        env = {key: value for key, value in self.env.items() if not key.endswith("_MODEL_VERSION")}
+        with patch.dict(exposure.MODEL_VERSION_DEFAULTS, {"v2": "mapped-susceptibility-v2-synthetic"}), \
+                patch.dict(os.environ, env, clear=True):
+            result = exposure.exposure({**self.query, "model": "v2"})
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["model_metadata"]["model_version"], "mapped-susceptibility-v2-synthetic")
+
     def test_proxy_forwards_choice_and_rejects_wrong_or_unlabeled_response(self):
         self.artifacts()
         with patch.dict(os.environ, self.env):

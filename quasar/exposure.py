@@ -23,6 +23,17 @@ from .transport import read_body
 
 SCALE = json.loads((Path(__file__).parent / "static/exposure-scale.json").read_text())
 MAX_BYTES = 128 * 1024 * 1024
+MODEL_VERSION_DEFAULTS = {
+    "v1": "mapped-susceptibility-v1-7673922e5dca",
+    "v2": "mapped-susceptibility-v4-positive-736f711e2596",
+}
+
+
+def _required_model(choice):
+    """Use reviewed release pins unless a serving environment overrides them."""
+    if choice:
+        return os.environ.get("QUASAR_EXPOSURE_" + choice.upper() + "_MODEL_VERSION") or MODEL_VERSION_DEFAULTS[choice]
+    return os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
 
 
 def valid_score(value):
@@ -192,7 +203,7 @@ def exposure(query):
     if choice is not None and choice not in ("v1", "v2"):
         raise ValueError("Exposure model must be v1 or v2")
     prefix = "QUASAR_EXPOSURE_"+choice.upper() if choice else "QUASAR_EXPOSURE"
-    required_model = os.environ.get(prefix+"_MODEL_VERSION") if choice else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION")
+    required_model = _required_model(choice)
     try:
         start, end = timestamp(query["from"]), timestamp(query["to"])
         resolution = int(query.get("resolution", "7"))
@@ -268,8 +279,7 @@ def _finish(result, records, query, start, end, ids, mode):
     if result is None:
         return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
     choice = query.get("model")
-    required_model = (os.environ.get("QUASAR_EXPOSURE_"+choice.upper()+"_MODEL_VERSION") if choice
-                      else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION"))
+    required_model = _required_model(choice)
     if required_model and result.get("model_metadata", {}).get("model_version") != required_model:
         return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
     context = model_context(result)
@@ -317,8 +327,7 @@ def _remote(query):
             choice = query.get("model")
             if choice is not None and data.get("model_choice") != choice:
                 raise ValueError("Source did not return the selected exposure version")
-            required_model = (os.environ.get("QUASAR_EXPOSURE_"+choice.upper()+"_MODEL_VERSION") if choice
-                              else os.environ.get("QUASAR_EXPOSURE_REQUIRED_MODEL_VERSION"))
+            required_model = _required_model(choice)
             if required_model and context.get("model_metadata", {}).get("model_version") != required_model:
                 return _unavailable("unavailable", "The required exposure model is unavailable; archived model scores are not substituted.")
             if context:
