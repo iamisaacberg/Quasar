@@ -181,7 +181,8 @@ cannot verify a real flood. Observations belong to the next six hours. Negatives
 require explicit coverage of the entire window; absent/ambiguous/unverified records
 are excluded, never negatives. Forecast hashes must match supplied inspection-verified
 snapshots. Predictors are the six static features plus validated forecast six-hour
-rainfall. Future reference information is rejected. Missing publication times remain
+rainfall, first-three-hour rainfall and peak hourly rainfall accumulation, all in
+mm. Future reference information is rejected. Missing publication times remain
 initialization-based reconstructions, not proven as-issued predictions.
 
 Readiness requires >=10 independent episodes, >=200 positive and >=200 negative

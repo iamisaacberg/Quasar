@@ -27,8 +27,8 @@ authentication also protects `/api/exposure`; set `QUASAR_PARCEL_API_TOKEN` to
 32+ characters. Never expose that token to the browser.
 
 The original display change adds no scoring formula or training dataset. Optional
-[offline modeling](modeling.md) now produces promoted FEMA mapping proxy assessments,
-separately from any validated flood predictor. Missing assessments stay unknown
+[offline modeling](modeling.md) can produce FEMA mapping proxy assessments after
+promotion gates pass, separately from any validated flood predictor. Missing assessments stay unknown
 with transparent interiors. Fictional sites are not served by the application.
 
 Schema 1 example (**synthetic format documentation**, not real parcel data):

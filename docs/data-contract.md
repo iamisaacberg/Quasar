@@ -140,9 +140,10 @@ pagination in IndexedDB under the bounded inspection cache policy above.
 
 Separate offline descriptive-input artifacts are defined in
 [parcel input preparation](parcel-inputs.md). Their terrain/FEMA/reference-distance
-fields enter the opt-in inspection endpoints above, separately from geometry, and
-never enter the scoring pipeline. A complete artifact requires
-its final manifest; every research record retains null risk scores and explicit
+fields enter the opt-in inspection endpoints above, separately from geometry.
+The optional [offline modeling pipeline](modeling.md) consumes verified descriptive
+inputs separately; inspection endpoints do not calculate scores. A complete artifact
+requires its final manifest; every research record retains null risk scores and explicit
 coverage/unknown states.
 
 

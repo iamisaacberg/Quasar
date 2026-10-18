@@ -2,6 +2,12 @@
 
 **Handoff snapshot: October 17, 2026. County scope: Okaloosa, Florida, FIPS `12091`.**
 
+Current code qualification: the later [offline modeling pipeline](modeling.md)
+implements experimental FEMA mapping-proxy training, assessment production and
+gated observed-outcome research. The implementation gaps below describe this
+handoff snapshot; adding that code establishes no trained or validated real model,
+configured assessments, observed-report overlay or LinuxONE execution.
+
 ## What we are building
 
 Quasar should help someone inspect **which locations deserve closer attention as forecast rainfall changes**, with the supporting inputs and unknowns visible.
