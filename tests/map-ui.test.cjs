@@ -67,7 +67,7 @@ test('search stays disabled without a public token or authoritative geometry',()
 const times=Array.from({length:3},(_,i)=>`2026-10-17T${String(12+i).padStart(2,'0')}:00:00Z`);
 function playback(select=async()=>true){
   const get=elements(),timers=new Map();let next=0;
-  const controller=createPlayback({get,select,every:(fn,ms)=>{assert.equal(ms,1000);timers.set(++next,fn);return next;},stop:id=>timers.delete(id)});
+  const controller=createPlayback({get,select,every:(fn,ms)=>{assert.equal(ms,250);timers.set(++next,fn);return next;},stop:id=>timers.delete(id)});
   controller.configure('forecast',times,0);
   return {get,timers,controller};
 }
@@ -114,4 +114,22 @@ test('pausing during a slow restart prevents playback from starting when scores 
   app.controller.pause();finish(true);await restart;
   assert.equal(app.timers.size,0);
   assert.equal(app.get('replay-play').textContent,'▶');
+});
+
+test('the 4 PM archive reaches 8 PM in four 250 ms ticks and restarts at 4 PM',async()=>{
+  const get=elements(),selected=[],prepared=[];let timer,interval;
+  const hours=Array.from({length:25},(_,i)=>new Date(Date.parse('2026-10-09T05:00:00Z')+i*3600000).toISOString());
+  const controller=createPlayback({get,select:async(_kind,index)=>{selected.push(index);return true;},
+    prepare:(_kind,index)=>prepared.push(index),every:(fn,ms)=>{timer=fn;interval=ms;return 1;},stop:()=>{timer=null;}});
+  controller.configure('archive',hours,16,true,'Synthetic archive',16);
+  assert.match(get('playback-clock').textContent,/4 PM/);
+  await get('replay-play').onclick();await tick();
+  assert.deepEqual(prepared,[17]);assert.deepEqual(selected,[]);
+  for(let i=0;i<4;i++){timer();await tick();}
+  assert.equal(interval*4,1000);assert.deepEqual(selected,[17,18,19,20]);
+  assert.match(get('playback-clock').textContent,/8 PM/);
+  for(let i=0;i<4;i++){timer();await tick();}
+  assert.equal(timer,null);
+  await get('replay-play').onclick();await tick();
+  assert.equal(selected.at(-1),16);assert.match(get('playback-clock').textContent,/4 PM/);
 });

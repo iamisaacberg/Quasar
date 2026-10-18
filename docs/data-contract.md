@@ -189,3 +189,11 @@ without associating fictional sites. County parcels remain unscored unless a
 separate matching exposure assessment exists. H3 does not replace native forecast
 polygons. Application forecast endpoints require schema 3; schemas 1/2 remain
 available only in offline research adapters. FIPS 12086 inputs are rejected.
+
+## Loading and serving optimizations
+
+See [loading performance](loading-performance.md) for explicit indexed exposure
+preparation, cache identity/freshness, worker behavior and benchmark evidence.
+Existing forecast/exposure response shapes are unchanged. Hashed UI/worker files
+are allowlisted by the committed build manifest and immutable; HTML and API
+responses remain no-store. Negotiated gzip preserves original JSON semantics.

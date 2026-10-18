@@ -53,7 +53,9 @@ the inventory host only after generation and verification complete. A single
 73 MB county assessment cannot populate the full replay, and combining 25 into
 one file would exceed the serving limit. Do not retrain to activate existing weights.
 
-Exposure playback waits for the displayed hour's summaries and loaded parcel
+Playback advances one hour every 250 ms when inputs are ready. Exposure playback
+buffers only the next hour's summaries in bounded session memory, without
+displaying future values. It waits for the displayed hour's summaries and loaded parcel
 assessments before advancing again. While those requests are pending, the selected
 hour shows loading and unknown scores; Pause remains available. An unavailable
 response pauses playback with its error rather than skipping through later hours.

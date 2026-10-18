@@ -7,8 +7,8 @@ from .forecast_timeline import timeline
 
 
 def weather_data(*, now=None, source="archive"):
-    now = now or datetime.now(timezone.utc)
     data = timeline(source=source, now=now, reader=read_snapshot)
+    now = now or datetime.now(timezone.utc)
     frames = []
     for frame in data["frames"]:
         cells = frame["collection"]["weather_cells"]

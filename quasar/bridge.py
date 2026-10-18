@@ -10,6 +10,7 @@ import json
 import os
 import time
 from pathlib import Path
+from functools import lru_cache
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -29,6 +30,11 @@ SNAPSHOTS = {
 }
 REMOTE_CACHE_SECONDS = 15
 _remote_cache = {}
+
+
+@lru_cache(maxsize=4)
+def _local_snapshot(path, size, modified, inode, limit):
+    return _parse_snapshot(Path(path).read_bytes(), limit)
 
 
 def _path_for(name):
@@ -83,9 +89,10 @@ def read_snapshot(name):
         if path is None:
             return None
         try:
-            if path.stat().st_size > limit:
+            stat = path.stat()
+            if stat.st_size > limit:
                 raise ValueError("Snapshot exceeds its size limit")
-            return _parse_snapshot(path.read_bytes(), limit)
+            return _local_snapshot(str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ino, limit)
         except FileNotFoundError:
             return None
 
@@ -124,6 +131,8 @@ def read_snapshot(name):
         raise
     except (URLError, TimeoutError, OSError, ValueError, TypeError) as exc:
         raise BridgeUnavailable("The data bridge snapshot is unavailable") from exc
+    if cached and cached[1] == data:
+        data = cached[1]
     _remote_cache[cache_key] = (now + REMOTE_CACHE_SECONDS, data)
     return data
 

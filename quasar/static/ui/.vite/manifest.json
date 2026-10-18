@@ -1,0 +1,48 @@
+{
+  "_replay-selection-BWkSjR3y.js": {
+    "file": "assets/replay-selection-BWkSjR3y.js",
+    "name": "replay-selection",
+    "imports": [
+      "frontend/main.tsx"
+    ]
+  },
+  "frontend/data-dashboard.tsx": {
+    "file": "assets/data-dashboard-DCcvwwmE.js",
+    "name": "data-dashboard",
+    "src": "frontend/data-dashboard.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "frontend/main.tsx",
+      "_replay-selection-BWkSjR3y.js"
+    ],
+    "css": [
+      "assets/data-dashboard-DwqmygaQ.css"
+    ]
+  },
+  "frontend/main.tsx": {
+    "file": "assets/app-shell-BkXk5gda.js",
+    "name": "main",
+    "src": "frontend/main.tsx",
+    "isEntry": true,
+    "dynamicImports": [
+      "frontend/reports.tsx",
+      "frontend/data-dashboard.tsx"
+    ],
+    "css": [
+      "assets/main-BIT5lY-F.css"
+    ]
+  },
+  "frontend/reports.tsx": {
+    "file": "assets/reports-Boi57iIp.js",
+    "name": "reports",
+    "src": "frontend/reports.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "frontend/main.tsx",
+      "_replay-selection-BWkSjR3y.js"
+    ],
+    "css": [
+      "assets/reports-BK4E54i1.css"
+    ]
+  }
+}

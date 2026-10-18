@@ -181,6 +181,14 @@ def exposure(query):
         raise ValueError("Use a six-hour exposure window, R4–R7 and at most 100 parcel IDs") from None
     if os.environ.get("QUASAR_LINUXONE_API_URL"):
         return _remote(query)
+    prepared = os.environ.get("QUASAR_EXPOSURE_DATABASE")
+    if prepared:
+        try:
+            from .exposure_store import read
+            result, records = read(prepared, os.environ.get("QUASAR_PARCEL_DATABASE", ""), start, end, resolution, ids)
+            return _finish(result, records, query, start, end, ids, mode)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
+            return _unavailable("invalid", "Prepared exposure database is unavailable or invalid; scores remain unknown.")
     path, database = os.environ.get("QUASAR_EXPOSURE_FILE"), os.environ.get("QUASAR_PARCEL_DATABASE")
     directory = os.environ.get("QUASAR_EXPOSURE_DIRECTORY")
     if not (path or directory) or not database:
@@ -207,26 +215,31 @@ def exposure(query):
                             file_stat.st_mtime_ns, start, end, resolution)
         if result is None:
             return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
-        now = datetime.now(timezone.utc)
-        computed = timestamp(result["computed_at"])
-        if computed > now:
-            return _unavailable("invalid", "Exposure computation time is in the future.")
-        if mode == "current" and (end <= now or now - computed > timedelta(hours=2)):
-            return _unavailable("stale", "Parcel exposure results are stale; scores remain unknown.")
-        if mode == "current" and result.get("forecast_provenance") and (
-                result["forecast_provenance"]["mode"] != "current"
-                or timestamp(result["forecast_provenance"]["expires_at"]) <= now):
-            return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
-        if query.get("run_id") not in (None, result["run_id"]):
-            return _unavailable("changed", "Exposure run changed; refresh this selection.")
         records = (_artifact(path, file_stat.st_size, file_stat.st_mtime_ns)["windows"][start, end]["records"]
                    if ids else {})
-        return {**result,
-                "cells": {} if ids else result["cells"],
-                "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
-                            "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
+        return _finish(result, records, query, start, end, ids, mode)
     except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error):
         return _unavailable("invalid", "Parcel exposure artifact is unavailable or invalid; scores remain unknown.")
+
+
+def _finish(result, records, query, start, end, ids, mode):
+    if result is None:
+        return _unavailable("unavailable", "No parcel exposure results match this forecast window.")
+    now = datetime.now(timezone.utc)
+    computed = timestamp(result["computed_at"])
+    if computed > now:
+        return _unavailable("invalid", "Exposure computation time is in the future.")
+    if mode == "current" and (end <= now or now - computed > timedelta(hours=2)):
+        return _unavailable("stale", "Parcel exposure results are stale; scores remain unknown.")
+    if mode == "current" and result.get("forecast_provenance") and (
+            result["forecast_provenance"]["mode"] != "current"
+            or timestamp(result["forecast_provenance"]["expires_at"]) <= now):
+        return _unavailable("stale", "Model forecast source expired; scores remain unknown.")
+    if query.get("run_id") not in (None, result["run_id"]):
+        return _unavailable("changed", "Exposure run changed; refresh this selection.")
+    return {**result, "cells": {} if ids else result["cells"],
+            "parcels": {str(i): records.get(i, {"parcel_id": i, "score": None,
+                        "factors": [], "missing": ["assessment_unavailable"]}) for i in ids}}
 
 
 def _remote(query):

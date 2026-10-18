@@ -127,7 +127,12 @@ For each hour, replay selects an eligible run, obtains the next six hourly value
 
 The browser requests property scores, a selected-site timeline, and route output together. A request counter prevents an older response from overwriting a newer selection, and timestamp checks prevent different replay hours from being committed together. This coordinates browser selection; it is not a transaction across local files if an importer replaces them between server requests.
 
-Playback advances at most one hour per second as requests complete and stops at the last hour. Reset restores hour zero, archive mode, archived rainfall, and empty overrides. The browser filters prepared NHC advisories by original issue time relative to the selected hour.
+The county archive opens at 4 PM Central on October 9 (index 16) and retains all
+25 hourly positions. Playback advances at most one hour every 250 ms as requests
+complete and stops at the last hour. Playing again restarts at 4 PM. Exposure
+playback buffers the next hour's summaries and waits for matching displayed-hour
+assessments; failed reads pause playback. Rainfall playback reuses the loaded
+archive without exposure requests.
 
 ## Routing mechanism
 

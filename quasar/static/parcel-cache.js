@@ -10,12 +10,15 @@
     function open() {
       if (!opened) opened = new Promise((resolve, reject) => {
         if (!indexedDB) return reject(new Error("Browser storage unavailable"));
-        const request = indexedDB.open("quasar-public-parcels", 2);
+        const request = indexedDB.open("quasar-public-parcels", 3);
         request.onupgradeneeded = () => {
           const db=request.result;
           // Geometry cached by an older schema can safely be reacquired.
           if(db.objectStoreNames.contains("cells")) db.deleteObjectStore("cells");
+          if(db.objectStoreNames.contains("metadata")) db.deleteObjectStore("metadata");
+          if(db.objectStoreNames.contains("pages")) db.deleteObjectStore("pages");
           const cells=db.createObjectStore("cells", {keyPath:"key"}); cells.createIndex("cell","cell");
+          const pages=db.createObjectStore("pages",{keyPath:["key","offset"]}); pages.createIndex("key","key");
           db.createObjectStore("metadata",{keyPath:"key"});
         };
         request.onsuccess = () => resolve(request.result);
@@ -34,19 +37,44 @@
       });
     }
     const metadata=entry=>Object.fromEntries(["key","cell","county_fips","savedAt","accessedAt","bytes"].map(k=>[k,entry[k]]));
-    return {get:key=>run("readonly", s=>s.get(key)), all:()=>run("readonly", s=>s.getAll()),
+    function get(key) {
+      return run("readonly",(store,tx)=>{
+        const result={},record=store.get(key);
+        record.onsuccess=()=>{
+          if(!record.result)return;
+          const pages=tx.objectStore("pages").index("key").getAll(key);
+          pages.onsuccess=()=>{
+            const features=new Map();
+            for(const page of pages.result)for(const feature of page.features)features.set(feature.id,feature);
+            result.result={...record.result,features:[...features.values()]};
+          };
+        };
+        return result;
+      },["cells","pages"]);
+    }
+    function erasePages(store,key,done=()=>{}) {
+      const cursor=store.index("key").openCursor(key);
+      cursor.onsuccess=()=>{const value=cursor.result;if(value){value.delete();value.continue();}else done();};
+    }
+    return {get,
+      all:async()=>Promise.all((await run("readonly",s=>s.getAll())).map(record=>get(record.key))),
       list:()=>run("readonly",s=>s.getAll(),["metadata"]),
-      forCell:cell=>run("readonly",s=>s.index("cell").getAll(cell)),
-      put:entry=>run("readwrite", (s,tx)=>{
+      forCell:async cell=>Promise.all((await run("readonly",s=>s.index("cell").getAll(cell))).map(record=>get(record.key))),
+      put:(entry,page)=>run("readwrite", (s,tx)=>{
         const request=s.get(entry.key);
         request.onsuccess=()=>{
           const old=request.result;
-          if(!old || (old.checked_count || 0)<=(entry.checked_count || 0)) {
-            s.put(entry);tx.objectStore("metadata").put(metadata(entry));
-          }
+          if(old && (old.checked_count || 0)>(entry.checked_count || 0))return;
+          const {features,...progress}=entry;
+          const pages=tx.objectStore("pages");
+          const save=()=>{
+            pages.put({key:entry.key,offset:page?.offset ?? 0,features:page?.features ?? features});
+            s.put(progress);tx.objectStore("metadata").put(metadata(entry));
+          };
+          if(page)save();else erasePages(pages,entry.key,save);
         };
         return request;
-      },["cells","metadata"]),
+      },["cells","metadata","pages"]),
       touch:(key,time)=>run("readwrite", (s,tx)=>{
         const request=s.get(key);
         request.onsuccess=()=>{if(request.result) {
@@ -54,8 +82,9 @@
         }};
         return request;
       },["cells","metadata"]),
-      delete:key=>run("readwrite",(s,tx)=>{tx.objectStore("metadata").delete(key);return s.delete(key);},["cells","metadata"]),
-      clear:()=>run("readwrite",(s,tx)=>{tx.objectStore("metadata").clear();return s.clear();},["cells","metadata"])};
+      delete:key=>run("readwrite",(s,tx)=>{erasePages(tx.objectStore("pages"),key);tx.objectStore("metadata").delete(key);return s.delete(key);},["cells","metadata","pages"]),
+      clear:()=>run("readwrite",(s,tx)=>{tx.objectStore("pages").clear();tx.objectStore("metadata").clear();return s.clear();},["cells","metadata","pages"])};
+
   }
   function create({indexedDB, storage, now=Date.now, maxBytes=100*1024*1024}={}) {
     const backing = storage || disk(indexedDB), memory = new Map(), flights = new Map();
@@ -118,13 +147,16 @@
       if(backing.touch) await safe("touch",entry.key,now());
       return entry;
     }
-    async function put(cell,m,value,token=epoch) {
+    async function put(cell,m,value,token=epoch,page) {
+      const start=now();
       if (token!==epoch) return;
       const entry={...value,key:keyFor(m,cell),cell,county_fips:"12091",manifest:m,savedAt:now(),accessedAt:now()};
-      entry.bytes=JSON.stringify(entry).length*2;
+      const previous=memory.get(entry.key);
+      entry.bytes=page ? (previous?.bytes || JSON.stringify({...entry,features:[]}).length*2)+JSON.stringify(page.features).length*2 : JSON.stringify(entry).length*2;
       if (entry.bytes>maxBytes) return;
       memory.set(entry.key,entry); trimMemory();
-      await safe("put",entry); await prune();
+      await safe("put",entry,page); await prune();
+      if(typeof globalThis!=="undefined") globalThis.QuasarPerformance?.record("parcel-storage",{duration_ms:now()-start,bytes:entry.bytes,page_bytes:page ? JSON.stringify(page.features).length*2 : entry.bytes});
       return entry;
     }
     // One in-flight loader per version/cell. Selection ownership belongs to the caller.

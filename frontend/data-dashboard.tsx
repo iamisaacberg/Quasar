@@ -39,6 +39,7 @@ function csvDownload(weather: Weather, frame: Weather["frames"][number], rows: C
 }
 
 async function get<T,>(url: string, signal: AbortSignal): Promise<T> {
+  if (window.QuasarData) return window.QuasarData.get<T>(url, {signal});
   const response = await fetch(url, { signal, cache: "no-store" });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Request failed");
@@ -75,10 +76,16 @@ export function DataDashboard({ active }: { active: boolean }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
 
+  const recheck = () => {
+    for (const prefix of ["/api/weather/", "/api/data/weather", "/api/reports", "/api/parcels/manifest", "/api/official-alerts"]) window.QuasarData?.invalidate(prefix);
+    setWeather(null); setParcels({status: "checking"}); setOfficial({status: "checking"});
+    setRevision(value => value + 1);
+  };
+
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
-    setLoading(true); setWeather(null); setParcels({ status: "checking" }); setOfficial({ status: "checking" });
+    setLoading(true);
     void get<Weather>("/api/data/weather?source=archive", controller.signal).then(data => {
       if (data.county_fips !== "12091") throw new Error("Wrong forecast county");
       if (!controller.signal.aborted) setWeather(data);
@@ -123,7 +130,7 @@ export function DataDashboard({ active }: { active: boolean }) {
           <SelectTrigger aria-label="Isaias replay hour" className="h-8 w-[260px] text-xs sm:h-9 sm:text-sm"><SelectValue /></SelectTrigger>
           <SelectContent>{weather.frames.map((item, index) => <SelectItem key={item.at} value={String(index)}>{time(item.at)}</SelectItem>)}</SelectContent>
         </Select>}
-        <Button type="button" variant="outline" size="sm" className="h-8 gap-2 sm:h-9" onClick={() => setRevision(value => value + 1)}><RefreshCw className="size-4" aria-hidden="true" />Recheck data</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 gap-2 sm:h-9" onClick={recheck}><RefreshCw className="size-4" aria-hidden="true" />Recheck data</Button>
       </div>
     </header>
     {loading && <div role="status" className="space-y-4"><span className="sr-only">Loading county data…</span><Skeleton className="h-36 w-full rounded-xl" /></div>}

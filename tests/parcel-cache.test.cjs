@@ -5,6 +5,18 @@ const {create,RETENTION,CHECK_INTERVAL}=require('../quasar/static/parcel-cache.j
 const manifest={status:'ready',county_fips:'12091',source_url:'https://example.test/gis',dataset_version:'v1',boundary_version:'boundary',crs:'EPSG:4326'};
 const record={features:[{id:1}],inventory_id:'ids',next_offset:100,complete:false};
 
+test('page writes and progress are atomic, metadata has no geometry, and restart restores every page',async()=>{
+  const indexedDB=new IDBFactory(),cache=create({indexedDB});
+  await cache.put('cell',manifest,{...record,checked_count:100},cache.token,{offset:0,features:[{id:1}]});
+  await cache.put('cell',manifest,{...record,features:[{id:1},{id:2}],checked_count:200,next_offset:null,complete:true},cache.token,{offset:100,features:[{id:2}]});
+  const restored=await create({indexedDB}).get('cell',manifest);
+  assert.deepEqual(restored.features,[{id:1},{id:2}]);assert.equal(restored.complete,true);
+  const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('quasar-public-parcels',3);request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
+  const progress=await new Promise(resolve=>{const tx=db.transaction('cells');const request=tx.objectStore('cells').getAll();request.onsuccess=()=>resolve(request.result[0]);});
+  assert.equal(progress.features,undefined);assert.equal(progress.checked_count,200);
+  db.close();
+});
+
 test('IndexedDB survives a new app instance and preserves partial pagination',async()=>{
   const indexedDB=new IDBFactory(), a=create({indexedDB});
   await a.put('cell',manifest,record);

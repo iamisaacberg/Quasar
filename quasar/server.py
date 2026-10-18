@@ -9,6 +9,9 @@ import hmac
 import os
 import re
 import ssl
+import gzip
+import time
+from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +27,8 @@ from .exposure import exposure, SCALE as EXPOSURE_SCALE
 
 STATIC = Path(__file__).parent / "static"
 ASSETS = {"/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
+          "/data-client.js": ("data-client.js", "text/javascript; charset=utf-8"),
+          "/geometry-client.js": ("geometry-client.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.js": ("ui/app-shell.js", "text/javascript; charset=utf-8"),
           "/ui/app-shell.css": ("ui/app-shell.css", "text/css; charset=utf-8"),
           "/": ("index.html", "text/html; charset=utf-8"),
@@ -33,6 +38,43 @@ ASSETS = {"/map-ui.js": ("map-ui.js", "text/javascript; charset=utf-8"),
           "/parcel-cache.js": ("parcel-cache.js", "text/javascript; charset=utf-8"),
           "/inspection.js": ("inspection.js", "text/javascript; charset=utf-8"),
           "/vendor/h3-js.umd.js": ("vendor/h3-js.umd.js", "text/javascript; charset=utf-8")}
+
+
+@lru_cache(maxsize=2)
+def _build_manifest(modified, size):
+    manifest = json.loads((STATIC / "ui/.vite/manifest.json").read_text())
+    files = json.loads((STATIC / "ui/assets.json").read_text())["files"]
+    # The build emits this list; requests can never choose arbitrary disk paths.
+    allowed = {"/ui/" + name: ("ui/" + name, "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8")
+               for name in files if re.fullmatch(r"assets/[A-Za-z0-9_.-]+\.(js|css)", name)}
+    entry = manifest["frontend/main.tsx"]
+    javascript, stylesheet = "/ui/" + entry["file"], "/ui/" + entry["css"][0]
+    if javascript not in allowed or stylesheet not in allowed:
+        raise ValueError("Incomplete UI asset manifest")
+    return allowed, javascript, stylesheet
+
+
+def built_assets():
+    try:
+        stat = (STATIC / "ui/.vite/manifest.json").stat()
+        return _build_manifest(stat.st_mtime_ns, stat.st_size)
+    except FileNotFoundError:
+        return {}, "/ui/app-shell.js", "/ui/app-shell.css"
+
+
+def accepts_gzip(header):
+    qualities = {}
+    for item in header.lower().split(","):
+        token, *parameters = item.strip().split(";")
+        quality = 1.0
+        for parameter in parameters:
+            if parameter.strip().startswith("q="):
+                try:
+                    quality = float(parameter.strip()[2:])
+                except ValueError:
+                    quality = 0
+        qualities[token] = quality
+    return qualities.get("gzip", qualities.get("*", 0)) > 0
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -114,12 +156,23 @@ class Handler(BaseHTTPRequestHandler):
         super().setup()
         self.connection.settimeout(10)
 
-    def send(self, status: int, payload, content_type="application/json", *, filename=None):
-        body = payload if isinstance(payload, bytes) else json.dumps(payload, allow_nan=False).encode()
+    def send(self, status: int, payload, content_type="application/json", *, filename=None, immutable=False):
+        body = payload if isinstance(payload, bytes) else json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
+        compressible = content_type.startswith("text/") or content_type.startswith(("application/json", "application/geo+json"))
+        compressed = len(body) >= 1024 and compressible and accepts_gzip(self.headers.get("Accept-Encoding", ""))
+        if compressed:
+            body = gzip.compress(body, compresslevel=5, mtime=0)
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        visibility = "private" if getattr(self.server, "access_gate", None) else "public"
+        self.send_header("Cache-Control", f"{visibility}, max-age=31536000, immutable" if immutable else "no-store")
+        if compressible:
+            self.send_header("Vary", "Accept-Encoding")
+        if compressed:
+            self.send_header("Content-Encoding", "gzip")
+        if hasattr(self, "_request_started"):
+            self.send_header("Server-Timing", f"quasar;dur={(time.perf_counter()-self._request_started)*1000:.2f}")
         self.send_header("X-Content-Type-Options", "nosniff")
         if filename:
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -128,6 +181,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self):
+        self._request_started = time.perf_counter()
         url = urlsplit(self.path)
         query = parse_qs(url.query, keep_blank_values=True)
         try:
@@ -142,9 +196,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(status, payload, "application/json; charset=utf-8")
                 return self.send(status, payload)
             require_county(query.get("county_fips", [COUNTY_FIPS])[0])
-            if url.path in ASSETS:
-                filename, content_type = ASSETS[url.path]
-                return self.send(200, (STATIC / filename).read_bytes(), content_type)
+            built, javascript, stylesheet = built_assets()
+            asset = built.get(url.path) or ASSETS.get(url.path)
+            if asset:
+                filename, content_type = asset
+                if url.path == "/ui/app-shell.js" and built:
+                    filename, content_type = built[javascript]
+                elif url.path == "/ui/app-shell.css" and built:
+                    filename, content_type = built[stylesheet]
+                body = (STATIC / filename).read_bytes()
+                if url.path == "/" and built:
+                    body = body.replace(b"/ui/app-shell.js", javascript.encode()).replace(b"/ui/app-shell.css", stylesheet.encode())
+                return self.send(200, body, content_type, immutable=url.path in built)
             if url.path == "/health":
                 return self.send(200, {"status": "ok", "mode": "county_sources", "county_fips": COUNTY_FIPS})
             if url.path == "/api/config":

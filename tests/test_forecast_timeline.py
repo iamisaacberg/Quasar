@@ -102,6 +102,8 @@ class ForecastTimelineTests(unittest.TestCase):
         with patch('quasar.forecast_timeline.read_snapshot', return_value=data), patch('quasar.pipeline.collection', side_effect=AssertionError('Fixture pipeline forbidden')):
             result = timeline(source='archive', now=NOW)
         self.assertEqual(len(result['frames']), 25)
+        self.assertEqual(result['default_index'], 16)
+        self.assertEqual(result['frames'][result['default_index']]['at'], '2026-10-09T21:00:00Z')
         self.assertEqual(result['frames'][0]['collection']['mode'], 'county_archive')
         first = result['frames'][0]['collection']['weather_cells']['features'][0]
         self.assertEqual(first['properties']['rainfall_6h_mm'], 12)

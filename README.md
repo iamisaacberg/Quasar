@@ -35,7 +35,7 @@ Do not start a deployment or restart shared services without authorization.
 ## County sources
 
 The map, Data tab and Reports use imported native county forecast cells only.
-The map opens directly on the Isaias October 9 archive, with 25 hourly
+The map opens at 4 PM Central on the Isaias October 9 archive, with 25 hourly
 positions, county-clipped H3 rainfall and compact rewind, play/pause and forward
 controls. Tools → Archive details contains the interactive maximum-native-cell
 rainfall trend, hour scrubber and source recheck.
@@ -66,6 +66,9 @@ Fictional sites, synthetic scenarios, what-if additions, notification previews a
 simulated routes are absent from the application. Their old HTTP endpoints return
 410. Offline research modules and clearly labeled test fixtures remain in source.
 The official NWS feed remains explicitly disconnected; this is not an all-clear.
+
+See [loading performance](docs/loading-performance.md) for offline exposure serving
+preparation, bounded browser caches and synthetic benchmarks.
 
 ## Development and checks
 
