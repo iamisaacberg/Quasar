@@ -7,9 +7,15 @@
   const number=value=>typeof value==="number" && Number.isFinite(value);
   const value=(n,unit="")=>number(n)?`${n.toFixed(2)}${unit}`:"Unknown";
   const percent=n=>number(n)?`${(n*100).toFixed(2)}%`:"Unknown";
+  const geometryKey=geometry=>{
+    if(Array.isArray(geometry)) return `[${geometry.map(geometryKey).join(",")}]`;
+    if(geometry && typeof geometry==="object") return `{${Object.keys(geometry).sort().map(key=>`${JSON.stringify(key)}:${geometryKey(geometry[key])}`).join(",")}}`;
+    return JSON.stringify(geometry);
+  };
+  const sameGeometry=(left,right)=>geometryKey(left)===geometryKey(right);
   function rainfallSummary(context,current) {
     const overlaps=context?.forecast_overlaps || [], features=current?.weather_cells?.features || [];
-    const matched=overlaps.map(overlap=>features.find(f=>f.id===overlap.native_cell_id && JSON.stringify(f.geometry)===JSON.stringify(overlap.geometry)));
+    const matched=overlaps.map(overlap=>features.find(f=>f.id===overlap.native_cell_id && sameGeometry(f.geometry,overlap.geometry)));
     const values=matched.filter(f=>f?.properties.status==="ready" && number(f.properties.rainfall_6h_mm) && f.properties.rainfall_6h_mm>=0).map(f=>f.properties.rainfall_6h_mm);
     if(!values.length) return {value:"Unavailable",detail:overlaps.length ? "Rainfall is unavailable for the selected archive hour." : "Prepared native-cell overlaps are unavailable for this selection."};
     const low=Math.min(...values),high=Math.max(...values);
@@ -37,7 +43,7 @@
     const native=new Map(cells.features.map(f=>[f.id,f]));
     const rows=overlaps.map((overlap,index)=>{
       const feature=native.get(overlap.native_cell_id), p=feature?.properties;
-      const match=feature && JSON.stringify(feature.geometry)===JSON.stringify(overlap.geometry);
+      const match=feature && sameGeometry(feature.geometry,overlap.geometry);
       const ready=match && p.status==="ready" && number(p.rainfall_6h_mm) && p.rainfall_6h_mm>=0;
       return [`Native rainfall ${index+1}${number(overlap.area_fraction) ? ` · ${percent(overlap.area_fraction)} overlap` : ""}`,
         ready?`${p.rainfall_6h_mm.toFixed(1)} mm / 6h`:`Unavailable · ${match?p.status:"native geometry not matched"}`];
