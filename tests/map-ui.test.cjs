@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {covers,bounds,createSearch,createPlayback}=require('../quasar/static/map-ui.js');
+const {covers,bounds,archiveRadarTiles,createSearch,createPlayback}=require('../quasar/static/map-ui.js');
 
 class Element {
   constructor(){this.children=[];this.value='';this.attributes={};}
@@ -32,6 +32,11 @@ test('county containment includes island polygons and boundaries but excludes ho
   assert.equal(covers([1,1.5],geometry),true);
   assert.equal(covers([NaN,1],geometry),false);
   assert.deepEqual(bounds(geometry),[0,0,6,4]);
+});
+test('archived radar tiles use the selected UTC time rounded down to the five-minute mosaic interval',()=>{
+  assert.equal(archiveRadarTiles('2026-10-09T13:04:00Z'),'/api/radar/tiles/202610091300/{z}/{x}/{y}.png');
+  assert.equal(archiveRadarTiles('2026-10-09T13:05:00Z'),'/api/radar/tiles/202610091305/{z}/{x}/{y}.png');
+  assert.equal(archiveRadarTiles('not a timestamp'),null);
 });
 test('search debounces at three characters, filters county geometry, and supports keyboard select and clear',async()=>{
   let calls=0;

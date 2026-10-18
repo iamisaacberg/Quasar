@@ -20,6 +20,10 @@ not observed rainfall, proof of local flooding, or a trained flood model.
    250 ms (4× the previous speed): 8 AM to noon takes about one second when
    inputs are ready. Exposure playback buffers the next hour's summaries and
    waits for the selected hour's scores before advancing; slow sources add time.
+   The optional **Archived NEXRAD radar** tool adds the full radar mosaic at the
+   selected hour. It is an observation from that exact clock, while the forecast
+   layer covers the following six hours. The mosaic extends beyond Okaloosa and
+   is not county-clipped.
 3. The chart shows the maximum among available native-cell totals at each hour.
    It is not a county mean, cumulative storm total or rainfall observation.
    Hatched bars indicate partial coverage or unavailable rainfall; valid zero

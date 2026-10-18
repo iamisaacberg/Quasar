@@ -83,6 +83,7 @@ export const QuasarDashboard = memo(function QuasarDashboard() {
                         <label htmlFor="map-layer"><Layers3 aria-hidden="true" /><span>Display</span><select id="map-layer" defaultValue="rainfall"><option value="rainfall">Rainfall · mm / 6h</option><option value="exposure">Relative exposure · /100</option></select></label>
                       </section>
                       <div className="map-controls"><label className="hex-control"><input type="checkbox" id="hex-toggle" defaultChecked /><Layers3 aria-hidden="true" />H3 cell outlines</label><span id="grid-status" className="subtle-tag">Loading county boundary…</span></div>
+                      <div className="map-controls radar-controls"><label className="hex-control"><input type="checkbox" id="radar-toggle" defaultChecked /><Radar aria-hidden="true" />Archived NEXRAD radar</label><span id="radar-status" className="subtle-tag">Waiting for the selected replay hour</span></div>
                       <details className="archive-details"><summary>Archive details</summary>
                         <div className="archive-playback-heading"><strong>Isaias · October 9, 2026</strong><button id="forecast-retry" type="button">Recheck source</button></div>
                       </details>

@@ -5,7 +5,7 @@
             profile shortlived
         }
     }
-    @county_data path /bridge/v1/snapshots/* /api/parcels /api/parcels/manifest /api/parcels/*/context /api/cells/*/summary /api/exposure
+    @county_data path /bridge/v1/snapshots/* /api/parcels /api/parcels/manifest /api/parcels/*/context /api/cells/*/summary /api/exposure /api/radar/tiles/*
     handle @county_data {
         reverse_proxy 127.0.0.1:8000
     }

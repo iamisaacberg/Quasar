@@ -1,6 +1,6 @@
 # Verified execution checkpoint
 
-Verified October 18, 2026 UTC / October 17 Central. Scope: Okaloosa County, FIPS `12091`. Isaac authorized artifact transfer and offline LinuxONE inference/benchmarking. No service configuration, restart, deployment, new forecast acquisition or retraining was performed in this work.
+Verified October 18, 2026 UTC / October 17 Central. Scope: Okaloosa County, FIPS `12091`. The model execution checkpoint below records its own data and inference verification. A later authorized LinuxONE release added the archived NEXRAD tile proxy; that deployment is recorded at the end of this document. No new forecast acquisition or model retraining was performed.
 
 ## Source and artifact identities
 
@@ -44,6 +44,29 @@ All **25 existing real six-hour assessments** were validated against their produ
 Seven bounded read-only public API requests verified the existing app path: first/middle/last archive summaries were ready and reported `s390x`/the active model; a matching-run lookup returned scored parcel **19144** and unknown parcel **1001** with `complete_terrain_required`; an unsupported hour returned `unavailable`; an obsolete run returned `changed`; the direct source rejected an unauthenticated read with **401**. Successful summary/parcel requests took approximately 2.77–3.14 seconds in this small declared sample. This is not a load test, p95 estimate or rendered review.
 
 The optional county NWS importer successfully fetched the canonical official county endpoint at **2026-10-18T03:42:57Z** after an initial redirect failure was reproduced and fixed. The saved snapshot expires after 120 seconds and becomes stale; no refresh job or current-alert UI was activated. Source text/lifecycle and retrieval remain saved privately. The archive stays disconnected from present-day alerts. No empty response is an all-clear.
+
+## Archived radar proxy deployment
+
+On October 18, the radar proxy was installed on the authorized LinuxONE host
+`148.100.79.203` (`s390x`, Python 3.12.3). The active immutable release is
+`/opt/quasar/releases/radar-20261018-4978dc054639`, and
+`/opt/quasar/current` points to it. The transferred Quasar package archive had
+SHA-256 `4978dc0546396eebf983b7d7088d69c34e4a70f9a3c81dc154fb037a1ea0b28a`.
+The previous `quebec-performance-6418c82103c7` release remains available.
+
+Caddy's existing allowlist now includes only `/api/radar/tiles/*` for this new
+radar path. The prior Caddyfile is backed up at
+`/etc/quasar/backups/radar-20261018-4978dc054639/Caddyfile.before`; the same
+directory records the previous release pointer. Quasar and Caddy both passed
+active-state checks after restart/reload. No service environment, parcel
+credentials, forecast files or model artifacts changed.
+
+The host fetches timestamped `USCOMP-N0Q` mosaic tiles on demand from the Iowa
+Environmental Mesonet archive; no bulk radar archive was copied. A live tile
+request for `202610091300/7/33/52.png` returned a valid 60,874-byte PNG through
+LinuxONE and its public HTTPS path. An invalid timestamp returned HTTP 400; the
+existing unauthenticated parcel API continued to return HTTP 401. This verifies
+the radar proxy path, not a rendered browser review or radar-derived rainfall.
 
 ## Remaining evidence
 

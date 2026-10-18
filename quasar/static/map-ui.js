@@ -23,6 +23,13 @@
     const points=geometry.coordinates.flat(geometry.type==="MultiPolygon" ? 2 : 1);
     return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
   }
+  function archiveRadarTiles(at) {
+    const date=new Date(at);
+    if(!Number.isFinite(date.getTime()))return null;
+    date.setUTCMinutes(Math.floor(date.getUTCMinutes()/5)*5,0,0);
+    const stamp=[date.getUTCFullYear(),String(date.getUTCMonth()+1).padStart(2,"0"),String(date.getUTCDate()).padStart(2,"0"),String(date.getUTCHours()).padStart(2,"0"),String(date.getUTCMinutes()).padStart(2,"0")].join("");
+    return `/api/radar/tiles/${stamp}/{z}/{x}/{y}.png`;
+  }
   function createSearch({get, element, token, geometry, select, isCellId=()=>false, request=fetch, schedule=setTimeout, cancel=clearTimeout}) {
     const input=get("map-search"), list=get("map-search-results"), status=get("map-search-status");
     let results=[], active=-1, version=0, controller, timer;
@@ -132,5 +139,5 @@
       if(!available)pause();draw();
     }};
   }
-  return {covers,bounds,createSearch,createPlayback,localTime};
+  return {covers,bounds,archiveRadarTiles,createSearch,createPlayback,localTime};
 });
