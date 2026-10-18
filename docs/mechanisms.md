@@ -37,9 +37,9 @@ An explicit county importer retains native geometry, initialization/publication/
 
 The archive exposes 25 starts from October 9 midnight through October 10 midnight Central. The final forward window requires six additional hours. Map/Data/Reports share selected rainfall time. Selection changes invalidate prior exposure indices; late summary/parcel responses cannot repaint a new selection. Geometry may remain cached while time-dependent scores are cleared.
 
-The archive opens at 10 AM Central on October 9 (index 10). Playback advances
+The archive opens at 8 AM Central on October 9 (index 8). Playback advances
 one hour every 250 ms when the selected hour's summaries and selected parcel are
-ready, then stops at the final hour; playing again restarts at 10 AM. Other parcel
+ready, then stops at the final hour; playing again restarts at 8 AM. Other parcel
 assessments load in the background with unknown values until ready. Next-hour
 summary buffering stops when paused or hidden. Rainfall playback reuses the
 loaded archive without exposure requests.

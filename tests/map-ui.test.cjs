@@ -127,20 +127,20 @@ test('pausing during a slow restart prevents playback from starting when scores 
   assert.equal(app.get('replay-play').textContent,'▶');
 });
 
-test('the 10 AM archive reaches 2 PM in four 250 ms ticks and restarts at 10 AM',async()=>{
+test('the 8 AM archive reaches noon in four 250 ms ticks and restarts at 8 AM',async()=>{
   const get=elements(),selected=[],prepared=[];let timer,interval;
   const hours=Array.from({length:25},(_,i)=>new Date(Date.parse('2026-10-09T05:00:00Z')+i*3600000).toISOString());
   const controller=createPlayback({get,select:async(_kind,index)=>{selected.push(index);return true;},
     prepare:(_kind,index)=>prepared.push(index),every:(fn,ms)=>{timer=fn;interval=ms;return 1;},stop:()=>{timer=null;}});
-  controller.configure('archive',hours,10,true,'Synthetic archive',10);
-  assert.match(get('playback-clock').textContent,/10 AM/);
+  controller.configure('archive',hours,8,true,'Synthetic archive',8);
+  assert.match(get('playback-clock').textContent,/8 AM/);
   await get('replay-play').onclick();await tick();
-  assert.deepEqual(prepared,[11]);assert.deepEqual(selected,[]);
+  assert.deepEqual(prepared,[9]);assert.deepEqual(selected,[]);
   for(let i=0;i<4;i++){timer();await tick();}
-  assert.equal(interval*4,1000);assert.deepEqual(selected,[11,12,13,14]);
-  assert.match(get('playback-clock').textContent,/2 PM/);
-  for(let i=0;i<10;i++){timer();await tick();}
+  assert.equal(interval*4,1000);assert.deepEqual(selected,[9,10,11,12]);
+  assert.match(get('playback-clock').textContent,/12 PM|noon/i);
+  for(let i=0;i<12;i++){timer();await tick();}
   assert.equal(timer,null);
   await get('replay-play').onclick();await tick();
-  assert.equal(selected.at(-1),10);assert.match(get('playback-clock').textContent,/10 AM/);
+  assert.equal(selected.at(-1),8);assert.match(get('playback-clock').textContent,/8 AM/);
 });

@@ -105,7 +105,7 @@ def _timeline(*, source="archive", now=None, reader=None):
             raise ValueError("No six-hour forecast windows")
         metadata = {key: data[key] for key in ("retrieved_at", "source_table", "native_resolution", "statistic")}
         metadata.update({key: data[key] for key in ("license", "publication_timing", "archive_policy", "processing") if key in data})
-        default_at = iso(start + timedelta(hours=10)) if source == "archive" else data.get("valid_from")
+        default_at = iso(start + timedelta(hours=8)) if source == "archive" else data.get("valid_from")
         result = {**base, **metadata, "status": "stale" if stale else "ready" if all(
             f["collection"]["forecast"]["status"] == "ready" for f in frames) else "incomplete",
                   "frames": frames, "default_index": next((i for i, f in enumerate(frames) if f["at"] == default_at), 0),
