@@ -83,9 +83,27 @@ test('shared playback pauses, scrubs, waits for responses and stops at the final
 });
 test('failed and superseded playback keep the last displayed timestamp',async()=>{
   const failed=playback(async()=>false),clock=failed.get('playback-clock').textContent;
-  await failed.get('replay-next').onclick();assert.equal(failed.get('playback-clock').textContent,clock);assert.match(failed.get('playback-status').textContent,/Previous results/);
+  await failed.get('replay-next').onclick();assert.equal(failed.get('playback-clock').textContent,clock);assert.match(failed.get('playback-status').textContent,/Playback paused/);
   let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));const old=app.get('replay-next').onclick();
   app.controller.configure('archive',times,2);finish(true);await old;assert.equal(app.get('replay-hour').value,'2');assert.match(app.get('playback-clock').textContent,/Isaias/);
   app.controller.configure('none',[],0,false);assert.equal(app.get('replay-play').disabled,true);
   app.controller.configure('forecast',times,0,false,'Imported forecast is stale.');assert.equal(app.get('replay-play').disabled,true);assert.match(app.get('playback-status').textContent,/stale/);
+});
+test('a direct selection supersedes a pending hour even within the same archive',async()=>{
+  let finish;const app=playback(()=>new Promise(resolve=>{finish=resolve;}));
+  const pending=app.get('replay-next').onclick();
+  app.controller.configure('forecast',times,2);
+  finish(true);await pending;
+  assert.equal(app.get('replay-hour').value,'2');
+  assert.equal(app.get('replay-hour').disabled,false);
+});
+test('restarting from the end stays paused if the first hour cannot load its scores',async()=>{
+  const app=playback(async(_kind,index)=>{
+    app.controller.configure('forecast',times,index);
+    throw new Error('scores offline');
+  });
+  app.controller.configure('forecast',times,2);
+  await app.get('replay-play').onclick();
+  assert.equal(app.timers.size,0);
+  assert.match(app.get('playback-status').textContent,/Playback paused.*scores offline/);
 });
