@@ -7,6 +7,8 @@ let county, selectedCell, selectedParcel, parcelData, parcelRequest = 0;
 const countyGrids = new Map();
 let exposureData = null, exposureRequest = 0, exposureHydrationRunning = false, exposureExpiryTimer;
 const exposureResponses = new Map(), parcelAssessments = new Map();
+const exposureLoads = new Map();
+let parcelExposureLoad;
 const parcelCache = window.QuasarParcelCache.create({indexedDB:window.indexedDB});
 let selectedResolution = 7, parcelEntry, cellContext, parcelContext, contextRequest = 0;
 let contextLoading = false;
@@ -116,6 +118,23 @@ function selectForecastFrame(index) {
   return true;
 }
 
+async function selectPlaybackFrame(index) {
+  if (!selectForecastFrame(index)) return false;
+  const frame = current;
+  if (!mapLoaded || $("map-layer").value !== "exposure") return true;
+  // Keep this hour selected until its summaries and visible parcel scores finish.
+  // The one-second playback clock must not invalidate slower source responses.
+  const resolutions = new Set([QuasarSpatial.resolutionForZoom(map.getZoom())]);
+  if (selectedCell) resolutions.add(selectedResolution);
+  await Promise.all([...resolutions].map(resolution => refreshExposure(resolution)));
+  if (current !== frame) return false;
+  if (exposureData?.status !== "ready") throw new Error(exposureData?.message || "Exposure scores unavailable.");
+  await hydrateParcelExposure();
+  if (current !== frame) return false;
+  if (exposureData?.status !== "ready") throw new Error(exposureData?.message || "Parcel scores unavailable.");
+  return true;
+}
+
 function mapColors(field = "risk_score") {
   return QuasarSpatial.exposureExpression(field);
 }
@@ -141,7 +160,7 @@ function renderExposureInspection() {
     const summary=selectedExposureSummary(); score=summary?.p90_score ?? null;
     assessmentNote=summary ? `Upper-end parcel index (90th percentile). ${summary.scored_count.toLocaleString()}/${summary.parcel_count.toLocaleString()} parcels assessed${summary.incomplete ? "; coverage is incomplete" : ""}.` : "No matching parcel assessment is available for this hour.";
     content.replaceChildren(element("p",summary ? `${summary.scored_count}/${summary.parcel_count} parcels scored · ${(summary.coverage*100).toFixed(1)}% coverage · P90 ${score ?? "Unknown"}${summary.incomplete ? " · Incomplete coverage" : ""}` : "No matching parcel assessment is available. Prepared reference inputs are shown below.","detail-note"));
-    void refreshExposure(selectedResolution);
+    if($("map-layer").value === "exposure") void refreshExposure(selectedResolution);
   } else {
     const assessment=exposureData?.status === "ready" && exposureData.inventory_id===parcelEntry?.inventory_id ? parcelAssessments.get(selectedParcel) : null;
     score=QuasarSpatial.validScore(assessment?.score) ? assessment.score : null;
@@ -222,7 +241,20 @@ function scheduleExposureExpiry() {
   },Math.max(0,expires-Date.now()+1));
 }
 
-async function refreshExposure(resolution, force=false) {
+function refreshExposure(resolution, force=false) {
+  const params=exposureParameters(resolution);
+  if(!params) return Promise.resolve();
+  const key=new URLSearchParams(params).toString(), request=exposureRequest;
+  const pending=exposureLoads.get(key);
+  if(pending?.request===request) return pending.promise;
+  const promise=loadExposure(resolution,force).finally(()=>{
+    if(exposureLoads.get(key)?.promise===promise) exposureLoads.delete(key);
+  });
+  exposureLoads.set(key,{request,promise});
+  return promise;
+}
+
+async function loadExposure(resolution, force=false) {
   const params=exposureParameters(resolution);
   if(!params) return;
   const key=new URLSearchParams(params).toString();
@@ -253,9 +285,19 @@ async function refreshExposure(resolution, force=false) {
   if(parcelEntry) publishParcels(parcelEntry,true);
 }
 
-async function hydrateParcelExposure() {
+function hydrateParcelExposure() {
+  const request=exposureRequest;
+  if(parcelExposureLoad?.request===request) return parcelExposureLoad.promise;
+  const promise=loadParcelExposure().finally(()=>{
+    if(parcelExposureLoad?.promise===promise) parcelExposureLoad=null;
+  });
+  parcelExposureLoad={request,promise};
+  return promise;
+}
+
+async function loadParcelExposure() {
   const params=exposureParameters(), run=exposureData;
-  if(exposureHydrationRunning || !params || run?.status!=="ready" || !parcelEntry
+  if($("map-layer").value !== "exposure" || exposureHydrationRunning || !params || run?.status!=="ready" || !parcelEntry
       || run.inventory_id!==parcelEntry.inventory_id || selectedResolution!==7) return;
   const ids=parcelEntry.features.map(feature=>feature.id).filter(id=>!parcelAssessments.has(id));
   if(!ids.length) return;
@@ -281,7 +323,7 @@ async function hydrateParcelExposure() {
   } finally {
     if(request===exposureRequest) {
       exposureHydrationRunning=false;
-      void hydrateParcelExposure();
+      await loadParcelExposure();
     }
   }
 }
@@ -301,7 +343,7 @@ function updateCountyGrid() {
     const params = exposureParameters(resolution);
     const cached = params && exposureResponses.get(new URLSearchParams(params).toString());
     grid = QuasarSpatial.exposureCoverage(countyGrids.get(resolution), cached?.status === "ready" ? cached.cells : {});
-    void refreshExposure(resolution);
+    if($("map-layer").value === "exposure") void refreshExposure(resolution);
   }
   const rainfallGrid=county ? QuasarSpatial.rainfallCoverage(countyGrids.get(resolution),current?.weather_cells) : emptyCollection();
   grid={...grid,features:grid.features.map((f,i)=>{
@@ -729,7 +771,7 @@ async function start() {
   if (started) return;
   started = true;
   if (window.QuasarMapUI) {
-    playback = window.QuasarMapUI.createPlayback({get:$, select:(_kind,index)=>selectForecastFrame(index)});
+    playback = window.QuasarMapUI.createPlayback({get:$, select:(_kind,index)=>selectPlaybackFrame(index)});
     window.addEventListener("hashchange",()=>{
       if (!["#map-overview", "#isaias-replay", ""].includes(window.location.hash)) {playback.pause();searchController?.close();}
     });
@@ -806,7 +848,7 @@ async function start() {
   $("parcel-clear").onclick=async()=>{closeSelection();contextCache.clear();await parcelCache.clear();};
   void parcelCache.check(()=>api("/api/parcels/manifest"));
   window.addEventListener?.("keydown", event => { if (event.key === "Escape") closeSelection(); });
-  $("map-layer").onchange = () => { showMapSummary(); updateMap(); if(selectedCell) { if(selectedParcel===null)renderCellPanel(); else renderInspectionInputs(); } };
+  $("map-layer").onchange = () => { playback?.pause(); showMapSummary(); updateMap(); if(selectedCell) { if(selectedParcel===null)renderCellPanel(); else renderInspectionInputs(); } };
   try {
     const config=await api("/api/config");
     if(config.exposure_scale) QuasarSpatial.configureExposure(config.exposure_scale);

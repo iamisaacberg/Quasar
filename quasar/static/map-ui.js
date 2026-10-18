@@ -76,30 +76,31 @@
   }
   const localTime=value=>new Date(value).toLocaleString("en-US",{timeZone:"America/Chicago",month:"short",day:"numeric",hour:"numeric",timeZoneName:"short"});
   function createPlayback({get, select, every=setInterval, stop=clearInterval}) {
-    let kind="none", times=[], index=0, timer=null, busy=false, generation=0, available=false, note="Waiting for imported forecast data.";
+    let kind="none", times=[], index=0, timer=null, busy=false, selecting=null, generation=0, playGeneration=0, available=false, note="Waiting for imported forecast data.";
     function draw() {
       get("replay-play").textContent=timer===null ? "▶" : "Ⅱ";
       get("replay-play").setAttribute("aria-label",timer===null?"Play Isaias timeline":"Pause playback");
       get("replay-play").setAttribute("aria-pressed",String(timer!==null));
       get("replay-prev").disabled=!available || busy || index===0;
       get("replay-next").disabled=!available || busy || index>=times.length-1;
-      get("replay-play").disabled=!available || busy || times.length<2;
+      get("replay-play").disabled=!available || (busy && timer===null) || times.length<2;
       get("replay-hour").disabled=!available || busy || times.length<2;
       get("replay-hour").max=String(Math.max(0,times.length-1));get("replay-hour").value=String(index);
       get("replay-hour").setAttribute("aria-valuetext",times[index]?localTime(times[index]):"Unavailable");
       get("playback-clock").textContent=times[index] ? `${kind==="archive"?"Isaias":"Forecast"} · ${localTime(times[index])}` : "Isaias archive unavailable";
       get("playback-status").textContent=busy?"Loading selected hour…":note;
     }
-    function pause() {if(timer!==null)stop(timer);timer=null;draw();}
+    function pause() {playGeneration++;if(timer!==null)stop(timer);timer=null;draw();}
     async function go(next) {
       if(!available || busy || next<0 || next>=times.length)return;
-      const ticket=++generation;busy=true;draw();
+      const ticket=++generation;busy=true;selecting=next;draw();
       try {
         const ok=await select(kind,next);
         if(ticket!==generation)return;
-        if(ok===false){note="Selected hour unavailable. Previous results retained.";pause();}
-        else {index=next;if(index===times.length-1)pause();}
-      } catch {if(ticket===generation){note="Selected hour unavailable. Previous results retained.";pause();}}
+        if(ok===false){note="Selected hour unavailable. Playback paused.";pause();return false;}
+        index=next;if(index===times.length-1)pause();
+        return true;
+      } catch(error) {if(ticket===generation){note=`Selected hour unavailable. Playback paused.${error?.message ? ` ${error.message}` : ""}`;pause();}return false;}
       finally {if(ticket===generation){busy=false;draw();}}
     }
     get("replay-prev").onclick=()=>{pause();return go(index-1);};
@@ -108,12 +109,14 @@
     get("replay-play").onclick=async()=>{
       if(timer!==null){pause();return;}
       if(!available || busy || times.length<2)return;
-      if(index===times.length-1)await go(0);
+      const playTicket=playGeneration;
+      if(index===times.length-1 && await go(0)!==true)return;
+      if(playTicket!==playGeneration)return;
       if(!available || index===times.length-1)return;
       timer=every(()=>{if(!busy)void go(index+1);},1000);draw();
     };
     return {pause, configure(nextKind,nextTimes,nextIndex=0,enabled=true,message="Following six-hour rainfall · mm / 6h") {
-      if(nextKind!==kind){pause();generation++;busy=false;}
+      if(nextKind!==kind || (busy && nextIndex!==selecting)){pause();generation++;busy=false;}
       kind=nextKind;times=nextTimes;index=nextIndex;available=enabled && times.length>0;note=message;
       if(!available)pause();draw();
     }};

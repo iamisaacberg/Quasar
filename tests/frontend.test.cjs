@@ -15,16 +15,19 @@ class Element {
   replaceChildren(...items) { this.children=items; }
   setAttribute(name,value) { this[name]=value; }
   getAttribute(name) { return this[name]; }
+  removeAttribute(name) { delete this[name]; }
+  addEventListener() {}
+  querySelectorAll() { return []; }
 }
 
-async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page}={}) {
+async function boot({configured=false, forecastMode="county_archive", mixed=false, scenarioFailure=false, mounted=true, forecastStatus="ready", rainfall=15, riskScore=72, parcelFailure=false, countyWeather=false, parcelCount=101, cacheStorage, inspectionContext, holdPage, manifestFailure=false, holdManifest, pageTransform=page=>page, exposureScores=false, exposureFailure=false, holdExposure, exposureTransform=page=>page, withPlayback=false, forecastFrames=1}={}) {
   const ids = new Map();
   let exposureRunId="synthetic-run", clock=Date.now(), archiveMissing=false;
-  const exposureTimers=new Map();
+  const exposureTimers=new Map(), playbackTimers=new Map();
   class Clock extends Date {static now(){return clock;}}
   const get = (id) => { if (!ids.has(id)) ids.set(id,new Element(id==="scenario" ? "select" : "div")); return ids.get(id); };
   get("map").parentElement = get("map-viewport");
-  get("map-layer").value="rainfall";
+  get("map-layer").value=exposureScores ? "exposure" : "rainfall";
   const data = {type:"FeatureCollection", county_fips:"12091", mode:forecastMode, notice:"Native forecast test fixture",
     scenario:{id:"isaias-2026",valid_from:"2026-10-09T05:00:00Z",valid_to:"2026-10-09T11:00:00Z"},
     forecast:{status:forecastStatus,init_time:"2026-10-09T05:00:00Z",retrieved_at:"2026-10-17T12:30:00Z",native_resolution:"0.1 degree"},features:[],
@@ -52,8 +55,11 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
   }
   const mapboxgl = {Map:FakeMap,NavigationControl:class {},AttributionControl:class { constructor(options) { this.options=options; } }};
   const context = {console,URLSearchParams,Date:Clock,document:{getElementById:(id)=>mounted ? get(id) : null,dispatchEvent:(event)=>events.push(event.type),createElement:(tag)=>new Element(tag),createTextNode:(text)=>({textContent:text})},
+    MutationObserver:class {observe(){}},
     Event:class { constructor(type) { this.type=type; } },
-    window:{setTimeout:(fn,delay)=>{const id=Symbol();exposureTimers.set(id,{fn,delay});return id;},clearTimeout:id=>exposureTimers.delete(id),h3,QuasarSpatial,QuasarInspection,QuasarParcelCache:{create:options=>QuasarParcelCache.create({...options,storage:cacheStorage})},mapboxgl, ResizeObserver:class {
+    window:{addEventListener(){},matchMedia:()=>({matches:false}),
+      ...(withPlayback ? {QuasarMapUI:{createPlayback:options=>require('../quasar/static/map-ui.js').createPlayback({...options,every:fn=>{const id=Symbol();playbackTimers.set(id,fn);return id;},stop:id=>playbackTimers.delete(id)}),createSearch:()=>({close(){}})}} : {}),
+      setTimeout:(fn,delay)=>{const id=Symbol();exposureTimers.set(id,{fn,delay});return id;},clearTimeout:id=>exposureTimers.delete(id),h3,QuasarSpatial,QuasarInspection,QuasarParcelCache:{create:options=>QuasarParcelCache.create({...options,storage:cacheStorage})},mapboxgl, ResizeObserver:class {
       constructor(callback) { resizeCallback=callback; }
       observe(element) { observed=element; }
     }},h3,QuasarSpatial,mapboxgl,
@@ -87,7 +93,10 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
       if (url.startsWith("/api/weather/timeline?")) {
         if(scenarioFailure && url.includes("source=archive"))return {ok:false,json:async()=>({error:"forecast offline"})};
         return {ok:true,json:async()=>archiveMissing ? {county_fips:"12091",source:"archive",status:"not_configured",frames:[],default_index:0,message:"Archive not imported"} :
-          {county_fips:"12091",source:"archive",status:forecastStatus,frames:[{at:data.scenario.valid_from,collection:data}],default_index:0}};
+          {county_fips:"12091",source:"archive",status:forecastStatus,frames:Array.from({length:forecastFrames},(_,i)=>{
+            const at=new Date(Date.parse(data.scenario.valid_from)+i*3600000).toISOString();
+            return {at,collection:{...data,scenario:{...data.scenario,valid_from:at,valid_to:new Date(Date.parse(at)+6*3600000).toISOString()}}};
+          }),default_index:0}};
       }
       const body = url==="/api/county" ? {county_fips:"12091",type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Polygon",coordinates:[[[-86.6,30.4],[-86.4,30.4],[-86.4,30.6],[-86.6,30.6],[-86.6,30.4]]]}}]} : url==="/api/config" ? {map:{configured,public_token:"pk.test",style:"mapbox://styles/mapbox/satellite-streets-v12"}} :
         url==="/api/scenarios" ? {scenarios:[{id:"baseline",label:"Exercise hour 0"},...(mixed ? [{id:"weathernext",label:"WeatherNext 3 + fictional inputs"}] : [])]} :
@@ -101,6 +110,8 @@ async function boot({configured=false, forecastMode="county_archive", mixed=fals
     expireExposure:()=>{const timer=[...exposureTimers.values()].find(t=>t.delay>=7200000);clock+=7200001;timer.fn();},
     mount:async()=>{mounted=true; await context.window.Quasar.start();},
     start:()=>context.window.Quasar.start(),
+    tickPlayback:()=>[...playbackTimers.values()][0]?.(),
+    get playbackTimerCount(){return playbackTimers.size;},
     resize:()=>resizeCallback(),
     get resizeCount(){return resizeCount;},
     get observed(){return observed;},
@@ -398,6 +409,79 @@ test('late exposure lookups cannot recolor retained geometry after a scenario ch
 });
 
 // protects: switching assessment runs replaces every cached index; fails_when: old indices are reused under a new run; seam: none; no_claim: real model accuracy.
+test('exposure playback waits for both hourly summaries and parcel batches before advancing',async()=>{
+  let releaseSummary, releaseParcels;
+  const app=await boot({configured:true,exposureScores:true,withPlayback:true,forecastFrames:3,
+    holdExposure:params=>{
+      if(Date.parse(params.get('from'))!==Date.parse('2026-10-09T06:00:00Z'))return;
+      return new Promise(resolve=>{if(params.has('parcel_ids'))releaseParcels=resolve;else releaseSummary=resolve;});
+    },
+    exposureTransform:(page,params)=>Date.parse(params.get('from'))===Date.parse('2026-10-09T06:00:00Z') ?
+      {...page,parcels:Object.fromEntries(Object.entries(page.parcels).map(([id,record])=>[id,{...record,score:42,factors:[{name:'synthetic_factor',value:42,contribution:42}]}]))} : page});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  const geometryCount=geometryRequests(app).length;
+  await app.get('replay-play').onclick();app.tickPlayback();
+  await until(()=>releaseSummary);
+  for(let i=0;i<10;i++){app.tickPlayback();await new Promise(resolve=>setImmediate(resolve));}
+  assert.equal(app.get('replay-hour').value,'1','the slow summary must not be overtaken by later hours');
+  assert.equal(app.get('replay-play').disabled,false,'pause must remain available while scores load');
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null),'old-hour scores must be cleared');
+  releaseSummary();await until(()=>releaseParcels);
+  for(let i=0;i<10;i++){app.tickPlayback();await new Promise(resolve=>setImmediate(resolve));}
+  assert.equal(app.get('replay-hour').value,'1','parcel batches must finish before the next hour');
+  releaseParcels();await until(()=>app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===42));
+  await until(()=>!app.get('replay-hour').disabled);
+  assert.equal(geometryRequests(app).length,geometryCount);
+  app.tickPlayback();await until(()=>app.get('replay-hour').value==='2');
+  await until(()=>app.playbackTimerCount===0);
+});
+
+test('rainfall playback does not request unused exposure assessments',async()=>{
+  const app=await boot({configured:true,withPlayback:true,forecastFrames:3});app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.get('parcel-status').textContent.includes('All 101'));
+  await app.get('replay-play').onclick();app.tickPlayback();
+  await until(()=>app.get('replay-hour').value==='1' && !app.get('replay-hour').disabled);
+  app.tickPlayback();await until(()=>app.get('replay-hour').value==='2');
+  assert.equal(app.requests.filter(url=>url.startsWith('/api/exposure?')).length,0);
+  assert.ok(app.map.sources.hotspots.data.features.some(f=>f.properties.rainfall_mm===15));
+});
+
+test('an exposure outage pauses playback with unknown scores and recheck recovers the same hour',async()=>{
+  const app=await boot({configured:true,exposureScores:true,withPlayback:true,forecastFrames:3});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  const before=geometryRequests(app).length;
+  app.setExposureFailure(true);
+  await app.get('replay-play').onclick();app.tickPlayback();
+  await until(()=>app.playbackTimerCount===0 && !app.get('replay-hour').disabled);
+  assert.equal(app.get('replay-hour').value,'1');
+  assert.match(app.get('playback-status').textContent,/Playback paused.*synthetic exposure outage/);
+  assert.ok(app.map.sources.parcels.data.features.every(f=>f.properties.exposure_score===null));
+  assert.ok(app.map.sources.hotspots.data.features.every(f=>f.properties.exposure_score===null));
+  app.setExposureFailure(false);await app.get('forecast-retry').onclick();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  assert.equal(app.get('replay-hour').value,'1');
+  assert.equal(geometryRequests(app).length,before);
+  await app.get('replay-play').onclick();app.tickPlayback();
+  await until(()=>app.get('replay-hour').value==='2' && app.playbackTimerCount===0);
+});
+
+test('selecting a different hour while playback buffers cannot restore the delayed hour',async()=>{
+  let release;
+  const app=await boot({configured:true,exposureScores:true,withPlayback:true,forecastFrames:3,
+    holdExposure:params=>Date.parse(params.get('from'))===Date.parse('2026-10-09T06:00:00Z') ? new Promise(resolve=>{release=resolve;}) : undefined});
+  app.map.handlers['load:']();parcelClick(app);
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  await app.get('replay-play').onclick();app.tickPlayback();await until(()=>release);
+  app.get('archive-trend').children[2].onclick();
+  await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
+  release();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(app.get('replay-hour').value,'2');
+  assert.equal(app.get('replay-hour').disabled,false);
+  assert.equal(app.playbackTimerCount,0);
+});
+
 test('a new server run replaces indices without reloading parcel geometry',async()=>{
   const app=await boot({configured:true,mixed:true,exposureScores:true});app.map.handlers['load:']();parcelClick(app);
   await until(()=>app.map.sources.parcels.data.features.some(f=>f.properties.exposure_score===90));
